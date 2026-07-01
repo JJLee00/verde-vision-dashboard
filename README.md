@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Verde Vision — Client Dashboard
 
-## Getting Started
+Client-facing dashboard for [useverdevision.com](https://useverdevision.com). Clients sign in with email + password to view their projects and upload Excel files of plant estimates.
 
-First, run the development server:
+**Stack:** Next.js (App Router) · Tailwind CSS · Supabase (auth, Postgres, file storage) · Vercel
 
-```bash
+## Setup
+
+### 1. Supabase
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Open **SQL Editor** and run the contents of [`supabase/schema.sql`](supabase/schema.sql). This creates the `projects` and `plant_estimates` tables, the private `estimates` storage bucket, and row-level security so each client only sees their own data.
+3. In **Authentication → Users**, click **Add user** to create an account for each client (email + password). Send them their credentials.
+4. To give a client a project, insert a row into `projects` with their user id as `client_id` (Table Editor → projects → Insert row).
+
+### 2. Local development
+
+```sh
+cp .env.local.example .env.local
+# Fill in NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+# from Supabase → Project Settings → API
+
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Deployment (Vercel)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Push this repo to GitHub and import it as a new Vercel project.
+2. Add the two `NEXT_PUBLIC_SUPABASE_*` env vars in Vercel → Project → Settings → Environment Variables.
+3. Add `dashboard.useverdevision.com` in Settings → Domains. Vercel will show a CNAME record — that record must be added in the Squarespace DNS settings for `useverdevision.com`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How uploads work
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Clients pick an `.xlsx`/`.xls`/`.csv` file; the browser counts the rows (via SheetJS), uploads the file to the private `estimates` bucket under `{user_id}/{project_id}/`, and records it in `plant_estimates`. Storage policies restrict each client to their own folder.
