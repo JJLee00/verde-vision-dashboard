@@ -35,7 +35,13 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-4">
       <div className="w-full max-w-md rounded-[14px] border border-edge bg-card p-10 shadow-[0_18px_40px_-18px_rgba(28,42,33,0.25)]">
-        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-accent">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/verde-vision-logo.png"
+          alt="Verde Vision logo"
+          className="h-16 w-16 rounded-2xl border border-edge shadow-[0_8px_18px_-8px_rgba(28,42,33,0.4)]"
+        />
+        <p className="mt-6 text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-accent">
           Verde Vision
         </p>
         <h1 className="mt-3 font-serif text-3xl text-ink">

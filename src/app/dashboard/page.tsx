@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
 import { SignOutButton } from "./sign-out-button";
+import { SearchBar } from "./search-bar";
 
 type Estimate = {
   id: string;
@@ -27,7 +28,11 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const supabase = await createClient();
 
   const {
@@ -38,13 +43,20 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: projects, error } = await supabase
+  const { q } = await searchParams;
+
+  let query = supabase
     .from("projects")
     .select(
       "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, plant_estimates(id, file_name, row_count, created_at)"
     )
-    .order("created_at", { ascending: false })
-    .returns<Project[]>();
+    .order("created_at", { ascending: false });
+
+  if (q) {
+    query = query.ilike("name", `%${q}%`);
+  }
+
+  const { data: projects, error } = await query.returns<Project[]>();
 
   // Signed URLs let clients view their blueprint PDFs from the private bucket.
   const blueprintUrls = new Map<string, string>();
@@ -75,7 +87,12 @@ export default async function DashboardPage() {
         <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-clay">
           Client Dashboard
         </p>
-        <h2 className="mt-2 font-serif text-4xl text-ink">Your projects</h2>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
+          <h2 className="font-serif text-4xl text-ink">Your projects</h2>
+          <div className="w-full sm:w-72">
+            <SearchBar />
+          </div>
+        </div>
 
         {error && (
           <p className="mt-4 text-sm text-clay">
@@ -85,8 +102,9 @@ export default async function DashboardPage() {
 
         {projects && projects.length === 0 && (
           <p className="mt-4 text-sm text-muted">
-            No projects yet. Your Verde Vision team will add your project here
-            soon.
+            {q
+              ? `No projects match “${q}”.`
+              : "No projects yet. Your Verde Vision team will add your project here soon."}
           </p>
         )}
 
