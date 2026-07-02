@@ -77,13 +77,13 @@ export function UploadForm({
       />
       <label
         htmlFor={`upload-${projectId}`}
-        className={`inline-block cursor-pointer rounded-lg border border-emerald-700 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 ${
+        className={`inline-block cursor-pointer rounded-lg border border-accent/50 bg-card px-4 py-2 text-sm font-semibold text-accent transition hover:border-accent hover:bg-card-hover ${
           uploading ? "pointer-events-none opacity-50" : ""
         }`}
       >
         {uploading ? "Uploading…" : "Upload plant estimate (.xlsx)"}
       </label>
-      {status && <p className="mt-2 text-sm text-stone-600">{status}</p>}
+      {status && <p className="mt-2 text-sm text-muted">{status}</p>}
     </div>
   );
 }

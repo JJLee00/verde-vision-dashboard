@@ -33,18 +33,23 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
-        <h1 className="text-2xl font-semibold text-stone-900">Verde Vision</h1>
-        <p className="mt-1 text-sm text-stone-500">
-          Client dashboard — sign in to view your projects.
+    <main className="flex min-h-screen items-center justify-center bg-paper px-4">
+      <div className="w-full max-w-md rounded-[14px] border border-edge bg-card p-10 shadow-[0_18px_40px_-18px_rgba(28,42,33,0.25)]">
+        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-accent">
+          Verde Vision
+        </p>
+        <h1 className="mt-3 font-serif text-3xl text-ink">
+          Client dashboard
+        </h1>
+        <p className="mt-2 text-sm text-muted">
+          Sign in to view your projects, estimates, and blueprints.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-9 space-y-5">
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-stone-700"
+              className="block text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted"
             >
               Email
             </label>
@@ -54,14 +59,14 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 focus:border-emerald-600 focus:outline-none"
+              className="mt-2 w-full rounded-lg border border-edge bg-card-hover px-3.5 py-2.5 text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-stone-700"
+              className="block text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-muted"
             >
               Password
             </label>
@@ -71,16 +76,16 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-stone-900 focus:border-emerald-600 focus:outline-none"
+              className="mt-2 w-full rounded-lg border border-edge bg-card-hover px-3.5 py-2.5 text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-clay">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-emerald-700 px-4 py-2 font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+            className="w-full rounded-lg bg-accent px-4 py-3 font-semibold text-paper shadow-[0_10px_22px_-10px_rgba(35,74,53,0.45)] transition hover:-translate-y-0.5 hover:bg-accent-bright hover:shadow-[0_14px_28px_-10px_rgba(35,74,53,0.5)] disabled:transform-none disabled:opacity-40 disabled:shadow-none"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>

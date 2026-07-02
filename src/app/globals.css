@@ -1,26 +1,53 @@
 @import "tailwindcss";
 
+/* Palette mirrors the main site (useverdevision.com styles.css :root) —
+   desert sand paper, warm cream cards, botanical green ink. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #ebe0cb;
+  --paper-deep: #e0d3b6;
+  --card: #f5eeda;
+  --card-hover: #fbf6ea;
+  --ink: #1c2a21;
+  --text: #2b372f;
+  --text-muted: #5c675e;
+  --text-faint: #97a098;
+  --accent: #2e5d43;
+  --accent-bright: #3c7857;
+  --accent-dim: #234a35;
+  --accent-soft: rgba(46, 93, 67, 0.22);
+  --clay: #b0552f;
+  --gold: #a87b2f;
+  --rule: rgba(28, 42, 33, 0.14);
+  --rule-strong: rgba(28, 42, 33, 0.3);
+  --border: rgba(28, 42, 33, 0.16);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-card: var(--card);
+  --color-card-hover: var(--card-hover);
+  --color-ink: var(--ink);
+  --color-body: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-dim: var(--accent-dim);
+  --color-accent-soft: var(--accent-soft);
+  --color-clay: var(--clay);
+  --color-gold: var(--gold);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-edge: var(--border);
+  --font-sans: var(--font-schibsted);
+  --font-serif: var(--font-newsreader);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-schibsted), -apple-system, BlinkMacSystemFont,
+    system-ui, sans-serif;
 }
