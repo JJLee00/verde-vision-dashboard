@@ -35,8 +35,10 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  // API routes handle their own auth (e.g. the Vision Pro ingest key).
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api");
 
-  if (!user && !isLoginPage) {
+  if (!user && !isLoginPage && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

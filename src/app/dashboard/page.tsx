@@ -16,8 +16,16 @@ type Project = {
   description: string | null;
   status: string;
   created_at: string;
+  project_date: string | null;
+  estimate_amount: number | null;
+  blueprint_path: string | null;
   plant_estimates: Estimate[];
 };
+
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -33,10 +41,21 @@ export default async function DashboardPage() {
   const { data: projects, error } = await supabase
     .from("projects")
     .select(
-      "id, name, description, status, created_at, plant_estimates(id, file_name, row_count, created_at)"
+      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, plant_estimates(id, file_name, row_count, created_at)"
     )
     .order("created_at", { ascending: false })
     .returns<Project[]>();
+
+  // Signed URLs let clients view their blueprint PDFs from the private bucket.
+  const blueprintUrls = new Map<string, string>();
+  for (const project of projects ?? []) {
+    if (project.blueprint_path) {
+      const { data } = await supabase.storage
+        .from("blueprints")
+        .createSignedUrl(project.blueprint_path, 60 * 60);
+      if (data?.signedUrl) blueprintUrls.set(project.id, data.signedUrl);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -89,6 +108,54 @@ export default async function DashboardPage() {
                   {project.status}
                 </span>
               </div>
+
+              <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-stone-400">
+                    Project date
+                  </dt>
+                  <dd className="mt-1 text-sm text-stone-800">
+                    {project.project_date
+                      ? new Date(
+                          `${project.project_date}T00:00:00`
+                        ).toLocaleDateString("en-US", {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-stone-400">
+                    Estimate
+                  </dt>
+                  <dd className="mt-1 text-sm font-semibold text-stone-800">
+                    {project.estimate_amount != null
+                      ? currency.format(project.estimate_amount)
+                      : "—"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-stone-400">
+                    Blueprint
+                  </dt>
+                  <dd className="mt-1 text-sm">
+                    {blueprintUrls.has(project.id) ? (
+                      <a
+                        href={blueprintUrls.get(project.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-emerald-700 underline hover:text-emerald-800"
+                      >
+                        View PDF
+                      </a>
+                    ) : (
+                      <span className="text-stone-800">—</span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
 
               <div className="mt-4">
                 <h4 className="text-sm font-medium text-stone-700">
