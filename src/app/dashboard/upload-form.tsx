@@ -65,7 +65,7 @@ export function UploadForm({
   }
 
   return (
-    <div>
+    <span className="inline-flex flex-wrap items-center gap-x-2">
       <input
         ref={fileInputRef}
         type="file"
@@ -77,13 +77,13 @@ export function UploadForm({
       />
       <label
         htmlFor={`upload-${projectId}`}
-        className={`inline-block cursor-pointer rounded-lg border border-accent/50 bg-card px-4 py-2 text-sm font-semibold text-accent transition hover:border-accent hover:bg-card-hover ${
+        className={`cursor-pointer font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright ${
           uploading ? "pointer-events-none opacity-50" : ""
         }`}
       >
-        {uploading ? "Uploading…" : "Upload plant estimate (.xlsx)"}
+        {uploading ? "Uploading…" : "Upload list"}
       </label>
-      {status && <p className="mt-2 text-sm text-muted">{status}</p>}
-    </div>
+      {status && <span className="text-xs text-muted">{status}</span>}
+    </span>
   );
 }

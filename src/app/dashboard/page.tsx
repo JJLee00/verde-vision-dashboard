@@ -1,12 +1,15 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { UploadForm } from "./upload-form";
-import { SignOutButton } from "./sign-out-button";
 import { SearchBar } from "./search-bar";
+import { StatusFilter } from "./status-filter";
 
 type Estimate = {
   id: string;
   file_name: string;
+  file_path: string;
   row_count: number | null;
   created_at: string;
 };
@@ -23,15 +26,137 @@ type Project = {
   plant_estimates: Estimate[];
 };
 
+type ProjectSummary = {
+  status: string;
+  estimate_amount: number | null;
+};
+
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
 
+const longDate = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+
+function greetingForPhoenix() {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "America/Phoenix",
+    }).format(new Date())
+  );
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function displayName(user: User) {
+  const fromMetadata =
+    user.user_metadata?.full_name ?? user.user_metadata?.name;
+  const name: string = fromMetadata || user.email?.split("@")[0] || "there";
+  const first = name.trim().split(/\s+/)[0];
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function initials(user: User) {
+  const fromMetadata =
+    user.user_metadata?.full_name ?? user.user_metadata?.name;
+  const source: string = fromMetadata || user.email?.split("@")[0] || "?";
+  const words = source.trim().split(/\s+/);
+  return words
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join("");
+}
+
+// Latest activity we can show without an updated_at column: the newest
+// estimate upload, or the project's creation.
+function lastUpdated(project: Project) {
+  const dates = [
+    project.created_at,
+    ...project.plant_estimates.map((e) => e.created_at),
+  ];
+  return new Date(Math.max(...dates.map((d) => new Date(d).getTime())));
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  active: "border-accent/40 bg-accent-soft text-accent-dim",
+  completed: "border-gold/40 bg-gold/10 text-gold",
+};
+
+function StatusChip({ status }: { status: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] ${
+        STATUS_STYLES[status] ?? "border-rule-strong bg-paper-deep text-muted"
+      }`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {status}
+    </span>
+  );
+}
+
+function NoPhotoSlot() {
+  return (
+    <div className="flex h-full min-h-52 flex-col items-center justify-center gap-2.5 rounded-[10px] border border-rule bg-ink/[0.05]">
+      <svg
+        className="h-8 w-8 text-faint"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="3" y="5" width="18" height="15" rx="2" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="m5 19 5.2-5.2a1.5 1.5 0 0 1 2.1 0L17 18.5m-2.5-2.5 1.8-1.8a1.5 1.5 0 0 1 2.1 0L21 16.5" />
+      </svg>
+      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+        No photo yet
+      </span>
+    </div>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+        {label}
+      </p>
+      <p className="mt-1.5 font-serif text-3xl text-ink">{value}</p>
+    </div>
+  );
+}
+
+function StatCell({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm text-body">{children}</dd>
+    </div>
+  );
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const supabase = await createClient();
 
@@ -43,175 +168,247 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
-  const { q } = await searchParams;
+  const { q, status } = await searchParams;
 
   let query = supabase
     .from("projects")
     .select(
-      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, plant_estimates(id, file_name, row_count, created_at)"
+      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, plant_estimates(id, file_name, file_path, row_count, created_at)"
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .order("created_at", {
+      referencedTable: "plant_estimates",
+      ascending: false,
+    });
 
   if (q) {
     query = query.ilike("name", `%${q}%`);
   }
+  if (status) {
+    query = query.eq("status", status);
+  }
 
-  const { data: projects, error } = await query.returns<Project[]>();
+  const [{ data: projects, error }, { data: allProjects }] = await Promise.all([
+    query.returns<Project[]>(),
+    supabase
+      .from("projects")
+      .select("status, estimate_amount")
+      .returns<ProjectSummary[]>(),
+  ]);
 
-  // Signed URLs let clients view their blueprint PDFs from the private bucket.
-  const blueprintUrls = new Map<string, string>();
-  for (const project of projects ?? []) {
-    if (project.blueprint_path) {
-      const { data } = await supabase.storage
-        .from("blueprints")
-        .createSignedUrl(project.blueprint_path, 60 * 60);
-      if (data?.signedUrl) blueprintUrls.set(project.id, data.signedUrl);
+  const totalCount = allProjects?.length ?? 0;
+  const activeCount =
+    allProjects?.filter((p) => p.status === "active").length ?? 0;
+  const estimateTotal =
+    allProjects?.reduce((sum, p) => sum + (p.estimate_amount ?? 0), 0) ?? 0;
+
+  // Signed URLs let clients open files from the private buckets.
+  const blueprintPaths = (projects ?? [])
+    .map((p) => p.blueprint_path)
+    .filter((p): p is string => Boolean(p));
+  const estimatePaths = (projects ?? [])
+    .map((p) => p.plant_estimates[0]?.file_path)
+    .filter((p): p is string => Boolean(p));
+
+  const signedUrls = new Map<string, string>();
+  const buckets: Array<[string, string[]]> = [
+    ["blueprints", blueprintPaths],
+    ["estimates", estimatePaths],
+  ];
+  for (const [bucket, paths] of buckets) {
+    if (paths.length === 0) continue;
+    const { data } = await supabase.storage
+      .from(bucket)
+      .createSignedUrls(paths, 60 * 60);
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) {
+        signedUrls.set(`${bucket}:${item.path}`, item.signedUrl);
+      }
     }
   }
 
+  const filtered = Boolean(q || status);
+
   return (
-    <main className="min-h-screen bg-paper">
-      <header className="border-b border-rule">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-5">
-          <div>
-            <p className="text-[0.95rem] font-bold tracking-[0.18em] text-ink uppercase">
-              Verde Vision
-            </p>
-            <p className="mt-0.5 text-xs text-muted">{user.email}</p>
-          </div>
-          <SignOutButton />
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-4xl text-ink">
+            {greetingForPhoenix()}, {displayName(user)}
+          </h1>
+          <p className="mt-1.5 text-sm text-muted">
+            Here&rsquo;s an overview of your projects.
+          </p>
         </div>
+        <Link
+          href="/dashboard/account"
+          aria-label="Account"
+          className="flex items-center gap-1.5 rounded-lg border border-edge bg-card px-3 py-2 text-sm font-semibold text-ink transition hover:bg-card-hover"
+        >
+          {initials(user)}
+          <svg
+            className="h-3.5 w-3.5 text-faint"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </Link>
       </header>
 
-      <div className="mx-auto max-w-4xl px-4 py-10">
-        <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-clay">
-          Client Dashboard
-        </p>
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-4">
-          <h2 className="font-serif text-4xl text-ink">Your projects</h2>
-          <div className="w-full sm:w-72">
+      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+        <StatTile label="Total projects" value={String(totalCount)} />
+        <StatTile label="Active projects" value={String(activeCount)} />
+        <StatTile label="Estimate total" value={currency.format(estimateTotal)} />
+      </div>
+
+      <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
+        <h2 className="font-serif text-2xl text-ink">Your projects</h2>
+        <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
+          <div className="sm:w-64">
             <SearchBar />
           </div>
+          <div className="sm:w-44">
+            <StatusFilter />
+          </div>
         </div>
+      </div>
 
-        {error && (
-          <p className="mt-4 text-sm text-clay">
-            Could not load projects: {error.message}
-          </p>
-        )}
+      {error && (
+        <p className="mt-4 text-sm text-clay">
+          Could not load projects: {error.message}
+        </p>
+      )}
 
-        {projects && projects.length === 0 && (
-          <p className="mt-4 text-sm text-muted">
-            {q
-              ? `No projects match “${q}”.`
-              : "No projects yet. Your Verde Vision team will add your project here soon."}
-          </p>
-        )}
+      {projects && projects.length === 0 && (
+        <p className="mt-4 text-sm text-muted">
+          {filtered
+            ? "No projects match your search."
+            : "No projects yet. Your Verde Vision team will add your project here soon."}
+        </p>
+      )}
 
-        <div className="mt-8 space-y-7">
-          {projects?.map((project) => (
+      <div className="mt-7 space-y-7">
+        {projects?.map((project) => {
+          const latestEstimate = project.plant_estimates[0];
+          const blueprintUrl = project.blueprint_path
+            ? signedUrls.get(`blueprints:${project.blueprint_path}`)
+            : undefined;
+          const plantListUrl = latestEstimate
+            ? signedUrls.get(`estimates:${latestEstimate.file_path}`)
+            : undefined;
+
+          return (
             <section
               key={project.id}
-              className="rounded-[14px] border border-edge bg-card p-7 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]"
+              className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-6"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-serif text-2xl text-ink">
-                    {project.name}
-                  </h3>
-                  {project.description && (
-                    <p className="mt-1.5 text-sm text-muted">
-                      {project.description}
-                    </p>
-                  )}
+              <div className="flex flex-col gap-6 md:flex-row">
+                <div className="shrink-0 md:w-80 lg:w-96">
+                  <NoPhotoSlot />
                 </div>
-                <span className="rounded-full border border-gold/40 bg-gold/10 px-3.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-gold">
-                  {project.status}
-                </span>
-              </div>
 
-              <dl className="mt-6 grid grid-cols-2 gap-5 border-t border-rule pt-5 sm:grid-cols-3">
-                <div>
-                  <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                    Project date
-                  </dt>
-                  <dd className="mt-1.5 text-sm text-body">
-                    {project.project_date
-                      ? new Date(
-                          `${project.project_date}T00:00:00`
-                        ).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })
-                      : "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                    Estimate
-                  </dt>
-                  <dd className="mt-1.5 font-mono text-sm font-semibold text-accent-dim">
-                    {project.estimate_amount != null
-                      ? currency.format(project.estimate_amount)
-                      : "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                    Blueprint
-                  </dt>
-                  <dd className="mt-1.5 text-sm">
-                    {blueprintUrls.has(project.id) ? (
-                      <a
-                        href={blueprintUrls.get(project.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
-                      >
-                        View PDF
-                      </a>
-                    ) : (
-                      <span className="text-body">—</span>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-
-              <div className="mt-6 border-t border-rule pt-5">
-                <h4 className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                  Plant estimates
-                </h4>
-                {project.plant_estimates.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted">
-                    No estimates uploaded yet.
-                  </p>
-                ) : (
-                  <ul className="mt-2 divide-y divide-rule text-sm">
-                    {project.plant_estimates.map((estimate) => (
-                      <li
-                        key={estimate.id}
-                        className="flex items-center justify-between py-2.5"
-                      >
-                        <span className="text-body">{estimate.file_name}</span>
-                        <span className="font-mono text-xs text-faint">
-                          {estimate.row_count != null
-                            ? `${estimate.row_count} rows · `
-                            : ""}
-                          {new Date(estimate.created_at).toLocaleDateString()}
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="font-serif text-[1.65rem] text-ink">
+                        {project.name}
+                      </h3>
+                      {project.description && (
+                        <p className="mt-1 text-sm text-muted">
+                          {project.description}
+                        </p>
+                      )}
+                      <p className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+                        <span className="flex items-center gap-1.5">
+                          <svg
+                            className="h-4 w-4 text-faint"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <rect x="4" y="5" width="16" height="16" rx="2" />
+                            <path d="M4 10h16M8 3v4m8-4v4" />
+                          </svg>
+                          Created {longDate.format(new Date(project.created_at))}
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-4">
-                  <UploadForm projectId={project.id} userId={user.id} />
+                        {project.project_date && (
+                          <span className="text-faint">
+                            · Project date{" "}
+                            {longDate.format(
+                              new Date(`${project.project_date}T00:00:00`)
+                            )}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <StatusChip status={project.status} />
+                  </div>
+
+                  <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-rule pt-5 lg:grid-cols-4">
+                    <StatCell label="Estimate">
+                      {project.estimate_amount != null ? (
+                        <span className="font-mono text-sm font-semibold text-accent-dim">
+                          {currency.format(project.estimate_amount)}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </StatCell>
+                    <StatCell label="Blueprint">
+                      {blueprintUrl ? (
+                        <a
+                          href={blueprintUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                        >
+                          View PDF
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </StatCell>
+                    <StatCell label="Plant list">
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {latestEstimate && latestEstimate.row_count != null && (
+                          <span>{latestEstimate.row_count} plants</span>
+                        )}
+                        {plantListUrl && (
+                          <a
+                            href={plantListUrl}
+                            className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                          >
+                            Download
+                          </a>
+                        )}
+                        <UploadForm projectId={project.id} userId={user.id} />
+                      </span>
+                    </StatCell>
+                    <StatCell label="Last updated">
+                      {longDate.format(lastUpdated(project))}
+                    </StatCell>
+                  </dl>
                 </div>
               </div>
             </section>
-          ))}
-        </div>
+          );
+        })}
       </div>
-    </main>
+
+      {projects && projects.length > 0 && (
+        <p className="mt-8 text-center text-xs text-faint">
+          Showing {projects.length} of {totalCount} project
+          {totalCount === 1 ? "" : "s"}
+        </p>
+      )}
+    </div>
   );
 }
