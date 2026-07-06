@@ -1,0 +1,9 @@
+if command -v gitleaks >/dev/null 2>&1; then
+  # Two passes: gitleaks' built-in defaults (AWS, GitHub, Slack, Stripe, ...)
+  # plus our custom rules (Supabase service_role JWT, Vision Pro API key).
+  # NOT combined into one config — see the comment in .gitleaks.toml for why.
+  gitleaks protect --staged -v \
+    && gitleaks protect --staged --config .gitleaks.toml -v
+else
+  echo "⚠️  gitleaks not installed — skipping secret scan. Install with: brew install gitleaks"
+fi

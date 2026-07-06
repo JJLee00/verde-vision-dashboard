@@ -1,0 +1,24 @@
+title = "verde-vision-dashboard custom secret rules"
+
+# Deliberately does NOT use [extend]/useDefault — combining that with custom
+# [[rules]] in the same file silently drops the custom rules under gitleaks
+# 8.30.1 (confirmed by testing). The pre-commit hook runs this file AND a
+# plain `gitleaks protect --staged` (built-in defaults) as two separate
+# passes instead.
+
+[[rules]]
+id = "supabase-service-role-jwt"
+description = "Supabase service_role JWT (bypasses RLS — never commit)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+tags = ["key", "supabase"]
+
+[[rules]]
+id = "vision-pro-api-key"
+description = "Vision Pro ingest API key (64-char hex shared secret)"
+regex = '''VISION_PRO_API_KEY\s*[:=]\s*["']?[0-9a-f]{64}["']?'''
+tags = ["key"]
+
+[allowlist]
+paths = [
+  '''package-lock\.json''',
+]
