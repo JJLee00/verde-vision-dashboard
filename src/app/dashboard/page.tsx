@@ -83,9 +83,11 @@ function lastUpdated(project: Project) {
   return new Date(Math.max(...dates.map((d) => new Date(d).getTime())));
 }
 
+// Project workflow: pending (awaiting approval) → approved → installed.
 const STATUS_STYLES: Record<string, string> = {
-  active: "border-accent/40 bg-accent-soft text-accent-dim",
-  completed: "border-gold/40 bg-gold/10 text-gold",
+  pending: "border-gold/40 bg-gold/10 text-gold",
+  approved: "border-accent/40 bg-accent-soft text-accent-dim",
+  installed: "border-clay/40 bg-clay/10 text-clay",
 };
 
 function StatusChip({ status }: { status: string }) {
@@ -196,8 +198,8 @@ export default async function DashboardPage({
   ]);
 
   const totalCount = allProjects?.length ?? 0;
-  const activeCount =
-    allProjects?.filter((p) => p.status === "active").length ?? 0;
+  const pendingCount =
+    allProjects?.filter((p) => p.status === "pending").length ?? 0;
   const estimateTotal =
     allProjects?.reduce((sum, p) => sum + (p.estimate_amount ?? 0), 0) ?? 0;
 
@@ -253,7 +255,7 @@ export default async function DashboardPage({
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         <StatTile label="Total projects" value={String(totalCount)} />
-        <StatTile label="Active projects" value={String(activeCount)} />
+        <StatTile label="Pending approval" value={String(pendingCount)} />
         <StatTile label="Estimate total" value={currency.format(estimateTotal)} />
       </div>
 

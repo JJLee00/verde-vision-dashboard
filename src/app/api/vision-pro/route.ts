@@ -11,8 +11,10 @@ import { createClient } from "@supabase/supabase-js";
  *   name            — project name (required when creating)
  *   project_date    — YYYY-MM-DD (optional)
  *   estimate_amount — number, e.g. 12400.50 (optional)
+ *   status          — pending | approved | installed (optional)
  *   blueprint       — PDF file (optional)
  */
+const VALID_STATUSES = ["pending", "approved", "installed"];
 export async function POST(request: NextRequest) {
   const apiKey = request.headers.get("x-api-key");
   if (!apiKey || apiKey !== process.env.VISION_PRO_API_KEY) {
@@ -40,7 +42,15 @@ export async function POST(request: NextRequest) {
   const name = form.get("name")?.toString() || null;
   const projectDate = form.get("project_date")?.toString() || null;
   const estimateRaw = form.get("estimate_amount")?.toString() || null;
+  const status = form.get("status")?.toString() || null;
   const blueprint = form.get("blueprint");
+
+  if (status && !VALID_STATUSES.includes(status)) {
+    return NextResponse.json(
+      { error: `status must be one of: ${VALID_STATUSES.join(", ")}` },
+      { status: 400 }
+    );
+  }
 
   const estimateAmount = estimateRaw ? Number(estimateRaw) : null;
   if (estimateRaw && Number.isNaN(estimateAmount)) {
@@ -104,6 +114,7 @@ export async function POST(request: NextRequest) {
   if (name && projectId) updates.name = name;
   if (projectDate) updates.project_date = projectDate;
   if (estimateAmount != null) updates.estimate_amount = estimateAmount;
+  if (status) updates.status = status;
 
   // Upload the blueprint PDF to the private bucket.
   if (blueprint instanceof File && blueprint.size > 0) {

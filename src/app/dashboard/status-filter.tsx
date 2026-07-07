@@ -5,8 +5,9 @@ import { useTransition } from "react";
 
 const OPTIONS = [
   { value: "", label: "All projects" },
-  { value: "active", label: "Active" },
-  { value: "completed", label: "Completed" },
+  { value: "pending", label: "Pending" },
+  { value: "approved", label: "Approved" },
+  { value: "installed", label: "Installed" },
 ];
 
 export function StatusFilter() {
