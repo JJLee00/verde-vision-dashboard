@@ -20,6 +20,15 @@ const items = [
     ),
   },
   {
+    href: "/dashboard/prices",
+    label: "Prices",
+    icon: (
+      <>
+        <path d="M12 2v20M17 5.5H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H7" />
+      </>
+    ),
+  },
+  {
     href: "/dashboard/account",
     label: "Account",
     icon: (

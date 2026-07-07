@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
-import { UploadForm } from "./upload-form";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
 
@@ -206,23 +205,15 @@ export default async function DashboardPage({
   const blueprintPaths = (projects ?? [])
     .map((p) => p.blueprint_path)
     .filter((p): p is string => Boolean(p));
-  const estimatePaths = (projects ?? [])
-    .map((p) => p.plant_estimates[0]?.file_path)
-    .filter((p): p is string => Boolean(p));
 
   const signedUrls = new Map<string, string>();
-  const buckets: Array<[string, string[]]> = [
-    ["blueprints", blueprintPaths],
-    ["estimates", estimatePaths],
-  ];
-  for (const [bucket, paths] of buckets) {
-    if (paths.length === 0) continue;
+  if (blueprintPaths.length > 0) {
     const { data } = await supabase.storage
-      .from(bucket)
-      .createSignedUrls(paths, 60 * 60);
+      .from("blueprints")
+      .createSignedUrls(blueprintPaths, 60 * 60);
     for (const item of data ?? []) {
       if (item.path && item.signedUrl) {
-        signedUrls.set(`${bucket}:${item.path}`, item.signedUrl);
+        signedUrls.set(`blueprints:${item.path}`, item.signedUrl);
       }
     }
   }
@@ -294,12 +285,8 @@ export default async function DashboardPage({
 
       <div className="mt-7 space-y-7">
         {projects?.map((project) => {
-          const latestEstimate = project.plant_estimates[0];
           const blueprintUrl = project.blueprint_path
             ? signedUrls.get(`blueprints:${project.blueprint_path}`)
-            : undefined;
-          const plantListUrl = latestEstimate
-            ? signedUrls.get(`estimates:${latestEstimate.file_path}`)
             : undefined;
 
           return (
@@ -352,7 +339,7 @@ export default async function DashboardPage({
                     <StatusChip status={project.status} />
                   </div>
 
-                  <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-rule pt-5 lg:grid-cols-4">
+                  <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-rule pt-5 lg:grid-cols-3">
                     <StatCell label="Estimate">
                       {project.estimate_amount != null ? (
                         <span className="font-mono text-sm font-semibold text-accent-dim">
@@ -375,22 +362,6 @@ export default async function DashboardPage({
                       ) : (
                         "—"
                       )}
-                    </StatCell>
-                    <StatCell label="Plant list">
-                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {latestEstimate && latestEstimate.row_count != null && (
-                          <span>{latestEstimate.row_count} plants</span>
-                        )}
-                        {plantListUrl && (
-                          <a
-                            href={plantListUrl}
-                            className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
-                          >
-                            Download
-                          </a>
-                        )}
-                        <UploadForm projectId={project.id} userId={user.id} />
-                      </span>
                     </StatCell>
                     <StatCell label="Last updated">
                       {longDate.format(lastUpdated(project))}
