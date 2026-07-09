@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "prepare": "husky"
+    "prepare": "husky",
+    "gen:catalog": "node scripts/gen-catalog.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

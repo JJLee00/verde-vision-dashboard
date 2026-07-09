@@ -51,3 +51,30 @@ body {
   font-family: var(--font-schibsted), -apple-system, BlinkMacSystemFont,
     system-ui, sans-serif;
 }
+
+/* Hides the native up/down stepper on <input type="number"> — used for
+   price and rate fields, where the spinner adds noise without adding
+   anything a keyboard or paste doesn't already do. */
+input[type="number"].no-spinner::-webkit-inner-spin-button,
+input[type="number"].no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"].no-spinner {
+  -moz-appearance: textfield;
+}
+
+/* Save feedback: a soft botanical-green wash that settles back into the
+   input's resting cream. Quieter than a checkmark, still satisfying. */
+@keyframes save-wash {
+  0% {
+    background-color: rgba(46, 93, 67, 0.3);
+    border-color: rgba(46, 93, 67, 0.6);
+  }
+  100% {
+    background-color: var(--card-hover);
+  }
+}
+.save-wash {
+  animation: save-wash 0.9s ease-out;
+}

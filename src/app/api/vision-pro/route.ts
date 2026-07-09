@@ -44,6 +44,8 @@ export async function POST(request: NextRequest) {
   const estimateRaw = form.get("estimate_amount")?.toString() || null;
   const status = form.get("status")?.toString() || null;
   const blueprint = form.get("blueprint");
+  const estimatePdf = form.get("estimate");
+  const plantsRaw = form.get("plants")?.toString() || null;
 
   if (status && !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
@@ -58,6 +60,34 @@ export async function POST(request: NextRequest) {
       { error: "estimate_amount must be a number" },
       { status: 400 }
     );
+  }
+
+  // Plant usage summary: [{ key: "aloe vera", size: "5g", count: 12 }].
+  // Replaces the project's previous summary wholesale on every sync.
+  let plantUsage: { key: string; size: string; count: number }[] | null = null;
+  if (plantsRaw) {
+    try {
+      const parsed: unknown = JSON.parse(plantsRaw);
+      if (!Array.isArray(parsed) || parsed.length > 500) throw new Error();
+      plantUsage = parsed.map((row) => {
+        const { key, size, count } = row as Record<string, unknown>;
+        if (
+          typeof key !== "string" ||
+          typeof size !== "string" ||
+          typeof count !== "number" ||
+          !Number.isFinite(count) ||
+          count < 0
+        ) {
+          throw new Error();
+        }
+        return { key, size, count: Math.round(count) };
+      });
+    } catch {
+      return NextResponse.json(
+        { error: "plants must be a JSON array of {key, size, count}" },
+        { status: 400 }
+      );
+    }
   }
 
   let project: { id: string; client_id: string };
@@ -115,6 +145,7 @@ export async function POST(request: NextRequest) {
   if (projectDate) updates.project_date = projectDate;
   if (estimateAmount != null) updates.estimate_amount = estimateAmount;
   if (status) updates.status = status;
+  if (plantUsage) updates.plant_usage = plantUsage;
 
   // Upload the blueprint PDF to the private bucket.
   if (blueprint instanceof File && blueprint.size > 0) {
@@ -126,6 +157,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
     updates.blueprint_path = path;
+  }
+
+  // The itemized estimate PDF lives in the same bucket + folder as the
+  // blueprint, so the existing client read policy covers it.
+  if (estimatePdf instanceof File && estimatePdf.size > 0) {
+    const path = `${project.client_id}/${project.id}/${Date.now()}-estimate.pdf`;
+    const { error: uploadError } = await supabase.storage
+      .from("blueprints")
+      .upload(path, estimatePdf, { contentType: "application/pdf" });
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    }
+    updates.estimate_path = path;
   }
 
   if (Object.keys(updates).length > 0) {

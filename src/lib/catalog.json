@@ -1,0 +1,456 @@
+{
+  "source": "Verde-Vision app PlantItem.sampleCatalog",
+  "generatedAt": "2026-07-08",
+  "sizeOrder": [
+    "5g",
+    "15g",
+    "24\" Box",
+    "36\" Box",
+    "48\" Box",
+    "Small",
+    "Medium",
+    "Large"
+  ],
+  "laborDefaults": {
+    "5g": 45,
+    "15g": 85,
+    "24\" Box": 125,
+    "36\" Box": 175,
+    "48\" Box": 250,
+    "Small": 55,
+    "Medium": 95,
+    "Large": 150
+  },
+  "plants": [
+    {
+      "key": "aloe vera",
+      "name": "Aloe Vera",
+      "botanicalName": "Aloe barbadensis miller",
+      "category": "Succulent",
+      "thumbnail": "aloevera_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 55,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 120,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "agave americana",
+      "name": "Agave Americana",
+      "botanicalName": "Agave americana",
+      "category": "Succulent",
+      "thumbnail": "AgaveAmericana_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 70,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "mexican fence post",
+      "name": "Mexican Fence Post",
+      "botanicalName": "Pachycereus marginatus",
+      "category": "Succulent",
+      "thumbnail": "FencePost_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 85,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 180,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "honey mesquite",
+      "name": "Honey Mesquite",
+      "botanicalName": "Prosopis glandulosa",
+      "category": "Tree",
+      "thumbnail": "honeymesquite_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 85
+        },
+        {
+          "size": "24\" Box",
+          "price": 275,
+          "laborCost": 125
+        },
+        {
+          "size": "36\" Box",
+          "price": 450,
+          "laborCost": 175
+        },
+        {
+          "size": "48\" Box",
+          "price": 750,
+          "laborCost": 250
+        }
+      ]
+    },
+    {
+      "key": "orange tree",
+      "name": "Orange Tree",
+      "botanicalName": "Citrus sinensis",
+      "category": "Tree",
+      "thumbnail": "orangetree_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 150,
+          "laborCost": 95
+        },
+        {
+          "size": "24\" Box",
+          "price": 325,
+          "laborCost": 145
+        },
+        {
+          "size": "36\" Box",
+          "price": 550,
+          "laborCost": 200
+        }
+      ]
+    },
+    {
+      "key": "gray boulder",
+      "name": "Gray Boulder",
+      "botanicalName": null,
+      "category": "Hardscape",
+      "thumbnail": "grayboulder_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 95,
+          "laborCost": 55
+        },
+        {
+          "size": "Medium",
+          "price": 195,
+          "laborCost": 95
+        },
+        {
+          "size": "Large",
+          "price": 350,
+          "laborCost": 150
+        }
+      ]
+    },
+    {
+      "key": "golden barrel cactus",
+      "name": "Golden Barrel Cactus",
+      "botanicalName": "Echinocactus grusonii",
+      "category": "Succulent",
+      "thumbnail": "goldenbarrel_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 65,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 140,
+          "laborCost": 75
+        }
+      ]
+    },
+    {
+      "key": "mexican fan palm",
+      "name": "Mexican Fan Palm",
+      "botanicalName": "Washingtonia robusta",
+      "category": "Tree",
+      "thumbnail": "mexfanpalm_thumb",
+      "sizes": [
+        {
+          "size": "24\" Box",
+          "price": 295,
+          "laborCost": 125
+        },
+        {
+          "size": "36\" Box",
+          "price": 495,
+          "laborCost": 175
+        },
+        {
+          "size": "48\" Box",
+          "price": 795,
+          "laborCost": 250
+        }
+      ]
+    },
+    {
+      "key": "saguaro",
+      "name": "Saguaro",
+      "botanicalName": "Carnegiea gigantea",
+      "category": "Succulent",
+      "thumbnail": "saguarospear_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 600,
+          "laborCost": 250
+        },
+        {
+          "size": "Medium",
+          "price": 900,
+          "laborCost": 350
+        },
+        {
+          "size": "Large",
+          "price": 1200,
+          "laborCost": 450
+        }
+      ]
+    },
+    {
+      "key": "argentine toothpick",
+      "name": "Argentine Toothpick",
+      "botanicalName": "Stetsonia coryne",
+      "category": "Succulent",
+      "thumbnail": "argentinetoothpick_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 185,
+          "laborCost": 95
+        },
+        {
+          "size": "24\" Box",
+          "price": 395,
+          "laborCost": 175
+        }
+      ]
+    },
+    {
+      "key": "flat boulder",
+      "name": "Flat Boulder",
+      "botanicalName": null,
+      "category": "Hardscape",
+      "thumbnail": "flatboulder_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 75,
+          "laborCost": 55
+        },
+        {
+          "size": "Medium",
+          "price": 165,
+          "laborCost": 95
+        },
+        {
+          "size": "Large",
+          "price": 295,
+          "laborCost": 150
+        }
+      ]
+    },
+    {
+      "key": "az boulder 1",
+      "name": "AZ Boulder 1",
+      "botanicalName": null,
+      "category": "Hardscape",
+      "thumbnail": "azboulder1_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 75,
+          "laborCost": 55
+        },
+        {
+          "size": "Medium",
+          "price": 165,
+          "laborCost": 95
+        },
+        {
+          "size": "Large",
+          "price": 295,
+          "laborCost": 150
+        }
+      ]
+    },
+    {
+      "key": "rectangle pool",
+      "name": "Rectangle Pool",
+      "botanicalName": null,
+      "category": "Hardscape",
+      "thumbnail": "poolrect_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 25000,
+          "laborCost": 12000
+        },
+        {
+          "size": "Medium",
+          "price": 35000,
+          "laborCost": 15000
+        },
+        {
+          "size": "Large",
+          "price": 48000,
+          "laborCost": 18000
+        }
+      ]
+    },
+    {
+      "key": "kidney pool",
+      "name": "Kidney Pool",
+      "botanicalName": null,
+      "category": "Hardscape",
+      "thumbnail": "poolkidney_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 24000,
+          "laborCost": 12000
+        },
+        {
+          "size": "Medium",
+          "price": 34000,
+          "laborCost": 15000
+        },
+        {
+          "size": "Large",
+          "price": 46000,
+          "laborCost": 18000
+        }
+      ]
+    },
+    {
+      "key": "totem pole cactus",
+      "name": "Totem Pole Cactus",
+      "botanicalName": "Pachycereus schottii f. monstrosus",
+      "category": "Succulent",
+      "thumbnail": "totempole_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 95,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 195,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "agave truncata",
+      "name": "Agave Truncata",
+      "botanicalName": "Agave parryi var. truncata",
+      "category": "Succulent",
+      "thumbnail": "agavetruncata_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 75,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 145,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "tropical agave",
+      "name": "Tropical Agave",
+      "botanicalName": null,
+      "category": "Succulent",
+      "thumbnail": "tropicalagave_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 75,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 145,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "fire barrel cactus",
+      "name": "Fire Barrel Cactus",
+      "botanicalName": null,
+      "category": "Succulent",
+      "thumbnail": "firebarrel_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 70,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 150,
+          "laborCost": 75
+        }
+      ]
+    },
+    {
+      "key": "agave geminiflora",
+      "name": "Agave Geminiflora",
+      "botanicalName": null,
+      "category": "Succulent",
+      "thumbnail": "agavegeminiflora_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 70,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 140,
+          "laborCost": 85
+        }
+      ]
+    },
+    {
+      "key": "yellow bells",
+      "name": "Yellow Bells",
+      "botanicalName": "Tecoma stans",
+      "category": "Shrub",
+      "thumbnail": "yellowbells_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 65,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 130,
+          "laborCost": 85
+        }
+      ]
+    }
+  ]
+}

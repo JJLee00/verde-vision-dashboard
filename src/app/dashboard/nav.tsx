@@ -21,10 +21,20 @@ const items = [
   },
   {
     href: "/dashboard/prices",
-    label: "Prices",
+    label: "Plant Prices",
     icon: (
       <>
         <path d="M12 2v20M17 5.5H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H7" />
+      </>
+    ),
+  },
+  {
+    href: "/dashboard/hardscape-prices",
+    label: "Hardscape Prices",
+    icon: (
+      <>
+        <path d="M8 20H3.5l3-8.5L11 5l4.5 4L19 8l2.5 12H8Z" />
+        <path d="M11 5l1.5 5.5L15.5 9" />
       </>
     ),
   },

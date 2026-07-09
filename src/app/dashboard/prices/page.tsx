@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { splitCatalog, aggregateUsage, coverage } from "@/lib/price-stats";
+import { PricesScreen } from "./prices-screen";
 import { PriceSheets } from "./price-sheets";
-import { PriceItems } from "./price-items";
+import { loadPricesData } from "./load-data";
 
 export type PriceSheet = {
   id: string;
@@ -12,16 +14,7 @@ export type PriceSheet = {
   signedUrl?: string;
 };
 
-export type PriceItem = {
-  id: string;
-  name: string;
-  category: "plant" | "labor";
-  price: number;
-  unit: string;
-  created_at: string;
-};
-
-export default async function PricesPage() {
+export default async function PlantPricesPage() {
   const supabase = await createClient();
 
   const {
@@ -32,22 +25,16 @@ export default async function PricesPage() {
     redirect("/login");
   }
 
-  const [{ data: sheets, error: sheetsError }, { data: items, error: itemsError }] =
-    await Promise.all([
-      supabase
-        .from("price_sheets")
-        .select("id, file_name, file_path, row_count, created_at")
-        .order("created_at", { ascending: false })
-        .returns<PriceSheet[]>(),
-      supabase
-        .from("price_items")
-        .select("id, name, category, price, unit, created_at")
-        .order("category")
-        .order("name")
-        .returns<PriceItem[]>(),
-    ]);
+  const { plantItems, plantSizes } = splitCatalog();
+  const [data, { data: sheets }] = await Promise.all([
+    loadPricesData(supabase),
+    supabase
+      .from("price_sheets")
+      .select("id, file_name, file_path, row_count, created_at")
+      .order("created_at", { ascending: false })
+      .returns<PriceSheet[]>(),
+  ]);
 
-  // Signed URLs so sheets can be downloaded from the private bucket.
   const paths = (sheets ?? []).map((s) => s.file_path);
   if (paths.length > 0) {
     const { data: urls } = await supabase.storage
@@ -63,31 +50,35 @@ export default async function PricesPage() {
     }
   }
 
-  const error = sheetsError ?? itemsError;
+  const usage = aggregateUsage(data.usageLists, plantItems, plantSizes);
+  const cov = coverage(plantItems, Object.keys(data.plantPrices));
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
-      <header>
-        <h1 className="font-serif text-4xl text-ink">Prices</h1>
-        <p className="mt-1.5 text-sm text-muted">
-          Your plant prices and labor rates. Upload a price sheet or enter
-          prices by hand — these drive your project estimates.
-        </p>
-      </header>
-
-      {error && (
-        <p className="mt-4 text-sm text-clay">
-          Could not load prices: {error.message}
-        </p>
-      )}
-
-      <section className="mt-8 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
+    <PricesScreen
+      title="Plant Prices"
+      subtitle="Every plant in your Verde Vision library, priced by size. Estimates use these numbers automatically."
+      laborNote="Per plant, by container size — a 5-gallon plant takes the same work no matter the species."
+      tiles={[
+        { label: "Favorite plant", value: usage.favorite ?? "—" },
+        { label: "Most used size", value: usage.mostUsedSize ?? "—" },
+        { label: "Plants priced", value: cov.itemsPriced },
+      ]}
+      usageNote={!usage.hasData}
+      setupNote={data.setupNote}
+      error={data.error}
+      laborSizes={plantSizes}
+      laborInitial={data.laborRates}
+      plants={plantItems}
+      sizes={plantSizes}
+      pricesInitial={data.plantPrices}
+    >
+      <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 md:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-serif text-2xl text-ink">Price sheets</h2>
             <p className="mt-1 text-sm text-muted">
-              Excel files (.xlsx, .xls, .csv) with your plant prices and labor
-              rates.
+              Reference uploads (.xlsx, .xls, .csv). Estimates read the grid
+              above — keep sheets here for your own records.
             </p>
           </div>
         </div>
@@ -95,16 +86,6 @@ export default async function PricesPage() {
           <PriceSheets sheets={sheets ?? []} userId={user.id} />
         </div>
       </section>
-
-      <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
-        <h2 className="font-serif text-2xl text-ink">Manual prices</h2>
-        <p className="mt-1 text-sm text-muted">
-          Add individual plant prices (per item) or labor rates (per hour).
-        </p>
-        <div className="mt-5">
-          <PriceItems items={items ?? []} />
-        </div>
-      </section>
-    </div>
+    </PricesScreen>
   );
 }

@@ -203,16 +203,33 @@ export default async function DashboardPage({
   const estimateTotal =
     allProjects?.reduce((sum, p) => sum + (p.estimate_amount ?? 0), 0) ?? 0;
 
-  // Signed URLs let clients open files from the private buckets.
-  const blueprintPaths = (projects ?? [])
-    .map((p) => p.blueprint_path)
-    .filter((p): p is string => Boolean(p));
+  // Estimate PDFs (migration 006) are fetched separately and tolerantly so
+  // the dashboard still renders before that migration has been run.
+  const { data: estimateRows } = await supabase
+    .from("projects")
+    .select("id, estimate_path");
+  const estimatePathById = new Map<string, string>(
+    (estimateRows ?? [])
+      .filter((r): r is { id: string; estimate_path: string } =>
+        Boolean(r.estimate_path)
+      )
+      .map((r) => [r.id, r.estimate_path])
+  );
+
+  // Signed URLs let clients open files from the private buckets. Estimates
+  // share the blueprints bucket (same {client_id}/{project_id}/ folder).
+  const filePaths = [
+    ...(projects ?? [])
+      .map((p) => p.blueprint_path)
+      .filter((p): p is string => Boolean(p)),
+    ...estimatePathById.values(),
+  ];
 
   const signedUrls = new Map<string, string>();
-  if (blueprintPaths.length > 0) {
+  if (filePaths.length > 0) {
     const { data } = await supabase.storage
       .from("blueprints")
-      .createSignedUrls(blueprintPaths, 60 * 60);
+      .createSignedUrls(filePaths, 60 * 60);
     for (const item of data ?? []) {
       if (item.path && item.signedUrl) {
         signedUrls.set(`blueprints:${item.path}`, item.signedUrl);
@@ -290,6 +307,10 @@ export default async function DashboardPage({
           const blueprintUrl = project.blueprint_path
             ? signedUrls.get(`blueprints:${project.blueprint_path}`)
             : undefined;
+          const estimatePath = estimatePathById.get(project.id);
+          const estimateUrl = estimatePath
+            ? signedUrls.get(`blueprints:${estimatePath}`)
+            : undefined;
 
           return (
             <section
@@ -344,9 +365,21 @@ export default async function DashboardPage({
                   <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-rule pt-5 lg:grid-cols-3">
                     <StatCell label="Estimate">
                       {project.estimate_amount != null ? (
-                        <span className="font-mono text-sm font-semibold text-accent-dim">
-                          {currency.format(project.estimate_amount)}
-                        </span>
+                        estimateUrl ? (
+                          <a
+                            href={estimateUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View estimate PDF"
+                            className="font-mono text-sm font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                          >
+                            {currency.format(project.estimate_amount)}
+                          </a>
+                        ) : (
+                          <span className="font-mono text-sm font-semibold text-accent-dim">
+                            {currency.format(project.estimate_amount)}
+                          </span>
+                        )
                       ) : (
                         "—"
                       )}

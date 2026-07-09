@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import catalog from "@/lib/catalog.json";
 
 /**
  * Prices feed for the Verde Vision Pro app.
@@ -7,9 +8,14 @@ import { createClient } from "@supabase/supabase-js";
  * GET /api/prices?email=<designer email>
  * Header: x-api-key: <VISION_PRO_API_KEY>
  *
- * Returns the designer's manual prices and (signed, 1h) links to their
- * uploaded price sheets so the app can price estimates with the designer's
- * own numbers instead of the built-in catalog.
+ * Returns the designer's price grid (plantPrices keyed by catalog
+ * plant_key + size, laborRates keyed by size), legacy manual items, and
+ * (signed, 1h) links to their uploaded price sheets.
+ *
+ * Compat bridge: plant_prices rows are ALSO emitted in the legacy items[]
+ * format ("Aloe Vera 5g", category "plant") so app builds that predate the
+ * grid pick them up through their fuzzy name matcher. Emitted after the
+ * legacy rows so grid prices win when both name-match.
  */
 export async function GET(request: NextRequest) {
   const apiKey = request.headers.get("x-api-key");
@@ -44,23 +50,50 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const [{ data: items, error: itemsError }, { data: sheets }] =
-    await Promise.all([
-      supabase
-        .from("price_items")
-        .select("name, category, price, unit")
-        .eq("user_id", user.id)
-        .order("name"),
-      supabase
-        .from("price_sheets")
-        .select("file_name, file_path, row_count")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    { data: items, error: itemsError },
+    { data: sheets },
+    { data: laborRows },
+    { data: priceRows },
+  ] = await Promise.all([
+    supabase
+      .from("price_items")
+      .select("name, category, price, unit")
+      .eq("user_id", user.id)
+      .order("name"),
+    supabase
+      .from("price_sheets")
+      .select("file_name, file_path, row_count")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false }),
+    // Tolerate missing tables (migration 005 not run yet) — these two
+    // queries just come back null and the grid fields are empty.
+    supabase.from("labor_rates").select("size, rate").eq("user_id", user.id),
+    supabase
+      .from("plant_prices")
+      .select("plant_key, size, price")
+      .eq("user_id", user.id),
+  ]);
 
   if (itemsError) {
     return NextResponse.json({ error: itemsError.message }, { status: 500 });
   }
+
+  // Legacy bridge: grid rows as name-keyed plant items for older apps.
+  const nameByKey = new Map(catalog.plants.map((p) => [p.key, p.name]));
+  const bridgeItems = (priceRows ?? []).flatMap((row) => {
+    const plantName = nameByKey.get(row.plant_key);
+    return plantName
+      ? [
+          {
+            name: `${plantName} ${row.size}`,
+            category: "plant",
+            price: row.price,
+            unit: "each",
+          },
+        ]
+      : [];
+  });
 
   const sheetLinks: Array<{
     file_name: string;
@@ -91,7 +124,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     email,
-    items: items ?? [],
+    items: [...(items ?? []), ...bridgeItems],
+    plantPrices: priceRows ?? [],
+    laborRates: laborRows ?? [],
     sheets: sheetLinks,
   });
 }
