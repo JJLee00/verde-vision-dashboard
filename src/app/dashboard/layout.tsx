@@ -2,12 +2,32 @@ import Link from "next/link";
 import { DashboardNav } from "./nav";
 import { SignOutButton } from "./sign-out-button";
 
-function Brand() {
+function Brand({ stacked = false }: { stacked?: boolean }) {
+  if (stacked) {
+    return (
+      <Link
+        href="/dashboard"
+        aria-label="Verde Vision"
+        className="block text-center"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/verde-vision-mark.png"
+          alt="Verde Vision"
+          className="mx-auto w-[88px] object-contain"
+        />
+      </Link>
+    );
+  }
   return (
-    <Link href="/dashboard" className="flex items-center gap-2.5">
+    <Link
+      href="/dashboard"
+      aria-label="Verde Vision"
+      className="flex items-center gap-2.5"
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/verde-vision-logo.png"
+        src="/verde-vision-mark.png"
         alt=""
         className="h-9 w-9 object-contain"
       />
@@ -24,10 +44,10 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen lg:flex">
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-rule bg-card/50 px-4 py-6 lg:flex">
-        <div className="px-2">
-          <Brand />
-        </div>
-        <div className="mt-9 flex-1">
+        <div className="flex-1 pt-3">
+          <p className="mb-3 px-3.5 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-faint">
+            Menu
+          </p>
           <DashboardNav />
         </div>
         <div className="border-t border-rule pt-3">

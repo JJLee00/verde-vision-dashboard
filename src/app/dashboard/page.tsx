@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
+import { PeriodFilter } from "./period-filter";
 
 type Estimate = {
   id: string;
@@ -52,6 +53,39 @@ function greetingForPhoenix() {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+// Start of the selected calendar period in Phoenix time (fixed UTC-7, no DST),
+// as an ISO timestamp for filtering `created_at`. null = all time.
+function periodStart(period: string | undefined): string | null {
+  if (!period) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Phoenix",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  const y = get("year");
+  const m = get("month");
+  const d = get("day");
+  const OFFSET = "-07:00";
+  const iso = (yy: number, mm: number, dd: number) =>
+    `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}T00:00:00${OFFSET}`;
+
+  if (period === "year") return iso(y, 1, 1);
+  if (period === "month") return iso(y, m, 1);
+  if (period === "week") {
+    // Back up to Monday. getUTCDay on a UTC-midnight date avoids TZ drift.
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun..6=Sat
+    const monday = new Date(Date.UTC(y, m - 1, d - ((dow + 6) % 7)));
+    return iso(
+      monday.getUTCFullYear(),
+      monday.getUTCMonth() + 1,
+      monday.getUTCDate()
+    );
+  }
+  return null;
 }
 
 function displayName(user: User) {
@@ -157,7 +191,7 @@ function StatCell({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; period?: string }>;
 }) {
   const supabase = await createClient();
 
@@ -169,7 +203,8 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
-  const { q, status } = await searchParams;
+  const { q, status, period } = await searchParams;
+  const cutoff = periodStart(period);
 
   let query = supabase
     .from("projects")
@@ -188,13 +223,22 @@ export default async function DashboardPage({
   if (status) {
     query = query.eq("status", status);
   }
+  if (cutoff) {
+    query = query.gte("created_at", cutoff);
+  }
+
+  // Stat cards summarize the same time range (but ignore search/status, which
+  // only narrow the list below).
+  let summaryQuery = supabase
+    .from("projects")
+    .select("status, estimate_amount");
+  if (cutoff) {
+    summaryQuery = summaryQuery.gte("created_at", cutoff);
+  }
 
   const [{ data: projects, error }, { data: allProjects }] = await Promise.all([
     query.returns<Project[]>(),
-    supabase
-      .from("projects")
-      .select("status, estimate_amount")
-      .returns<ProjectSummary[]>(),
+    summaryQuery.returns<ProjectSummary[]>(),
   ]);
 
   const totalCount = allProjects?.length ?? 0;
@@ -237,37 +281,35 @@ export default async function DashboardPage({
     }
   }
 
-  const filtered = Boolean(q || status);
+  const filtered = Boolean(q || status || period);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
+        <div className="flex items-end gap-5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/verde-vision-mark.png"
+            alt="Verde Vision"
+            className="w-16 shrink-0 object-contain sm:w-20"
+          />
           <h1 className="font-serif text-4xl text-ink">
             {greetingForPhoenix()}, {displayName(user)}
           </h1>
-          <p className="mt-1.5 text-sm text-muted">
-            Here&rsquo;s an overview of your projects.
-          </p>
         </div>
-        <Link
-          href="/dashboard/account"
-          aria-label="Account"
-          className="flex items-center gap-1.5 rounded-lg border border-edge bg-card px-3 py-2 text-sm font-semibold text-ink transition hover:bg-card-hover"
-        >
-          {initials(user)}
-          <svg
-            className="h-3.5 w-3.5 text-faint"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div className="flex items-center gap-3">
+          <div className="w-36 sm:w-40">
+            <PeriodFilter />
+          </div>
+          <Link
+            href="/dashboard/account"
+            aria-label="Account"
+            title="Account"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold uppercase tracking-wide text-paper shadow-[0_6px_16px_-6px_rgba(28,42,33,0.55)] ring-1 ring-inset ring-white/15 transition hover:bg-accent-bright focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
           >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </Link>
+            {initials(user)}
+          </Link>
+        </div>
       </header>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
