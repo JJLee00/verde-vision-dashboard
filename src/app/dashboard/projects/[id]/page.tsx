@@ -50,11 +50,37 @@ type PageData = {
   notes: string | null;
   coverUrl: string | null;
   videos: VideoItem[];
+  anchors: { step: string; label: string; url: string }[];
+  modeSeconds: Record<string, number> | null;
   userId: string;
   editable: boolean; // false until migration-009 has been run
   readOnly: boolean; // dev fixture
   rail: { rows: RailRow[]; subtotal: number | null };
 };
+
+const ANCHOR_LABELS: Record<string, string> = {
+  origin: "Origin",
+  first: "First anchor",
+  second: "Second anchor",
+};
+
+// Mode-time buckets in display order. "clientView" is the presenting
+// overlay; the rest are base modes. Night is folded in only if used.
+const MODE_META: { key: string; label: string }[] = [
+  { key: "design", label: "Designing" },
+  { key: "blueprint", label: "Blueprint" },
+  { key: "clientView", label: "Presenting" },
+  { key: "night", label: "Night preview" },
+];
+
+function formatDuration(seconds: number): string {
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
 
 function buildFixtureData(): PageData {
   return {
@@ -73,6 +99,8 @@ function buildFixtureData(): PageData {
     notes: "Sample project — fields are read-only in fixture mode.",
     coverUrl: null,
     videos: [],
+    anchors: [],
+    modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
     userId: "fixture",
     editable: false,
     readOnly: true,
@@ -87,98 +115,135 @@ async function loadPageData(id: string): Promise<PageData | null> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: base, error } = await supabase
-    .from("projects")
-    .select(
-      "id, name, status, created_at, project_date, estimate_amount, blueprint_path, estimate_path"
-    )
-    .eq("id", id)
-    .single();
-  if (error || !base) return null;
+  // The base row plus the two migration-gated column sets and the price
+  // sheet are all independent — fire them together instead of chaining
+  // four round-trips. The migration-008/009 columns stay in their own
+  // select() so the page still renders before those migrations run.
+  const videoPrefix = `${user.id}/${id}/videos`;
+  const [baseRes, jsonRes, recRes, anchorRes, priceRes, videoListRes] =
+    await Promise.all([
+    supabase
+      .from("projects")
+      .select(
+        "id, name, status, created_at, project_date, estimate_amount, blueprint_path, estimate_path"
+      )
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("projects")
+      .select("project_json, project_json_updated_at")
+      .eq("id", id)
+      .single(),
+    supabase
+      .from("projects")
+      .select("address, contact_email, notes, cover_path")
+      .eq("id", id)
+      .single(),
+    supabase.from("projects").select("anchor_paths").eq("id", id).single(),
+    supabase.from("price_items").select("name, price, category").eq("category", "plant"),
+    supabase.storage
+      .from("project-media")
+      .list(videoPrefix, { limit: 50, sortBy: { column: "name", order: "desc" } }),
+  ]);
 
-  // Migration-008 columns (3D plan), fetched tolerantly.
+  const base = baseRes.data;
+  if (baseRes.error || !base) return null;
+
   let projectJson: ProjectFileJSON | null = null;
   let jsonUpdatedAt: string | null = null;
-  const { data: json } = await supabase
-    .from("projects")
-    .select("project_json, project_json_updated_at")
-    .eq("id", id)
-    .single();
-  if (json) {
-    projectJson = (json.project_json as ProjectFileJSON | null) ?? null;
-    jsonUpdatedAt = json.project_json_updated_at;
+  if (jsonRes.data) {
+    projectJson = (jsonRes.data.project_json as ProjectFileJSON | null) ?? null;
+    jsonUpdatedAt = jsonRes.data.project_json_updated_at;
   }
 
-  // Migration-009 columns (editable record), fetched tolerantly — until
-  // that migration runs, the page renders read-only with a hint.
+  // Migration-009 columns (editable record). Until that migration runs,
+  // the query errors and the page renders read-only with a hint.
   let address: string | null = null;
   let contactEmail: string | null = null;
   let notes: string | null = null;
   let coverPath: string | null = null;
   let editable = false;
-  const { data: rec } = await supabase
-    .from("projects")
-    .select("address, contact_email, notes, cover_path")
-    .eq("id", id)
-    .single();
-  if (rec) {
-    address = rec.address;
-    contactEmail = rec.contact_email;
-    notes = rec.notes;
-    coverPath = rec.cover_path;
+  if (recRes.data) {
+    address = recRes.data.address;
+    contactEmail = recRes.data.contact_email;
+    notes = recRes.data.notes;
+    coverPath = recRes.data.cover_path;
     editable = true;
   }
 
-  // Signed URLs for the private buckets.
+  // Signed URLs for the private buckets — a second wave, since these
+  // depend on paths from the first. Run the doc, cover, and video URL
+  // batches together.
   const docPaths = [base.blueprint_path, base.estimate_path].filter(
     (p): p is string => Boolean(p)
   );
+  const videoPaths = (videoListRes.data ?? []).map(
+    (o) => `${videoPrefix}/${o.name}`
+  );
+  // anchor_paths is migration-010-gated, so read it tolerantly.
+  const anchorPathMap =
+    (anchorRes.data?.anchor_paths as Record<string, string> | null) ?? null;
+  const anchorEntries = anchorPathMap
+    ? (["origin", "first", "second"] as const)
+        .filter((step) => anchorPathMap[step])
+        .map((step) => ({ step, path: anchorPathMap[step] }))
+    : [];
+  const [docUrlRes, coverUrlRes, videoUrlRes, anchorUrlRes] = await Promise.all([
+    docPaths.length > 0
+      ? supabase.storage.from("blueprints").createSignedUrls(docPaths, 60 * 60)
+      : Promise.resolve({ data: [] }),
+    coverPath
+      ? supabase.storage.from("project-media").createSignedUrl(coverPath, 60 * 60)
+      : Promise.resolve({ data: null }),
+    videoPaths.length > 0
+      ? supabase.storage.from("project-media").createSignedUrls(videoPaths, 60 * 60)
+      : Promise.resolve({ data: [] }),
+    anchorEntries.length > 0
+      ? supabase.storage
+          .from("project-media")
+          .createSignedUrls(
+            anchorEntries.map((a) => a.path),
+            60 * 60
+          )
+      : Promise.resolve({ data: [] }),
+  ]);
+
   const docUrls = new Map<string, string>();
-  if (docPaths.length > 0) {
-    const { data } = await supabase.storage
-      .from("blueprints")
-      .createSignedUrls(docPaths, 60 * 60);
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) docUrls.set(item.path, item.signedUrl);
-    }
+  for (const item of docUrlRes.data ?? []) {
+    if (item.path && item.signedUrl) docUrls.set(item.path, item.signedUrl);
   }
 
-  let coverUrl: string | null = null;
-  if (coverPath) {
-    const { data } = await supabase.storage
-      .from("project-media")
-      .createSignedUrl(coverPath, 60 * 60);
-    coverUrl = data?.signedUrl ?? null;
-  }
+  const coverUrl = coverUrlRes.data?.signedUrl ?? null;
 
   const videos: VideoItem[] = [];
-  const videoPrefix = `${user.id}/${id}/videos`;
-  const { data: videoObjs } = await supabase.storage
-    .from("project-media")
-    .list(videoPrefix, { limit: 50, sortBy: { column: "name", order: "desc" } });
-  const videoPaths = (videoObjs ?? []).map((o) => `${videoPrefix}/${o.name}`);
-  if (videoPaths.length > 0) {
-    const { data } = await supabase.storage
-      .from("project-media")
-      .createSignedUrls(videoPaths, 60 * 60);
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) {
-        videos.push({
-          path: item.path,
-          name: item.path.split("/").pop() ?? "video",
-          url: item.signedUrl,
-        });
-      }
+  for (const item of videoUrlRes.data ?? []) {
+    if (item.path && item.signedUrl) {
+      videos.push({
+        path: item.path,
+        name: item.path.split("/").pop() ?? "video",
+        url: item.signedUrl,
+      });
     }
   }
 
+  // Match anchor signed URLs back to their step by path (same order in,
+  // but pair explicitly rather than trusting the index).
+  const anchorUrlByPath = new Map<string, string>();
+  for (const item of anchorUrlRes.data ?? []) {
+    if (item.path && item.signedUrl) anchorUrlByPath.set(item.path, item.signedUrl);
+  }
+  const anchors = anchorEntries
+    .map((a) => ({
+      step: a.step,
+      label: ANCHOR_LABELS[a.step] ?? a.step,
+      url: anchorUrlByPath.get(a.path) ?? "",
+    }))
+    .filter((a) => a.url);
+
   // Rail prices: designer's Prices-tab overrides, same as the viewer.
+  // Fetched in the first parallel wave above.
   const priceOverrides: Record<string, number> = {};
-  const { data: priceRows } = await supabase
-    .from("price_items")
-    .select("name, price, category")
-    .eq("category", "plant");
-  for (const row of priceRows ?? []) {
+  for (const row of priceRes.data ?? []) {
     priceOverrides[row.name.toLowerCase()] = Number(row.price);
   }
 
@@ -202,6 +267,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
     notes,
     coverUrl,
     videos,
+    anchors,
+    modeSeconds:
+      (projectJson?.modeSeconds as Record<string, number> | null) ?? null,
     userId: user.id,
     editable,
     readOnly: false,
@@ -230,6 +298,57 @@ function SectionCard({
       </div>
       {children}
     </section>
+  );
+}
+
+function TimeBreakdown({
+  modeSeconds,
+}: {
+  modeSeconds: Record<string, number>;
+}) {
+  const rows = MODE_META.map((m) => ({
+    ...m,
+    seconds: modeSeconds[m.key] ?? 0,
+  })).filter((r) => r.seconds > 0);
+  const total = rows.reduce((s, r) => s + r.seconds, 0);
+  if (total === 0) {
+    return (
+      <p className="text-sm text-muted">
+        Time tracking starts on the next headset session for this project.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {rows.map((r) => {
+        const pct = Math.round((r.seconds / total) * 100);
+        return (
+          <div key={r.key}>
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-body">{r.label}</span>
+              <span className="font-mono tabular-nums text-ink">
+                {formatDuration(r.seconds)}
+                <span className="ml-1.5 text-faint">{pct}%</span>
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink/[0.06]">
+              <div
+                className="h-full rounded-full bg-accent"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+      <div className="mt-1 flex items-baseline justify-between border-t border-rule pt-2.5 text-sm">
+        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
+          Total on site
+        </span>
+        <span className="font-mono font-semibold tabular-nums text-ink">
+          {formatDuration(total)}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -457,6 +576,42 @@ export default async function ProjectPage({
               disabled={disabled}
             />
           </SectionCard>
+
+          <SectionCard title="Time in each mode">
+            {data.modeSeconds ? (
+              <TimeBreakdown modeSeconds={data.modeSeconds} />
+            ) : (
+              <p className="text-sm text-muted">
+                Recorded on the headset and synced with the design — appears
+                after the next sync. Only you see this; it&apos;s never on a
+                client link.
+              </p>
+            )}
+          </SectionCard>
+
+          {data.anchors.length > 0 && (
+            <SectionCard title="Alignment anchors">
+              <div className="flex flex-col gap-3">
+                {data.anchors.map((a) => (
+                  <div key={a.step}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.url}
+                      alt={`${a.label} reference photo`}
+                      className="w-full rounded-[10px] border border-edge object-cover"
+                    />
+                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
+                      {a.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-[11px] text-faint">
+                Reference shots from setup — line these up to re-align the
+                project on a return visit.
+              </p>
+            </SectionCard>
+          )}
 
           <SectionCard title="Walkthrough videos">
             <VideoManager

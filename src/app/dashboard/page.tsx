@@ -389,7 +389,7 @@ export default async function DashboardPage({
           return (
             <section
               key={project.id}
-              className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-6"
+              className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] transition duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 md:p-6"
             >
               <div className="flex flex-col gap-6 md:flex-row">
                 <Link
