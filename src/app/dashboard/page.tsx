@@ -271,6 +271,27 @@ export default async function DashboardPage({
       .map((r) => r.id)
   );
 
+  // Cover photos (migration 009), also tolerant.
+  const { data: coverRows } = await supabase
+    .from("projects")
+    .select("id, cover_path");
+  const coverPathById = new Map<string, string>(
+    (coverRows ?? [])
+      .filter((r): r is { id: string; cover_path: string } =>
+        Boolean(r.cover_path)
+      )
+      .map((r) => [r.id, r.cover_path])
+  );
+  const coverUrls = new Map<string, string>();
+  if (coverPathById.size > 0) {
+    const { data } = await supabase.storage
+      .from("project-media")
+      .createSignedUrls([...coverPathById.values()], 60 * 60);
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) coverUrls.set(item.path, item.signedUrl);
+    }
+  }
+
   // Signed URLs let clients open files from the private buckets. Estimates
   // share the blueprints bucket (same {client_id}/{project_id}/ folder).
   const filePaths = [
@@ -371,15 +392,37 @@ export default async function DashboardPage({
               className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-6"
             >
               <div className="flex flex-col gap-6 md:flex-row">
-                <div className="shrink-0 md:w-80 lg:w-96">
-                  <NoPhotoSlot />
-                </div>
+                <Link
+                  href={`/dashboard/projects/${project.id}`}
+                  className="block shrink-0 md:w-80 lg:w-96"
+                  aria-label={`Open ${project.name}`}
+                >
+                  {(() => {
+                    const path = coverPathById.get(project.id);
+                    const url = path ? coverUrls.get(path) : undefined;
+                    return url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={url}
+                        alt=""
+                        className="h-full min-h-52 w-full rounded-[10px] border border-rule object-cover"
+                      />
+                    ) : (
+                      <NoPhotoSlot />
+                    );
+                  })()}
+                </Link>
 
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h3 className="font-serif text-[1.65rem] text-ink">
-                        {project.name}
+                        <Link
+                          href={`/dashboard/projects/${project.id}`}
+                          className="transition hover:text-accent-dim"
+                        >
+                          {project.name}
+                        </Link>
                       </h3>
                       {project.description && (
                         <p className="mt-1 text-sm text-muted">
