@@ -260,6 +260,17 @@ export default async function DashboardPage({
       .map((r) => [r.id, r.estimate_path])
   );
 
+  // Same tolerance for the 3D plan column (migration 008): the viewer
+  // button only lights up once the headset has synced a project JSON.
+  const { data: planRows } = await supabase
+    .from("projects")
+    .select("id, project_json_updated_at");
+  const has3DPlan = new Set(
+    (planRows ?? [])
+      .filter((r) => Boolean(r.project_json_updated_at))
+      .map((r) => r.id)
+  );
+
   // Signed URLs let clients open files from the private buckets. Estimates
   // share the blueprints bucket (same {client_id}/{project_id}/ folder).
   const filePaths = [
@@ -436,6 +447,18 @@ export default async function DashboardPage({
                         >
                           View PDF
                         </a>
+                      ) : (
+                        "—"
+                      )}
+                    </StatCell>
+                    <StatCell label="3D plan">
+                      {has3DPlan.has(project.id) ? (
+                        <Link
+                          href={`/viewer/${project.id}`}
+                          className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                        >
+                          Open viewer
+                        </Link>
                       ) : (
                         "—"
                       )}

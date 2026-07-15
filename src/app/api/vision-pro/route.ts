@@ -13,6 +13,9 @@ import { createClient } from "@supabase/supabase-js";
  *   estimate_amount — number, e.g. 12400.50 (optional)
  *   status          — pending | approved | installed (optional)
  *   blueprint       — PDF file (optional)
+ *   project_json    — full ProjectFile JSON saved by the app (optional);
+ *                     drives the living-blueprint 3D viewer. Replaced
+ *                     wholesale on every sync.
  */
 const VALID_STATUSES = ["pending", "approved", "installed"];
 export async function POST(request: NextRequest) {
@@ -46,6 +49,7 @@ export async function POST(request: NextRequest) {
   const blueprint = form.get("blueprint");
   const estimatePdf = form.get("estimate");
   const plantsRaw = form.get("plants")?.toString() || null;
+  const projectJsonPart = form.get("project_json");
 
   if (status && !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
@@ -85,6 +89,38 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json(
         { error: "plants must be a JSON array of {key, size, count}" },
+        { status: 400 }
+      );
+    }
+  }
+
+  // Full ProjectFile from the app. Arrives as a file part (the Swift
+  // uploader sends it as project.json) but a plain text field also works.
+  // Parsed only to validate + strip whitespace; stored as jsonb.
+  const PROJECT_JSON_MAX_BYTES = 5 * 1024 * 1024;
+  let projectJson: unknown = null;
+  if (projectJsonPart) {
+    const size =
+      projectJsonPart instanceof File ? projectJsonPart.size : projectJsonPart.length;
+    if (size > PROJECT_JSON_MAX_BYTES) {
+      return NextResponse.json(
+        { error: "project_json exceeds 5 MB" },
+        { status: 400 }
+      );
+    }
+    const text =
+      projectJsonPart instanceof File
+        ? await projectJsonPart.text()
+        : projectJsonPart.toString();
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error();
+      }
+      projectJson = parsed;
+    } catch {
+      return NextResponse.json(
+        { error: "project_json must be a JSON object" },
         { status: 400 }
       );
     }
@@ -146,6 +182,10 @@ export async function POST(request: NextRequest) {
   if (estimateAmount != null) updates.estimate_amount = estimateAmount;
   if (status) updates.status = status;
   if (plantUsage) updates.plant_usage = plantUsage;
+  if (projectJson) {
+    updates.project_json = projectJson;
+    updates.project_json_updated_at = new Date().toISOString();
+  }
 
   // Upload the blueprint PDF to the private bucket.
   if (blueprint instanceof File && blueprint.size > 0) {

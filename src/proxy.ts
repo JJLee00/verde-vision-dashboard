@@ -37,8 +37,14 @@ export async function proxy(request: NextRequest) {
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   // API routes handle their own auth (e.g. the Vision Pro ingest key).
   const isApiRoute = request.nextUrl.pathname.startsWith("/api");
+  // Public living-blueprint links — the unguessable token IS the auth.
+  const isShareLink = request.nextUrl.pathname.startsWith("/share/");
+  // Dev-only sample scene for the viewer (the page 404s it in production).
+  const isViewerFixture =
+    process.env.NODE_ENV === "development" &&
+    request.nextUrl.pathname === "/viewer/fixture";
 
-  if (!user && !isLoginPage && !isApiRoute) {
+  if (!user && !isLoginPage && !isApiRoute && !isShareLink && !isViewerFixture) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
