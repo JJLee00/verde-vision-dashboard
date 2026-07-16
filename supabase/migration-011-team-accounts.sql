@@ -95,7 +95,7 @@ create policy "Members can read org project media"
     bucket_id = 'project-media'
     and exists (
       select 1 from public.projects p
-      where p.id::text = (storage.foldername(name))[2]
+      where p.id::text = (storage.foldername(objects.name))[2]
         and p.org_id = public.user_org_id()
     )
   );
@@ -108,7 +108,7 @@ create policy "Owners can add org project media"
     and public.user_is_owner()
     and exists (
       select 1 from public.projects p
-      where p.id::text = (storage.foldername(name))[2]
+      where p.id::text = (storage.foldername(objects.name))[2]
         and p.org_id = public.user_org_id()
     )
   );
@@ -121,7 +121,7 @@ create policy "Owners can delete org project media"
     and public.user_is_owner()
     and exists (
       select 1 from public.projects p
-      where p.id::text = (storage.foldername(name))[2]
+      where p.id::text = (storage.foldername(objects.name))[2]
         and p.org_id = public.user_org_id()
     )
   );
@@ -141,7 +141,7 @@ create policy "Members can read org project blueprints"
     bucket_id = 'blueprints'
     and exists (
       select 1 from public.projects p
-      where p.id::text = (storage.foldername(name))[2]
+      where p.id::text = (storage.foldername(objects.name))[2]
         and p.org_id = public.user_org_id()
     )
   );
