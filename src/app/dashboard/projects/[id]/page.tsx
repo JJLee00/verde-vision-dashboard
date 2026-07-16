@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getMembership, getOrgMembers } from "@/lib/org";
 import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
@@ -52,8 +53,13 @@ type PageData = {
   videos: VideoItem[];
   anchors: { step: string; label: string; url: string }[];
   modeSeconds: Record<string, number> | null;
-  userId: string;
+  // The designer whose folder holds this project's media ({client_id}/
+  // {project_id}/…) — owner uploads land there too, one canonical spot.
+  mediaOwnerId: string;
+  // Set when an org owner views a designer's project.
+  designerName: string | null;
   editable: boolean; // false until migration-009 has been run
+  canEdit: boolean; // owns the project, or is the org owner (migration 011)
   readOnly: boolean; // dev fixture
   rail: { rows: RailRow[]; subtotal: number | null };
 };
@@ -101,8 +107,10 @@ function buildFixtureData(): PageData {
     videos: [],
     anchors: [],
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
-    userId: "fixture",
+    mediaOwnerId: "fixture",
+    designerName: null,
     editable: false,
+    canEdit: false,
     readOnly: true,
     rail: buildRail(buildScene(FIXTURE_PROJECT), {}),
   };
@@ -115,17 +123,18 @@ async function loadPageData(id: string): Promise<PageData | null> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // The base row plus the two migration-gated column sets and the price
-  // sheet are all independent — fire them together instead of chaining
-  // four round-trips. The migration-008/009 columns stay in their own
-  // select() so the page still renders before those migrations run.
-  const videoPrefix = `${user.id}/${id}/videos`;
-  const [baseRes, jsonRes, recRes, anchorRes, priceRes, videoListRes] =
+  // The base row, the migration-gated column sets, the price sheet, and
+  // the caller's org membership are all independent — fire them together
+  // instead of chaining round-trips. The migration-008/009 columns stay
+  // in their own select() so the page still renders before those
+  // migrations run. (The video listing moved to the second wave: its
+  // folder is keyed by the project's designer, which needs the base row.)
+  const [baseRes, jsonRes, recRes, anchorRes, priceRes, membership] =
     await Promise.all([
     supabase
       .from("projects")
       .select(
-        "id, name, status, created_at, project_date, estimate_amount, blueprint_path, estimate_path"
+        "id, name, status, created_at, project_date, estimate_amount, blueprint_path, estimate_path, client_id"
       )
       .eq("id", id)
       .single(),
@@ -141,13 +150,27 @@ async function loadPageData(id: string): Promise<PageData | null> {
       .single(),
     supabase.from("projects").select("anchor_paths").eq("id", id).single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
-    supabase.storage
-      .from("project-media")
-      .list(videoPrefix, { limit: 50, sortBy: { column: "name", order: "desc" } }),
+    getMembership(supabase, user.id),
   ]);
 
   const base = baseRes.data;
   if (baseRes.error || !base) return null;
+
+  // Media lives under the designer's folder ({client_id}/{project_id}/…)
+  // even when the org owner is the one viewing or uploading.
+  const videoPrefix = `${base.client_id}/${id}/videos`;
+  const isOwnerViewingOther =
+    membership?.role === "owner" && base.client_id !== user.id;
+  const canEditProject =
+    base.client_id === user.id || membership?.role === "owner";
+
+  // Attribution line for the owner ("Designer: …"), tolerant pre-011.
+  let designerName: string | null = null;
+  if (isOwnerViewingOther && membership) {
+    const members = await getOrgMembers(supabase, membership.orgId);
+    const m = members.find((mm) => mm.user_id === base.client_id);
+    designerName = m ? (m.full_name ?? m.email) : "former team member";
+  }
 
   let projectJson: ProjectFileJSON | null = null;
   let jsonUpdatedAt: string | null = null;
@@ -177,9 +200,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
   const docPaths = [base.blueprint_path, base.estimate_path].filter(
     (p): p is string => Boolean(p)
   );
-  const videoPaths = (videoListRes.data ?? []).map(
-    (o) => `${videoPrefix}/${o.name}`
-  );
   // anchor_paths is migration-010-gated, so read it tolerantly.
   const anchorPathMap =
     (anchorRes.data?.anchor_paths as Record<string, string> | null) ?? null;
@@ -195,9 +215,22 @@ async function loadPageData(id: string): Promise<PageData | null> {
     coverPath
       ? supabase.storage.from("project-media").createSignedUrl(coverPath, 60 * 60)
       : Promise.resolve({ data: null }),
-    videoPaths.length > 0
-      ? supabase.storage.from("project-media").createSignedUrls(videoPaths, 60 * 60)
-      : Promise.resolve({ data: [] }),
+    // List then sign in one chained step so this wave stays flat.
+    (async () => {
+      const listing = await supabase.storage
+        .from("project-media")
+        .list(videoPrefix, {
+          limit: 50,
+          sortBy: { column: "name", order: "desc" },
+        });
+      const videoPaths = (listing.data ?? []).map(
+        (o) => `${videoPrefix}/${o.name}`
+      );
+      if (videoPaths.length === 0) return { data: [] };
+      return supabase.storage
+        .from("project-media")
+        .createSignedUrls(videoPaths, 60 * 60);
+    })(),
     anchorEntries.length > 0
       ? supabase.storage
           .from("project-media")
@@ -270,8 +303,10 @@ async function loadPageData(id: string): Promise<PageData | null> {
     anchors,
     modeSeconds:
       (projectJson?.modeSeconds as Record<string, number> | null) ?? null,
-    userId: user.id,
+    mediaOwnerId: base.client_id,
+    designerName,
     editable,
+    canEdit: canEditProject,
     readOnly: false,
     rail: projectJson
       ? buildRail(buildScene(projectJson), priceOverrides)
@@ -365,7 +400,7 @@ export default async function ProjectPage({
       : await loadPageData(id);
   if (!data) notFound();
 
-  const disabled = data.readOnly || !data.editable;
+  const disabled = data.readOnly || !data.editable || !data.canEdit;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
@@ -404,6 +439,9 @@ export default async function ProjectPage({
                   · Synced from headset{" "}
                   {syncStamp.format(new Date(data.jsonUpdatedAt))}
                 </span>
+              )}
+              {data.designerName && (
+                <span className="text-faint">· Designer: {data.designerName}</span>
               )}
             </p>
           </div>
@@ -555,7 +593,7 @@ export default async function ProjectPage({
             action={
               <CoverUpload
                 projectId={data.id}
-                userId={data.userId}
+                userId={data.mediaOwnerId}
                 hasCover={Boolean(data.coverUrl)}
                 disabled={disabled}
               />
@@ -616,7 +654,7 @@ export default async function ProjectPage({
           <SectionCard title="Walkthrough videos">
             <VideoManager
               projectId={data.id}
-              userId={data.userId}
+              userId={data.mediaOwnerId}
               videos={data.videos}
               disabled={disabled}
             />

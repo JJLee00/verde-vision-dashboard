@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { getMembership, getOrgMembers, memberName } from "@/lib/org";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
 import { PeriodFilter } from "./period-filter";
+import { DesignerFilter } from "./designer-filter";
 
 type Estimate = {
   id: string;
@@ -23,6 +25,7 @@ type Project = {
   project_date: string | null;
   estimate_amount: number | null;
   blueprint_path: string | null;
+  client_id: string;
   plant_estimates: Estimate[];
 };
 
@@ -191,7 +194,12 @@ function StatCell({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; period?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    status?: string;
+    period?: string;
+    designer?: string;
+  }>;
 }) {
   const supabase = await createClient();
 
@@ -203,13 +211,24 @@ export default async function DashboardPage({
     redirect("/login");
   }
 
-  const { q, status, period } = await searchParams;
+  const { q, status, period, designer } = await searchParams;
   const cutoff = periodStart(period);
+
+  // Owners of a multi-member org get the grouped team view; everyone
+  // else (designers, single-member orgs, pre-007 databases) keeps the
+  // flat list exactly as before.
+  const membership = await getMembership(supabase, user.id);
+  const members =
+    membership?.role === "owner"
+      ? await getOrgMembers(supabase, membership.orgId)
+      : [];
+  const groupedMode = membership?.role === "owner" && members.length > 1;
+  const designerFilter = groupedMode && designer ? designer : null;
 
   let query = supabase
     .from("projects")
     .select(
-      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, plant_estimates(id, file_name, file_path, row_count, created_at)"
+      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, client_id, plant_estimates(id, file_name, file_path, row_count, created_at)"
     )
     .order("created_at", { ascending: false })
     .order("created_at", {
@@ -226,6 +245,9 @@ export default async function DashboardPage({
   if (cutoff) {
     query = query.gte("created_at", cutoff);
   }
+  if (designerFilter) {
+    query = query.eq("client_id", designerFilter);
+  }
 
   // Stat cards summarize the same time range (but ignore search/status, which
   // only narrow the list below).
@@ -234,6 +256,9 @@ export default async function DashboardPage({
     .select("status, estimate_amount");
   if (cutoff) {
     summaryQuery = summaryQuery.gte("created_at", cutoff);
+  }
+  if (designerFilter) {
+    summaryQuery = summaryQuery.eq("client_id", designerFilter);
   }
 
   const [{ data: projects, error }, { data: allProjects }] = await Promise.all([
@@ -313,7 +338,43 @@ export default async function DashboardPage({
     }
   }
 
-  const filtered = Boolean(q || status || period);
+  const filtered = Boolean(q || status || period || designerFilter);
+
+  // Grouped team view: bucket the (already filtered) projects by their
+  // designer. Owner first, then designers alphabetically (getOrgMembers'
+  // order); projects whose designer left the org land in a trailing
+  // "Former team member" group. Empty groups are skipped — the Account
+  // page shows the full roster.
+  const groups = groupedMode
+    ? (() => {
+        const byDesigner = new Map<string, Project[]>();
+        for (const p of projects ?? []) {
+          const list = byDesigner.get(p.client_id) ?? [];
+          list.push(p);
+          byDesigner.set(p.client_id, list);
+        }
+        const out: { key: string; label: string; projects: Project[] }[] = [];
+        for (const m of members) {
+          const list = byDesigner.get(m.user_id);
+          if (!list?.length) continue;
+          out.push({
+            key: m.user_id,
+            label: m.user_id === user.id ? "Your projects" : memberName(m),
+            projects: list,
+          });
+          byDesigner.delete(m.user_id);
+        }
+        const orphaned = [...byDesigner.values()].flat();
+        if (orphaned.length > 0) {
+          out.push({
+            key: "former",
+            label: "Former team member",
+            projects: orphaned,
+          });
+        }
+        return out;
+      })()
+    : null;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
@@ -351,11 +412,23 @@ export default async function DashboardPage({
       </div>
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="font-serif text-2xl text-ink">Your projects</h2>
+        <h2 className="font-serif text-2xl text-ink">
+          {groupedMode ? "Team projects" : "Your projects"}
+        </h2>
         <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
           <div className="sm:w-64">
             <SearchBar />
           </div>
+          {groupedMode && (
+            <div className="sm:w-48">
+              <DesignerFilter
+                options={members.map((m) => ({
+                  value: m.user_id,
+                  label: m.user_id === user.id ? "My projects" : memberName(m),
+                }))}
+              />
+            </div>
+          )}
           <div className="sm:w-44">
             <StatusFilter />
           </div>
@@ -376,8 +449,8 @@ export default async function DashboardPage({
         </p>
       )}
 
-      <div className="mt-7 space-y-7">
-        {projects?.map((project) => {
+      {(() => {
+        const renderCard = (project: Project) => {
           const blueprintUrl = project.blueprint_path
             ? signedUrls.get(`blueprints:${project.blueprint_path}`)
             : undefined;
@@ -514,8 +587,44 @@ export default async function DashboardPage({
               </div>
             </section>
           );
-        })}
-      </div>
+        };
+
+        if (!groups) {
+          return (
+            <div className="mt-7 space-y-7">{projects?.map(renderCard)}</div>
+          );
+        }
+
+        return (
+          <div className="mt-7 space-y-10">
+            {groups.map((group) => {
+              const subtotal = group.projects.reduce(
+                (sum, p) => sum + (p.estimate_amount ?? 0),
+                0
+              );
+              return (
+                <section key={group.key}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-rule pb-2.5">
+                    <h3 className="font-serif text-xl text-ink">
+                      {group.label}
+                      <span className="ml-2.5 text-sm text-faint">
+                        {group.projects.length} project
+                        {group.projects.length === 1 ? "" : "s"}
+                      </span>
+                    </h3>
+                    <span className="font-mono text-sm tabular-nums text-muted">
+                      {currency.format(subtotal)}
+                    </span>
+                  </div>
+                  <div className="mt-5 space-y-7">
+                    {group.projects.map(renderCard)}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {projects && projects.length > 0 && (
         <p className="mt-8 text-center text-xs text-faint">
