@@ -39,10 +39,11 @@ export async function proxy(request: NextRequest) {
   const isApiRoute = request.nextUrl.pathname.startsWith("/api");
   // Public living-blueprint links — the unguessable token IS the auth.
   const isShareLink = request.nextUrl.pathname.startsWith("/share/");
-  // Dev-only sample scene for the viewer (the page 404s it in production).
+  // Dev-only sample scenes (the pages 404 these ids in production).
   const isViewerFixture =
     process.env.NODE_ENV === "development" &&
-    request.nextUrl.pathname === "/viewer/fixture";
+    (request.nextUrl.pathname === "/viewer/fixture" ||
+      request.nextUrl.pathname === "/dashboard/projects/fixture");
 
   if (!user && !isLoginPage && !isApiRoute && !isShareLink && !isViewerFixture) {
     const url = request.nextUrl.clone();

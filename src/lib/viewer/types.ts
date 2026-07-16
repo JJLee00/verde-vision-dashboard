@@ -73,6 +73,9 @@ export type ProjectFileJSON = {
   // plan rotates so north is up.
   northHeadingDegrees?: number | null;
   clientEmail?: string | null;
+  // Cumulative seconds spent in each mode across all sessions, keyed
+  // "design" | "blueprint" | "night" | "clientView" (presenting).
+  modeSeconds?: Record<string, number> | null;
 };
 
 export const METERS_TO_FEET = 3.28084;

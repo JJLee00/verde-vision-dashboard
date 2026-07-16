@@ -50,6 +50,11 @@ export async function POST(request: NextRequest) {
   const estimatePdf = form.get("estimate");
   const plantsRaw = form.get("plants")?.toString() || null;
   const projectJsonPart = form.get("project_json");
+  const anchorParts: Record<string, FormDataEntryValue | null> = {
+    origin: form.get("anchor_origin"),
+    first: form.get("anchor_first"),
+    second: form.get("anchor_second"),
+  };
 
   if (status && !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
@@ -212,12 +217,42 @@ export async function POST(request: NextRequest) {
     updates.estimate_path = path;
   }
 
+  // Anchor reference photos → project-media bucket, one stable path per
+  // step (upsert so re-syncs replace rather than pile up). Paths recorded
+  // in anchor_paths keyed by step. Guarded so this still succeeds before
+  // migration-010 has added the column.
+  const anchorPaths: Record<string, string> = {};
+  for (const [step, part] of Object.entries(anchorParts)) {
+    if (part instanceof File && part.size > 0) {
+      const path = `${project.client_id}/${project.id}/anchors/${step}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from("project-media")
+        .upload(path, part, { contentType: "image/jpeg", upsert: true });
+      if (uploadError) {
+        return NextResponse.json({ error: uploadError.message }, { status: 500 });
+      }
+      anchorPaths[step] = path;
+    }
+  }
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase
       .from("projects")
       .update(updates)
       .eq("id", project.id);
     if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  // anchor_paths lives in its own update: the photos are already stored,
+  // and a project synced before migration-010 (no column yet) shouldn't
+  // fail the whole request — just skip recording the paths.
+  if (Object.keys(anchorPaths).length > 0) {
+    const { error } = await supabase
+      .from("projects")
+      .update({ anchor_paths: anchorPaths })
+      .eq("id", project.id);
+    if (error && !/column .*anchor_paths.* does not exist/i.test(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }
