@@ -59,23 +59,24 @@ export function TimeStatTile({
           height still matches the plain StatTiles exactly. */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <p className="truncate text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-              {hoveredRow ? hoveredRow.label : "Avg on-site time"}
-            </p>
-            <p className="shrink-0 text-[10px] text-faint">
+          <p className="truncate text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+            {hoveredRow ? hoveredRow.label : "Avg on-site time"}
+          </p>
+          <p className="mt-1.5 flex min-w-0 items-baseline gap-2 font-serif text-3xl text-ink">
+            <span className="shrink-0">
               {total > 0
-                ? `${projectCount} project${projectCount === 1 ? "" : "s"} · ${formatDuration(total)} total`
-                : "no headset time yet"}
-            </p>
-          </div>
-          <p className="mt-1.5 truncate font-serif text-3xl text-ink">
-            {total > 0
-              ? formatDuration(hoveredRow ? hoveredRow.seconds : average)
-              : "—"}
-            {hoveredRow && (
-              <span className="ml-1.5 font-sans text-base font-medium text-muted">
+                ? formatDuration(hoveredRow ? hoveredRow.seconds : average)
+                : "—"}
+            </span>
+            {hoveredRow ? (
+              <span className="font-sans text-base font-medium text-muted">
                 {pct(hoveredRow)}
+              </span>
+            ) : (
+              <span className="truncate font-sans text-[11px] text-faint">
+                {total > 0
+                  ? `${projectCount} project${projectCount === 1 ? "" : "s"} · ${formatDuration(total)} total`
+                  : "no headset time yet"}
               </span>
             )}
           </p>
