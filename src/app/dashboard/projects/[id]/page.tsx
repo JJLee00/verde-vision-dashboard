@@ -8,6 +8,7 @@ import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 import { StatusSelect, DetailsForm, NotesEditor } from "./editors";
 import { ShareLinkButtons } from "../../share-buttons";
+import { ModeDonut } from "./mode-donut";
 import { CoverUpload } from "./cover-upload";
 import { VideoManager, type VideoItem } from "./video-manager";
 
@@ -76,22 +77,6 @@ const ANCHOR_LABELS: Record<string, string> = {
 
 // Mode-time buckets in display order. "clientView" is the presenting
 // overlay; the rest are base modes. Night is folded in only if used.
-const MODE_META: { key: string; label: string }[] = [
-  { key: "design", label: "Designing" },
-  { key: "blueprint", label: "Blueprint" },
-  { key: "clientView", label: "Presenting" },
-  { key: "night", label: "Night preview" },
-];
-
-function formatDuration(seconds: number): string {
-  const s = Math.round(seconds);
-  if (s < 60) return `${s}s`;
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
-  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
-}
-
 function buildFixtureData(): PageData {
   return {
     id: "fixture",
@@ -348,57 +333,6 @@ function SectionCard({
   );
 }
 
-function TimeBreakdown({
-  modeSeconds,
-}: {
-  modeSeconds: Record<string, number>;
-}) {
-  const rows = MODE_META.map((m) => ({
-    ...m,
-    seconds: modeSeconds[m.key] ?? 0,
-  })).filter((r) => r.seconds > 0);
-  const total = rows.reduce((s, r) => s + r.seconds, 0);
-  if (total === 0) {
-    return (
-      <p className="text-sm text-muted">
-        Time tracking starts on the next headset session for this project.
-      </p>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      {rows.map((r) => {
-        const pct = Math.round((r.seconds / total) * 100);
-        return (
-          <div key={r.key}>
-            <div className="flex items-baseline justify-between text-sm">
-              <span className="text-body">{r.label}</span>
-              <span className="font-mono tabular-nums text-ink">
-                {formatDuration(r.seconds)}
-                <span className="ml-1.5 text-faint">{pct}%</span>
-              </span>
-            </div>
-            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink/[0.06]">
-              <div
-                className="h-full rounded-full bg-accent"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-          </div>
-        );
-      })}
-      <div className="mt-1 flex items-baseline justify-between border-t border-rule pt-2.5 text-sm">
-        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-          Total on site
-        </span>
-        <span className="font-mono font-semibold tabular-nums text-ink">
-          {formatDuration(total)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
 export default async function ProjectPage({
   params,
 }: {
@@ -608,6 +542,18 @@ export default async function ProjectPage({
 
         {/* ── right: record ── */}
         <div className="flex flex-col gap-6">
+          <SectionCard title="Time in each mode">
+            {data.modeSeconds ? (
+              <ModeDonut modeSeconds={data.modeSeconds} />
+            ) : (
+              <p className="text-sm text-muted">
+                Recorded on the headset and synced with the design — appears
+                after the next sync. Only you see this; it&apos;s never on a
+                client link.
+              </p>
+            )}
+          </SectionCard>
+
           <SectionCard
             title="Details"
             action={
@@ -633,18 +579,6 @@ export default async function ProjectPage({
               initial={data.notes}
               disabled={disabled}
             />
-          </SectionCard>
-
-          <SectionCard title="Time in each mode">
-            {data.modeSeconds ? (
-              <TimeBreakdown modeSeconds={data.modeSeconds} />
-            ) : (
-              <p className="text-sm text-muted">
-                Recorded on the headset and synced with the design — appears
-                after the next sync. Only you see this; it&apos;s never on a
-                client link.
-              </p>
-            )}
           </SectionCard>
 
           {data.anchors.length > 0 && (
