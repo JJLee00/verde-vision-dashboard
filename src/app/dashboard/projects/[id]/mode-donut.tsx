@@ -28,9 +28,13 @@ export const STROKE = 17;
 export const GAP_PX = 2; // surface gap between slices, per mark spec
 
 export function polar(angle: number): [number, number] {
-  // 0 = 12 o'clock, clockwise.
+  // 0 = 12 o'clock, clockwise. Coordinates round to 2 decimals so the
+  // server- and client-rendered path strings match byte-for-byte —
+  // raw Math.cos/sin ULPs differ across JS engines and trip React
+  // hydration on the `d` attribute.
   const a = angle - Math.PI / 2;
-  return [60 + R * Math.cos(a), 60 + R * Math.sin(a)];
+  const round = (v: number) => Math.round(v * 100) / 100;
+  return [round(60 + R * Math.cos(a)), round(60 + R * Math.sin(a))];
 }
 
 export function arcPath(start: number, end: number): string {

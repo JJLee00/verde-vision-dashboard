@@ -54,33 +54,35 @@ export function TimeStatTile({
 
   return (
     <div className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-      {/* Layout height matches the plain StatTiles exactly (label row +
-          number row); the donut paints taller than its slot via negative
-          margins so it fills the card without stretching the grid row. */}
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="truncate text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-          {hoveredRow ? hoveredRow.label : "Avg on-site time"}
-        </p>
-        <p className="shrink-0 text-[10px] text-faint">
-          {total > 0
-            ? `${projectCount} project${projectCount === 1 ? "" : "s"} · ${formatDuration(total)} total`
-            : "no headset time yet"}
-        </p>
-      </div>
-      <div className="mt-1.5 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate font-serif text-3xl text-ink">
-          {total > 0
-            ? formatDuration(hoveredRow ? hoveredRow.seconds : average)
-            : "—"}
-          {hoveredRow && (
-            <span className="ml-1.5 font-sans text-base font-medium text-muted">
-              {pct(hoveredRow)}
-            </span>
-          )}
-        </p>
+      {/* Two columns: text block left, donut right — the donut paints
+          taller than its layout slot (negative margins) so the tile's
+          height still matches the plain StatTiles exactly. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="truncate text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+              {hoveredRow ? hoveredRow.label : "Avg on-site time"}
+            </p>
+            <p className="shrink-0 text-[10px] text-faint">
+              {total > 0
+                ? `${projectCount} project${projectCount === 1 ? "" : "s"} · ${formatDuration(total)} total`
+                : "no headset time yet"}
+            </p>
+          </div>
+          <p className="mt-1.5 truncate font-serif text-3xl text-ink">
+            {total > 0
+              ? formatDuration(hoveredRow ? hoveredRow.seconds : average)
+              : "—"}
+            {hoveredRow && (
+              <span className="ml-1.5 font-sans text-base font-medium text-muted">
+                {pct(hoveredRow)}
+              </span>
+            )}
+          </p>
+        </div>
         <svg
           viewBox="7.5 7.5 105 105"
-          className="-my-[18px] h-[72px] w-[72px] shrink-0 overflow-visible"
+          className="-my-[7px] h-[72px] w-[72px] shrink-0 overflow-visible"
           role="img"
           aria-label={`On-site time by mode: ${summary}`}
         >
