@@ -43,10 +43,12 @@ export function TimeStatTile({
   const pct = (r: { seconds: number }) =>
     `${Math.round((r.seconds / total) * 100)}%`;
 
+  const average = projectCount > 0 ? total / projectCount : 0;
+
   const caption = hoveredRow
     ? `${hoveredRow.label} · ${formatDuration(hoveredRow.seconds)} · ${pct(hoveredRow)}`
     : total > 0
-      ? `across ${projectCount} project${projectCount === 1 ? "" : "s"}`
+      ? `${projectCount} project${projectCount === 1 ? "" : "s"} · ${formatDuration(total)} total`
       : "no headset time synced yet";
 
   const summary =
@@ -59,20 +61,20 @@ export function TimeStatTile({
   return (
     <div className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
       <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-        On-site hours
+        Avg on-site time
       </p>
       <div className="mt-1.5 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="font-serif text-3xl text-ink">
-            {total > 0 ? formatDuration(total) : "—"}
+            {total > 0 ? formatDuration(average) : "—"}
           </p>
           <p className="mt-0.5 truncate text-[11px] text-faint">{caption}</p>
         </div>
         <svg
           viewBox="0 0 120 120"
-          className="h-16 w-16 shrink-0"
+          className="h-24 w-24 shrink-0"
           role="img"
-          aria-label={`On-site hours by mode: ${summary}`}
+          aria-label={`On-site time by mode: ${summary}`}
         >
           {total === 0 ? (
             <circle
@@ -87,26 +89,35 @@ export function TimeStatTile({
           ) : (
             slices.map((s) => {
               const dimmed = hovered !== null && hovered !== s.key;
-              const shared = {
+              const visible = {
                 fill: "none",
                 stroke: s.color,
                 strokeWidth: STROKE,
                 opacity: dimmed ? 0.3 : 1,
-                onMouseEnter: () => setHovered(s.key),
-                onMouseLeave: () => setHovered(null),
+                pointerEvents: "none" as const,
                 style: { transition: "opacity 120ms ease" },
               };
+              const hit = {
+                fill: "none",
+                stroke: "transparent",
+                strokeWidth: STROKE * 2.2,
+                onMouseEnter: () => setHovered(s.key),
+                onMouseLeave: () => setHovered(null),
+              };
+              const d = arcPath(
+                s.start + gapAngle / 2,
+                s.start + s.sweep - gapAngle / 2
+              );
               return slices.length === 1 ? (
-                <circle key={s.key} cx={60} cy={60} r={R} {...shared} />
+                <g key={s.key}>
+                  <circle cx={60} cy={60} r={R} {...visible} />
+                  <circle cx={60} cy={60} r={R} {...hit} />
+                </g>
               ) : (
-                <path
-                  key={s.key}
-                  d={arcPath(
-                    s.start + gapAngle / 2,
-                    s.start + s.sweep - gapAngle / 2
-                  )}
-                  {...shared}
-                />
+                <g key={s.key}>
+                  <path d={d} {...visible} />
+                  <path d={d} {...hit} />
+                </g>
               );
             })
           )}

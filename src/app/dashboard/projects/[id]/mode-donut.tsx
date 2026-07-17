@@ -90,23 +90,37 @@ export function ModeDonut({
         >
           {slices.map((s) => {
             const dimmed = hovered !== null && hovered !== s.key;
-            const shared = {
+            // Visible slice + a fat transparent twin on top so the hover
+            // target is ~2x the stroke — no pixel-hunting with the mouse.
+            const visible = {
               fill: "none",
               stroke: s.color,
               strokeWidth: STROKE,
               opacity: dimmed ? 0.3 : 1,
-              onMouseEnter: () => setHovered(s.key),
-              onMouseLeave: () => setHovered(null),
+              pointerEvents: "none" as const,
               style: { transition: "opacity 120ms ease" },
             };
+            const hit = {
+              fill: "none",
+              stroke: "transparent",
+              strokeWidth: STROKE * 2.2,
+              onMouseEnter: () => setHovered(s.key),
+              onMouseLeave: () => setHovered(null),
+            };
+            const d = arcPath(
+              s.start + gapAngle / 2,
+              s.start + s.sweep - gapAngle / 2
+            );
             return slices.length === 1 ? (
-              <circle key={s.key} cx={60} cy={60} r={R} {...shared} />
+              <g key={s.key}>
+                <circle cx={60} cy={60} r={R} {...visible} />
+                <circle cx={60} cy={60} r={R} {...hit} />
+              </g>
             ) : (
-              <path
-                key={s.key}
-                d={arcPath(s.start + gapAngle / 2, s.start + s.sweep - gapAngle / 2)}
-                {...shared}
-              />
+              <g key={s.key}>
+                <path d={d} {...visible} />
+                <path d={d} {...hit} />
+              </g>
             );
           })}
         </svg>
