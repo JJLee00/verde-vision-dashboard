@@ -68,7 +68,6 @@ export default async function SharePage({
       priceOverrides={priceOverrides}
       showPrices={showPrices}
       backHref={null}
-      shareTokens={null}
       documents={documents}
     />
   );

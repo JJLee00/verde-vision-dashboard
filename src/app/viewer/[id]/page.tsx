@@ -29,7 +29,6 @@ export default async function ViewerPage({
         estimateAmount={8460}
         showPrices
         backHref="/dashboard"
-        shareTokens={null}
         documents={{ blueprint: "#", estimate: "#" }}
       />
     );
@@ -53,7 +52,7 @@ export default async function ViewerPage({
       .single(),
     supabase
       .from("projects")
-      .select("project_json, share_token, crew_token")
+      .select("project_json")
       .eq("id", id)
       .single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
@@ -63,15 +62,8 @@ export default async function ViewerPage({
   if (baseRes.error || !project) notFound();
 
   let projectJson: ProjectFileJSON | null = null;
-  let shareTokens: { client: string; crew: string } | null = null;
   if (extraRes.data) {
     projectJson = (extraRes.data.project_json as ProjectFileJSON | null) ?? null;
-    if (extraRes.data.share_token && extraRes.data.crew_token) {
-      shareTokens = {
-        client: extraRes.data.share_token,
-        crew: extraRes.data.crew_token,
-      };
-    }
   }
 
   if (!projectJson) {
@@ -135,7 +127,6 @@ export default async function ViewerPage({
       priceOverrides={priceOverrides}
       showPrices
       backHref="/dashboard"
-      shareTokens={shareTokens}
       documents={documents}
     />
   );
