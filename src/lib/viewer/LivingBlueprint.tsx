@@ -52,6 +52,9 @@ export type LivingBlueprintProps = {
   showPrices: boolean;
   backHref?: string | null;
   shareTokens?: { client: string; crew: string } | null;
+  // Hrefs for the project's PDF documents (2D blueprint, itemized
+  // estimate). Null/absent entries render no button.
+  documents?: { blueprint: string | null; estimate: string | null } | null;
   // Canvas-only preview: no header, rail, or interaction — a slow orbit
   // instead. Used as the clickable 3D card on the project page.
   embed?: boolean;
@@ -65,6 +68,7 @@ export function LivingBlueprint({
   showPrices,
   backHref,
   shareTokens,
+  documents,
   embed = false,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
@@ -897,6 +901,30 @@ export function LivingBlueprint({
               Mature
             </button>
           </div>
+          {(documents?.blueprint || documents?.estimate) && (
+            <div className="flex overflow-hidden rounded-lg border border-rule bg-card">
+              {documents.blueprint && (
+                <a
+                  href={documents.blueprint}
+                  target="_blank"
+                  rel="noopener"
+                  className={seg(false)}
+                >
+                  Blueprint PDF
+                </a>
+              )}
+              {documents.estimate && (
+                <a
+                  href={documents.estimate}
+                  target="_blank"
+                  rel="noopener"
+                  className={seg(false)}
+                >
+                  Estimate PDF
+                </a>
+              )}
+            </div>
+          )}
           {shareTokens && (
             <div className="hidden items-center gap-1.5 md:flex">
               <button

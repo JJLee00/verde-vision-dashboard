@@ -30,7 +30,7 @@ export default async function SharePage({
   const { data: project } = await supabase
     .from("projects")
     .select(
-      "id, client_id, name, estimate_amount, project_json, share_token, crew_token"
+      "id, client_id, name, estimate_amount, project_json, share_token, crew_token, blueprint_path, estimate_path"
     )
     .or(`share_token.eq.${token},crew_token.eq.${token}`)
     .maybeSingle();
@@ -38,6 +38,15 @@ export default async function SharePage({
   if (!project?.project_json) notFound();
 
   const showPrices = project.share_token === token;
+
+  // Document buttons point at the token routes (which mint a fresh signed
+  // URL per click) so a link kept open for days never goes stale. The
+  // estimate is pricing, so the crew link never gets it.
+  const documents = {
+    blueprint: project.blueprint_path ? `/share/${token}/blueprint` : null,
+    estimate:
+      showPrices && project.estimate_path ? `/share/${token}/estimate` : null,
+  };
 
   const priceOverrides: Record<string, number> = {};
   if (showPrices) {
@@ -60,6 +69,7 @@ export default async function SharePage({
       showPrices={showPrices}
       backHref={null}
       shareTokens={null}
+      documents={documents}
     />
   );
 }

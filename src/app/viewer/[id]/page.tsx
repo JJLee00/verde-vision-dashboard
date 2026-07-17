@@ -30,6 +30,7 @@ export default async function ViewerPage({
         showPrices
         backHref="/dashboard"
         shareTokens={null}
+        documents={{ blueprint: "#", estimate: "#" }}
       />
     );
   }
@@ -45,7 +46,11 @@ export default async function ViewerPage({
   // migration-008 columns are fetched in their own select() so the page
   // still renders before that migration has been run.
   const [baseRes, extraRes, priceRes] = await Promise.all([
-    supabase.from("projects").select("id, name, estimate_amount").eq("id", id).single(),
+    supabase
+      .from("projects")
+      .select("id, name, estimate_amount, blueprint_path, estimate_path")
+      .eq("id", id)
+      .single(),
     supabase
       .from("projects")
       .select("project_json, share_token, crew_token")
@@ -96,6 +101,32 @@ export default async function ViewerPage({
     priceOverrides[row.name.toLowerCase()] = Number(row.price);
   }
 
+  // Same PDF buttons the share page offers, so designers see exactly what
+  // clients get. Signed for an hour, like the project page's document links.
+  const docPaths = [project.blueprint_path, project.estimate_path].filter(
+    (p): p is string => Boolean(p)
+  );
+  let documents: { blueprint: string | null; estimate: string | null } | null =
+    null;
+  if (docPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("blueprints")
+      .createSignedUrls(docPaths, 60 * 60);
+    const byPath = new Map(
+      (signed ?? [])
+        .filter((s) => s.signedUrl)
+        .map((s) => [s.path, s.signedUrl])
+    );
+    documents = {
+      blueprint: project.blueprint_path
+        ? (byPath.get(project.blueprint_path) ?? null)
+        : null,
+      estimate: project.estimate_path
+        ? (byPath.get(project.estimate_path) ?? null)
+        : null,
+    };
+  }
+
   return (
     <LivingBlueprint
       project={projectJson}
@@ -105,6 +136,7 @@ export default async function ViewerPage({
       showPrices
       backHref="/dashboard"
       shareTokens={shareTokens}
+      documents={documents}
     />
   );
 }
