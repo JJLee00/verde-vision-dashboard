@@ -8,6 +8,7 @@ import { StatusFilter } from "./status-filter";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
+import { TimeStatTile } from "./time-stat-tile";
 
 type Estimate = {
   id: string;
@@ -262,16 +263,41 @@ export default async function DashboardPage({
     summaryQuery = summaryQuery.eq("client_id", designerFilter);
   }
 
-  const [{ data: projects, error }, { data: allProjects }] = await Promise.all([
-    query.returns<Project[]>(),
-    summaryQuery.returns<ProjectSummary[]>(),
-  ]);
+  let timeQuery = supabase
+    .from("projects")
+    .select("modeSeconds:project_json->modeSeconds");
+  if (cutoff) {
+    timeQuery = timeQuery.gte("created_at", cutoff);
+  }
+  if (designerFilter) {
+    timeQuery = timeQuery.eq("client_id", designerFilter);
+  }
+
+  const [{ data: projects, error }, { data: allProjects }, { data: timeRows }] =
+    await Promise.all([
+      query.returns<Project[]>(),
+      summaryQuery.returns<ProjectSummary[]>(),
+      timeQuery.returns<{ modeSeconds: Record<string, number> | null }[]>(),
+    ]);
 
   const totalCount = allProjects?.length ?? 0;
   const pendingCount =
     allProjects?.filter((p) => p.status === "pending").length ?? 0;
   const estimateTotal =
     allProjects?.reduce((sum, p) => sum + (p.estimate_amount ?? 0), 0) ?? 0;
+
+  const modeTotals: Record<string, number> = {};
+  let trackedCount = 0;
+  for (const row of timeRows ?? []) {
+    const entries = Object.entries(row.modeSeconds ?? {}).filter(
+      ([, v]) => typeof v === "number" && v > 0
+    );
+    if (entries.length === 0) continue;
+    trackedCount++;
+    for (const [k, v] of entries) {
+      modeTotals[k] = (modeTotals[k] ?? 0) + v;
+    }
+  }
 
   // Estimate PDFs (migration 006) are fetched separately and tolerantly so
   // the dashboard still renders before that migration has been run.
@@ -413,10 +439,11 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile label="Total projects" value={String(totalCount)} />
         <StatTile label="Pending approval" value={String(pendingCount)} />
         <StatTile label="Estimate total" value={currency.format(estimateTotal)} />
+        <TimeStatTile modeSeconds={modeTotals} projectCount={trackedCount} />
       </div>
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">

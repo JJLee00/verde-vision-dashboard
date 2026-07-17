@@ -7,14 +7,14 @@ import { useState } from "react";
 // mode (palette validated for CVD separation against the card surface);
 // hovering a slice or legend row swaps the center total for that mode.
 
-const MODES: { key: string; label: string; color: string }[] = [
+export const MODES: { key: string; label: string; color: string }[] = [
   { key: "design", label: "Designing", color: "#348055" },
   { key: "blueprint", label: "Blueprint", color: "#4478b3" },
   { key: "clientView", label: "Presenting", color: "#a87b2f" },
   { key: "night", label: "Night preview", color: "#8a5090" },
 ];
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   const s = Math.round(seconds);
   if (s < 60) return `${s}s`;
   const h = Math.floor(s / 3600);
@@ -23,17 +23,17 @@ function formatDuration(seconds: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-const R = 44; // arc centerline radius
-const STROKE = 17;
-const GAP_PX = 2; // surface gap between slices, per mark spec
+export const R = 44; // arc centerline radius
+export const STROKE = 17;
+export const GAP_PX = 2; // surface gap between slices, per mark spec
 
-function polar(angle: number): [number, number] {
+export function polar(angle: number): [number, number] {
   // 0 = 12 o'clock, clockwise.
   const a = angle - Math.PI / 2;
   return [60 + R * Math.cos(a), 60 + R * Math.sin(a)];
 }
 
-function arcPath(start: number, end: number): string {
+export function arcPath(start: number, end: number): string {
   const [x0, y0] = polar(start);
   const [x1, y1] = polar(end);
   const largeArc = end - start > Math.PI ? 1 : 0;
