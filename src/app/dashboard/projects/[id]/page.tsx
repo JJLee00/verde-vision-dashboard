@@ -7,6 +7,7 @@ import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 import { StatusSelect, DetailsForm, NotesEditor } from "./editors";
+import { ShareLinkButtons } from "../../share-buttons";
 import { CoverUpload } from "./cover-upload";
 import { VideoManager, type VideoItem } from "./video-manager";
 
@@ -46,6 +47,9 @@ type PageData = {
   estimateUrl: string | null;
   projectJson: ProjectFileJSON | null;
   jsonUpdatedAt: string | null;
+  // Public share-link tokens (migration 008; null until it has run).
+  shareToken: string | null;
+  crewToken: string | null;
   address: string | null;
   contactEmail: string | null;
   notes: string | null;
@@ -100,6 +104,8 @@ function buildFixtureData(): PageData {
     estimateUrl: null,
     projectJson: FIXTURE_PROJECT,
     jsonUpdatedAt: new Date().toISOString(),
+    shareToken: "00000000-0000-0000-0000-000000000000",
+    crewToken: "00000000-0000-0000-0000-000000000001",
     address: "27210 N Rio Verde Dr, Rio Verde, AZ",
     contactEmail: "hoffmans@example.com",
     notes: "Sample project — fields are read-only in fixture mode.",
@@ -140,7 +146,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
       .single(),
     supabase
       .from("projects")
-      .select("project_json, project_json_updated_at")
+      .select("project_json, project_json_updated_at, share_token, crew_token")
       .eq("id", id)
       .single(),
     supabase
@@ -174,9 +180,13 @@ async function loadPageData(id: string): Promise<PageData | null> {
 
   let projectJson: ProjectFileJSON | null = null;
   let jsonUpdatedAt: string | null = null;
+  let shareToken: string | null = null;
+  let crewToken: string | null = null;
   if (jsonRes.data) {
     projectJson = (jsonRes.data.project_json as ProjectFileJSON | null) ?? null;
     jsonUpdatedAt = jsonRes.data.project_json_updated_at;
+    shareToken = jsonRes.data.share_token;
+    crewToken = jsonRes.data.crew_token;
   }
 
   // Migration-009 columns (editable record). Until that migration runs,
@@ -295,6 +305,8 @@ async function loadPageData(id: string): Promise<PageData | null> {
       : null,
     projectJson,
     jsonUpdatedAt,
+    shareToken,
+    crewToken,
     address,
     contactEmail,
     notes,
@@ -446,11 +458,19 @@ export default async function ProjectPage({
             </p>
           </div>
         </div>
-        <StatusSelect
-          projectId={data.id}
-          initial={data.status}
-          disabled={disabled}
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          {data.projectJson && data.shareToken && data.crewToken && (
+            <ShareLinkButtons
+              clientToken={data.shareToken}
+              crewToken={data.crewToken}
+            />
+          )}
+          <StatusSelect
+            projectId={data.id}
+            initial={data.status}
+            disabled={disabled}
+          />
+        </div>
       </div>
 
       {!data.editable && !data.readOnly && (

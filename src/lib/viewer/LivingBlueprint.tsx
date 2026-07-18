@@ -51,7 +51,9 @@ export type LivingBlueprintProps = {
   priceOverrides?: Record<string, number>;
   showPrices: boolean;
   backHref?: string | null;
-  shareTokens?: { client: string; crew: string } | null;
+  // Hrefs for the project's PDF documents (2D blueprint, itemized
+  // estimate). Null/absent entries render no button.
+  documents?: { blueprint: string | null; estimate: string | null } | null;
   // Canvas-only preview: no header, rail, or interaction — a slow orbit
   // instead. Used as the clickable 3D card on the project page.
   embed?: boolean;
@@ -64,7 +66,7 @@ export function LivingBlueprint({
   priceOverrides = {},
   showPrices,
   backHref,
-  shareTokens,
+  documents,
   embed = false,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
@@ -76,7 +78,6 @@ export function LivingBlueprint({
   const [mode, setMode] = useState<"3d" | "plan">("3d");
   const [growth, setGrowth] = useState<"young" | "mature">("mature");
   const [selected, setSelected] = useState<string | null>(null);
-  const [copied, setCopied] = useState<"client" | "crew" | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -96,17 +97,6 @@ export function LivingBlueprint({
     if (!selected) return;
     rowRefs.current.get(selected)?.scrollIntoView({ block: "nearest" });
   }, [selected]);
-
-  const copyShareLink = useCallback(
-    async (kind: "client" | "crew") => {
-      if (!shareTokens) return;
-      const token = kind === "client" ? shareTokens.client : shareTokens.crew;
-      await navigator.clipboard.writeText(`${location.origin}/share/${token}`);
-      setCopied(kind);
-      setTimeout(() => setCopied(null), 2000);
-    },
-    [shareTokens]
-  );
 
   /* ── Canvas renderer ──────────────────────────────────────────── */
   useEffect(() => {
@@ -897,23 +887,28 @@ export function LivingBlueprint({
               Mature
             </button>
           </div>
-          {shareTokens && (
-            <div className="hidden items-center gap-1.5 md:flex">
-              <button
-                type="button"
-                onClick={() => copyShareLink("client")}
-                className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
-              >
-                {copied === "client" ? "Copied ✓" : "Copy client link"}
-              </button>
-              <button
-                type="button"
-                onClick={() => copyShareLink("crew")}
-                title="Same viewer without pricing — for install crews"
-                className="rounded-lg border border-rule-strong px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card"
-              >
-                {copied === "crew" ? "Copied ✓" : "Crew link"}
-              </button>
+          {(documents?.blueprint || documents?.estimate) && (
+            <div className="flex overflow-hidden rounded-lg border border-rule bg-card">
+              {documents.blueprint && (
+                <a
+                  href={documents.blueprint}
+                  target="_blank"
+                  rel="noopener"
+                  className={seg(false)}
+                >
+                  Blueprint PDF
+                </a>
+              )}
+              {documents.estimate && (
+                <a
+                  href={documents.estimate}
+                  target="_blank"
+                  rel="noopener"
+                  className={seg(false)}
+                >
+                  Estimate PDF
+                </a>
+              )}
             </div>
           )}
         </div>

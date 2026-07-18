@@ -7,6 +7,7 @@ import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
+import { ShareLinkButtons } from "./share-buttons";
 
 type Estimate = {
   id: string;
@@ -289,11 +290,18 @@ export default async function DashboardPage({
   // button only lights up once the headset has synced a project JSON.
   const { data: planRows } = await supabase
     .from("projects")
-    .select("id, project_json_updated_at");
+    .select("id, project_json_updated_at, share_token, crew_token");
   const has3DPlan = new Set(
     (planRows ?? [])
       .filter((r) => Boolean(r.project_json_updated_at))
       .map((r) => r.id)
+  );
+  // Share links only make sense once a 3D plan exists (the public page
+  // 404s without project_json), so key the token map the same way.
+  const shareTokensById = new Map(
+    (planRows ?? [])
+      .filter((r) => r.project_json_updated_at && r.share_token && r.crew_token)
+      .map((r) => [r.id, { client: r.share_token, crew: r.crew_token }])
   );
 
   // Cover photos (migration 009), also tolerant.
@@ -578,6 +586,20 @@ export default async function DashboardPage({
                       ) : (
                         "—"
                       )}
+                    </StatCell>
+                    <StatCell label="Share">
+                      {(() => {
+                        const tokens = shareTokensById.get(project.id);
+                        return tokens ? (
+                          <ShareLinkButtons
+                            clientToken={tokens.client}
+                            crewToken={tokens.crew}
+                            compact
+                          />
+                        ) : (
+                          "—"
+                        );
+                      })()}
                     </StatCell>
                     <StatCell label="Last updated">
                       {longDate.format(lastUpdated(project))}
