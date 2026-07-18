@@ -303,6 +303,9 @@ function TimeMiniDonut({
     cursor += sweep;
     return { ...r, start, sweep };
   });
+  // Same hairline-slice guard as ModeDonut: never let the gap exceed
+  // half the slice, or the arc sweeps negative and wraps.
+  const inset = (sweep: number) => Math.min(gapAngle / 2, sweep / 4);
 
   return (
     <svg
@@ -333,8 +336,8 @@ function TimeMiniDonut({
             <path
               key={s.key}
               d={arcPath(
-                s.start + gapAngle / 2,
-                s.start + s.sweep - gapAngle / 2
+                s.start + inset(s.sweep),
+                s.start + s.sweep - inset(s.sweep)
               )}
               {...props}
             />

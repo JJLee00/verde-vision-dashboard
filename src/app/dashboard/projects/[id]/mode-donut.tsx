@@ -74,6 +74,10 @@ export function ModeDonut({
     cursor += sweep;
     return { ...r, start, sweep };
   });
+  // A slice narrower than the gap would get a negative sweep and wrap
+  // the arc the wrong way around — cap the inset at a quarter sweep so
+  // hairline slices shrink their gap instead.
+  const inset = (sweep: number) => Math.min(gapAngle / 2, sweep / 4);
 
   const hoveredRow = rows.find((r) => r.key === hovered) ?? null;
   const pct = (r: { seconds: number }) =>
@@ -112,8 +116,8 @@ export function ModeDonut({
               onMouseLeave: () => setHovered(null),
             };
             const d = arcPath(
-              s.start + gapAngle / 2,
-              s.start + s.sweep - gapAngle / 2
+              s.start + inset(s.sweep),
+              s.start + s.sweep - inset(s.sweep)
             );
             return slices.length === 1 ? (
               <g key={s.key}>
