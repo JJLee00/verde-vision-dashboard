@@ -8,6 +8,7 @@ import { StatusFilter } from "./status-filter";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
+import { StatsRow, type ProjectLite } from "./stats-row";
 
 type Estimate = {
   id: string;
@@ -31,8 +32,11 @@ type Project = {
 };
 
 type ProjectSummary = {
+  id: string;
+  name: string;
   status: string;
   estimate_amount: number | null;
+  created_at: string | null;
 };
 
 const currency = new Intl.NumberFormat("en-US", {
@@ -164,17 +168,6 @@ function NoPhotoSlot() {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-        {label}
-      </p>
-      <p className="mt-1.5 font-serif text-3xl text-ink">{value}</p>
-    </div>
-  );
-}
-
 function StatCell({
   label,
   children,
@@ -254,7 +247,7 @@ export default async function DashboardPage({
   // only narrow the list below).
   let summaryQuery = supabase
     .from("projects")
-    .select("status, estimate_amount");
+    .select("id, name, status, estimate_amount, created_at");
   if (cutoff) {
     summaryQuery = summaryQuery.gte("created_at", cutoff);
   }
@@ -262,16 +255,53 @@ export default async function DashboardPage({
     summaryQuery = summaryQuery.eq("client_id", designerFilter);
   }
 
-  const [{ data: projects, error }, { data: allProjects }] = await Promise.all([
-    query.returns<Project[]>(),
-    summaryQuery.returns<ProjectSummary[]>(),
-  ]);
+  let timeQuery = supabase
+    .from("projects")
+    .select("modeSeconds:project_json->modeSeconds");
+  if (cutoff) {
+    timeQuery = timeQuery.gte("created_at", cutoff);
+  }
+  if (designerFilter) {
+    timeQuery = timeQuery.eq("client_id", designerFilter);
+  }
+
+  const [{ data: projects, error }, { data: allProjects }, { data: timeRows }] =
+    await Promise.all([
+      query.returns<Project[]>(),
+      summaryQuery.returns<ProjectSummary[]>(),
+      timeQuery.returns<{ modeSeconds: Record<string, number> | null }[]>(),
+    ]);
 
   const totalCount = allProjects?.length ?? 0;
-  const pendingCount =
-    allProjects?.filter((p) => p.status === "pending").length ?? 0;
-  const estimateTotal =
-    allProjects?.reduce((sum, p) => sum + (p.estimate_amount ?? 0), 0) ?? 0;
+  const toLite = (p: ProjectSummary): ProjectLite => ({
+    id: p.id,
+    name: p.name,
+    estimate: p.estimate_amount,
+    createdAt: p.created_at,
+    status: p.status,
+  });
+  // Pipeline reads oldest-first (follow-up order); wins newest-first.
+  const pendingList = (allProjects ?? [])
+    .filter((p) => p.status === "pending")
+    .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+    .map(toLite);
+  const wonList = (allProjects ?? [])
+    .filter((p) => p.status === "approved" || p.status === "installed")
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
+    .map(toLite);
+
+  const modeTotals: Record<string, number> = {};
+  let trackedCount = 0;
+  for (const row of timeRows ?? []) {
+    const entries = Object.entries(row.modeSeconds ?? {}).filter(
+      ([, v]) => typeof v === "number" && v > 0
+    );
+    if (entries.length === 0) continue;
+    trackedCount++;
+    for (const [k, v] of entries) {
+      modeTotals[k] = (modeTotals[k] ?? 0) + v;
+    }
+  }
 
   // Estimate PDFs (migration 006) are fetched separately and tolerantly so
   // the dashboard still renders before that migration has been run.
@@ -413,11 +443,12 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
-        <StatTile label="Total projects" value={String(totalCount)} />
-        <StatTile label="Pending approval" value={String(pendingCount)} />
-        <StatTile label="Estimate total" value={currency.format(estimateTotal)} />
-      </div>
+      <StatsRow
+        pending={pendingList}
+        won={wonList}
+        totalCount={totalCount}
+        time={{ modeSeconds: modeTotals, projectCount: trackedCount }}
+      />
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-serif text-2xl text-ink">
