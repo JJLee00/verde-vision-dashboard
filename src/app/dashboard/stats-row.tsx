@@ -51,20 +51,23 @@ const sum = (list: ProjectLite[]) =>
 export function StatsRow({
   pending,
   won,
-  totalCount,
+  declinedCount,
   time,
 }: {
   pending: ProjectLite[]; // oldest first — follow-up order
   won: ProjectLite[]; // newest first
-  totalCount: number;
+  declinedCount: number;
   time: { modeSeconds: Record<string, number>; projectCount: number };
 }) {
   const [open, setOpen] = useState<Panel | null>(null);
   const toggle = (p: Panel) => setOpen((prev) => (prev === p ? null : p));
 
   const timeTotal = Object.values(time.modeSeconds).reduce((s, v) => s + v, 0);
+  // Close rate counts only decided projects — won vs declined. Pending
+  // stays out of the denominator; it's the pipeline, not a loss yet.
+  const decidedCount = won.length + declinedCount;
   const closeRate =
-    totalCount > 0 ? Math.round((won.length / totalCount) * 100) : null;
+    decidedCount > 0 ? Math.round((won.length / decidedCount) * 100) : null;
 
   return (
     <div className="mt-8">
@@ -91,7 +94,11 @@ export function StatsRow({
           onToggle={toggle}
           label="Close rate"
           value={closeRate === null ? "—" : `${closeRate}%`}
-          caption={`${won.length} of ${totalCount} quoted`}
+          caption={
+            decidedCount > 0
+              ? `${won.length} of ${decidedCount} decided`
+              : "no decisions yet"
+          }
         />
         <TileShell
           panel="time"
@@ -131,7 +138,7 @@ export function StatsRow({
             />
           )}
           {open === "close" && (
-            <ClosePanel won={won.length} total={totalCount} />
+            <ClosePanel won={won.length} declined={declinedCount} />
           )}
           {open === "time" && (
             <div className="mx-auto max-w-sm">
@@ -247,20 +254,22 @@ function ProjectListPanel({
   );
 }
 
-function ClosePanel({ won, total }: { won: number; total: number }) {
-  if (total === 0) {
+function ClosePanel({ won, declined }: { won: number; declined: number }) {
+  const decided = won + declined;
+  if (decided === 0) {
     return (
       <p className="text-sm text-muted">
-        No projects in this period yet — quote something first.
+        Nothing decided yet — close rate starts once a project is marked
+        Approved, Installed, or Declined.
       </p>
     );
   }
-  const pctNum = Math.round((won / total) * 100);
+  const pctNum = Math.round((won / decided) * 100);
   return (
     <div className="mx-auto max-w-md">
       <div className="flex items-baseline justify-between text-sm">
         <span className="text-body">
-          {won} of {total} quoted projects approved or installed
+          {won} won · {declined} declined
         </span>
         <span className="font-mono font-semibold tabular-nums text-ink">
           {pctNum}%
@@ -273,8 +282,8 @@ function ClosePanel({ won, total }: { won: number; total: number }) {
         />
       </div>
       <p className="mt-3 text-[11px] text-faint">
-        Counts every project in the selected period; keep statuses current on
-        each project page for this to mean something.
+        Won ÷ decided (won + declined). Pending projects count toward the
+        pipeline, not here — mark lost deals Declined so this stays honest.
       </p>
     </div>
   );

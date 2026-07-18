@@ -130,6 +130,7 @@ const STATUS_STYLES: Record<string, string> = {
   pending: "border-gold/40 bg-gold/10 text-gold",
   approved: "border-accent/40 bg-accent-soft text-accent-dim",
   installed: "border-clay/40 bg-clay/10 text-clay",
+  declined: "border-ink/20 bg-ink/[0.06] text-muted",
 };
 
 function StatusChip({ status }: { status: string }) {
@@ -289,6 +290,9 @@ export default async function DashboardPage({
     .filter((p) => p.status === "approved" || p.status === "installed")
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .map(toLite);
+  const declinedCount = (allProjects ?? []).filter(
+    (p) => p.status === "declined"
+  ).length;
 
   const modeTotals: Record<string, number> = {};
   let trackedCount = 0;
@@ -446,7 +450,7 @@ export default async function DashboardPage({
       <StatsRow
         pending={pendingList}
         won={wonList}
-        totalCount={totalCount}
+        declinedCount={declinedCount}
         time={{ modeSeconds: modeTotals, projectCount: trackedCount }}
       />
 

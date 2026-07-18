@@ -8,12 +8,13 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const STATUSES = ["pending", "approved", "installed"] as const;
+const STATUSES = ["pending", "approved", "installed", "declined"] as const;
 
 const STATUS_STYLES: Record<string, string> = {
   pending: "border-gold/40 bg-gold/10 text-gold",
   approved: "border-accent/40 bg-accent-soft text-accent-dim",
   installed: "border-clay/40 bg-clay/10 text-clay",
+  declined: "border-ink/20 bg-ink/[0.06] text-muted",
 };
 
 export function StatusSelect({

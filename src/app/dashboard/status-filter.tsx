@@ -8,6 +8,7 @@ const OPTIONS = [
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "installed", label: "Installed" },
+  { value: "declined", label: "Declined" },
 ];
 
 export function StatusFilter() {

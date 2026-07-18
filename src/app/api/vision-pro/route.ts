@@ -11,13 +11,13 @@ import { createClient } from "@supabase/supabase-js";
  *   name            — project name (required when creating)
  *   project_date    — YYYY-MM-DD (optional)
  *   estimate_amount — number, e.g. 12400.50 (optional)
- *   status          — pending | approved | installed (optional)
+ *   status          — pending | approved | installed | declined (optional)
  *   blueprint       — PDF file (optional)
  *   project_json    — full ProjectFile JSON saved by the app (optional);
  *                     drives the living-blueprint 3D viewer. Replaced
  *                     wholesale on every sync.
  */
-const VALID_STATUSES = ["pending", "approved", "installed"];
+const VALID_STATUSES = ["pending", "approved", "installed", "declined"];
 export async function POST(request: NextRequest) {
   const apiKey = request.headers.get("x-api-key");
   if (!apiKey || apiKey !== process.env.VISION_PRO_API_KEY) {
