@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership, getOrgMembers, memberName } from "@/lib/org";
-import { InviteDesignerForm, RemoveDesignerButton } from "./team";
+import { TeamManager, type MemberLite } from "./team";
 
 const longDate = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -57,7 +57,8 @@ export default async function AccountPage() {
           </div>
         </dl>
         <p className="mt-6 border-t border-rule pt-5 text-sm text-muted">
-          To update your email or password, contact your Verde Vision
+          To change your password, sign out and use “Forgot password?” on the
+          login screen. To update your email, contact your Verde Vision
           designer.
         </p>
       </section>
@@ -73,48 +74,19 @@ export default async function AccountPage() {
             </p>
           </div>
 
-          <ul className="mt-4 divide-y divide-rule">
-            {members.map((m) => (
-              <li key={m.user_id} className="flex items-center gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">
-                    {memberName(m)}
-                    {m.user_id === user.id && (
-                      <span className="ml-1.5 text-xs font-normal text-faint">
-                        (you)
-                      </span>
-                    )}
-                  </p>
-                  {m.email && (
-                    <p className="truncate text-xs text-muted">{m.email}</p>
-                  )}
-                </div>
-                <span
-                  className={`shrink-0 rounded-full border px-3 py-1 text-[0.62rem] font-semibold uppercase tracking-[0.14em] ${
-                    m.role === "owner"
-                      ? "border-gold/40 bg-gold/10 text-gold"
-                      : "border-accent/40 bg-accent-soft text-accent-dim"
-                  }`}
-                >
-                  {m.role}
-                </span>
-                {isOwner && m.role === "designer" && (
-                  <RemoveDesignerButton
-                    userId={m.user_id}
-                    name={memberName(m)}
-                  />
-                )}
-              </li>
-            ))}
-          </ul>
-
-          {isOwner ? (
-            <InviteDesignerForm seatsLeft={seatsLeft} />
-          ) : (
-            <p className="mt-5 border-t border-rule pt-5 text-sm text-muted">
-              Your account owner manages the team.
-            </p>
-          )}
+          <TeamManager
+            members={members.map(
+              (m): MemberLite => ({
+                userId: m.user_id,
+                name: memberName(m),
+                email: m.email,
+                role: m.role,
+              })
+            )}
+            currentUserId={user.id}
+            isOwner={isOwner}
+            seatsLeft={seatsLeft}
+          />
         </section>
       )}
     </div>

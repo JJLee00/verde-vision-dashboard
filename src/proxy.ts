@@ -35,6 +35,9 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  // Auth callback exchanges the email-link code for a session — must run
+  // with its ?code intact, before any session exists, so never redirect it.
+  const isAuthRoute = request.nextUrl.pathname.startsWith("/auth");
   // API routes handle their own auth (e.g. the Vision Pro ingest key).
   const isApiRoute = request.nextUrl.pathname.startsWith("/api");
   // Public living-blueprint links — the unguessable token IS the auth.
@@ -45,7 +48,14 @@ export async function proxy(request: NextRequest) {
     (request.nextUrl.pathname === "/viewer/fixture" ||
       request.nextUrl.pathname === "/dashboard/projects/fixture");
 
-  if (!user && !isLoginPage && !isApiRoute && !isShareLink && !isViewerFixture) {
+  if (
+    !user &&
+    !isLoginPage &&
+    !isAuthRoute &&
+    !isApiRoute &&
+    !isShareLink &&
+    !isViewerFixture
+  ) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

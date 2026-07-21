@@ -137,6 +137,58 @@ export async function POST(request: NextRequest) {
   );
 }
 
+export async function PATCH(request: NextRequest) {
+  const gate = await requireOwner();
+  if ("response" in gate) return gate.response;
+  const { membership } = gate;
+
+  let body: { user_id?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Expected JSON body" }, { status: 400 });
+  }
+  const targetId = String(body.user_id ?? "").trim();
+  if (!targetId) {
+    return NextResponse.json({ error: "user_id is required" }, { status: 400 });
+  }
+
+  const admin = createAdminClient();
+  const { data: target } = await admin
+    .from("org_members")
+    .select("user_id, org_id, role, email, full_name")
+    .eq("user_id", targetId)
+    .maybeSingle();
+  if (!target) {
+    return NextResponse.json({ error: "Not a team member" }, { status: 404 });
+  }
+  if (target.org_id !== membership.orgId || target.role !== "designer") {
+    return NextResponse.json(
+      { error: "Only designers on your team can be reset" },
+      { status: 403 }
+    );
+  }
+
+  // New one-time temp password, shown to the owner once (same as invite).
+  // email_confirm + ban_duration:"none" defensively clear any state that
+  // would block the login, so a reset always produces working credentials.
+  const tempPassword = randomBytes(9).toString("base64url");
+  const { error: updateError } = await admin.auth.admin.updateUserById(
+    targetId,
+    { password: tempPassword, email_confirm: true, ban_duration: "none" }
+  );
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    user_id: targetId,
+    email: target.email,
+    full_name: target.full_name,
+    temp_password: tempPassword,
+  });
+}
+
 export async function DELETE(request: NextRequest) {
   const gate = await requireOwner();
   if ("response" in gate) return gate.response;
