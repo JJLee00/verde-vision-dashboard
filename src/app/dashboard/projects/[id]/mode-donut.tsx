@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { formatDuration } from "../../format";
 
 // Donut of headset time per mode — part-to-whole at a glance, exact
 // numbers in the legend. Slices keep a fixed order and a fixed color per
 // mode (palette validated for CVD separation against the card surface);
 // hovering a slice or legend row swaps the center total for that mode.
+
+// formatDuration lives in the server-safe ./format module now; re-exported
+// here so existing client-side importers keep their import path.
+export { formatDuration };
 
 export const MODES: { key: string; label: string; color: string }[] = [
   { key: "design", label: "Designing", color: "#348055" },
@@ -13,15 +18,6 @@ export const MODES: { key: string; label: string; color: string }[] = [
   { key: "clientView", label: "Presenting", color: "#a87b2f" },
   { key: "night", label: "Night preview", color: "#8a5090" },
 ];
-
-export function formatDuration(seconds: number): string {
-  const s = Math.round(seconds);
-  if (s < 60) return `${s}s`;
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
-  if (h === 0) return `${m}m`;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
 
 export const R = 44; // arc centerline radius
 export const STROKE = 17;

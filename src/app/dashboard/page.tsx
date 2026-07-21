@@ -9,6 +9,7 @@ import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
 import { StatsRow, type ProjectLite } from "./stats-row";
+import { TeamPerformance, type TeamRow } from "./team-performance";
 
 type Estimate = {
   id: string;
@@ -266,12 +267,38 @@ export default async function DashboardPage({
     timeQuery = timeQuery.eq("client_id", designerFilter);
   }
 
-  const [{ data: projects, error }, { data: allProjects }, { data: timeRows }] =
-    await Promise.all([
-      query.returns<Project[]>(),
-      summaryQuery.returns<ProjectSummary[]>(),
-      timeQuery.returns<{ modeSeconds: Record<string, number> | null }[]>(),
-    ]);
+  // Owner-only per-designer breakdown. Same period as the stat row, but
+  // never narrowed by the designer filter — the table always shows the
+  // whole team so the master can compare everyone side by side.
+  type TeamProject = {
+    client_id: string;
+    status: string;
+    estimate_amount: number | null;
+    modeSeconds: Record<string, number> | null;
+  };
+  const teamPromise = groupedMode
+    ? (() => {
+        let tq = supabase
+          .from("projects")
+          .select(
+            "client_id, status, estimate_amount, modeSeconds:project_json->modeSeconds"
+          );
+        if (cutoff) tq = tq.gte("created_at", cutoff);
+        return tq.returns<TeamProject[]>();
+      })()
+    : Promise.resolve({ data: null as TeamProject[] | null });
+
+  const [
+    { data: projects, error },
+    { data: allProjects },
+    { data: timeRows },
+    { data: teamProjects },
+  ] = await Promise.all([
+    query.returns<Project[]>(),
+    summaryQuery.returns<ProjectSummary[]>(),
+    timeQuery.returns<{ modeSeconds: Record<string, number> | null }[]>(),
+    teamPromise,
+  ]);
 
   const totalCount = allProjects?.length ?? 0;
   const toLite = (p: ProjectSummary): ProjectLite => ({
@@ -418,6 +445,83 @@ export default async function DashboardPage({
       })()
     : null;
 
+  // Per-designer performance rows for the owner table. Same period as the
+  // stat row; ranked by revenue won (a leaderboard), with any ex-members'
+  // projects bucketed into a trailing "Former team member" row and a
+  // firm-total footer.
+  const aggregate = (
+    list: TeamProject[],
+    key: string,
+    name: string,
+    isOwner: boolean,
+    designerId: string | null
+  ): TeamRow => {
+    let pipeline = 0;
+    let won = 0;
+    let wonCount = 0;
+    let declinedCount = 0;
+    let onSiteSeconds = 0;
+    for (const p of list) {
+      const est = p.estimate_amount ?? 0;
+      if (p.status === "pending") pipeline += est;
+      else if (p.status === "approved" || p.status === "installed") {
+        won += est;
+        wonCount++;
+      } else if (p.status === "declined") declinedCount++;
+      for (const v of Object.values(p.modeSeconds ?? {})) {
+        if (typeof v === "number" && v > 0) onSiteSeconds += v;
+      }
+    }
+    const decided = wonCount + declinedCount;
+    return {
+      key,
+      designerId,
+      name,
+      isOwner,
+      projectCount: list.length,
+      pipeline,
+      won,
+      closeRate: decided > 0 ? Math.round((wonCount / decided) * 100) : null,
+      onSiteSeconds,
+    };
+  };
+
+  let teamRows: TeamRow[] = [];
+  let teamTotal: TeamRow | null = null;
+  if (groupedMode) {
+    const all = teamProjects ?? [];
+    const byDesigner = new Map<string, TeamProject[]>();
+    for (const p of all) {
+      const l = byDesigner.get(p.client_id) ?? [];
+      l.push(p);
+      byDesigner.set(p.client_id, l);
+    }
+    teamRows = members.map((m) => {
+      const list = byDesigner.get(m.user_id) ?? [];
+      byDesigner.delete(m.user_id);
+      return aggregate(
+        list,
+        m.user_id,
+        memberName(m),
+        m.role === "owner",
+        m.user_id
+      );
+    });
+    teamRows.sort(
+      (a, b) =>
+        b.won - a.won ||
+        b.pipeline - a.pipeline ||
+        b.projectCount - a.projectCount
+    );
+    const orphaned = [...byDesigner.values()].flat();
+    if (orphaned.length > 0) {
+      teamRows.push(
+        aggregate(orphaned, "former", "Former team member", false, null)
+      );
+    }
+    teamTotal = aggregate(all, "total", "Firm total", false, null);
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -453,6 +557,14 @@ export default async function DashboardPage({
         declinedCount={declinedCount}
         time={{ modeSeconds: modeTotals, projectCount: trackedCount }}
       />
+
+      {teamTotal && (
+        <TeamPerformance
+          rows={teamRows}
+          total={teamTotal}
+          activeDesigner={designerFilter}
+        />
+      )}
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
         <h2 className="font-serif text-2xl text-ink">
