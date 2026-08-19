@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "prepare": "husky",
-    "gen:catalog": "node scripts/gen-catalog.mjs"
+    "gen:catalog": "node scripts/gen-catalog.mjs",
+    "sync:catalog": "node scripts/gen-catalog.mjs && python3 scripts/sync-thumbs.py"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

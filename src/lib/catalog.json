@@ -1,7 +1,8 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-07-08",
+  "generatedAt": "2026-08-19",
   "sizeOrder": [
+    "1g",
     "5g",
     "15g",
     "24\" Box",
@@ -12,10 +13,11 @@
     "Large"
   ],
   "laborDefaults": {
+    "1g": 15,
     "5g": 45,
     "15g": 85,
-    "24\" Box": 125,
-    "36\" Box": 175,
+    "24\" Box": 240,
+    "36\" Box": 450,
     "48\" Box": 250,
     "Small": 55,
     "Medium": 95,
@@ -39,7 +41,17 @@
           "price": 120,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 2,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Arabian Peninsula, Northern Africa",
+      "description": "One of the most recognizable succulents in the world, Aloe Vera forms a dense rosette of thick, fleshy leaves edged with small teeth. Extremely drought tolerant and low maintenance, it thrives in hot, dry climates and poor soils. The clear gel inside its leaves is widely used for skin care and minor burns. An excellent choice for desert landscapes, container gardens, and low-water designs.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring – Summer",
+      "growthRate": "Slow",
+      "lifespan": "Perennial"
     },
     {
       "key": "agave americana",
@@ -58,7 +70,17 @@
           "price": 125,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 6,
+      "matureWidthFt": 8,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Mexico, Southwestern United States",
+      "description": "A dramatic architectural succulent that anchors any landscape with bold, symmetrical form. Its blue-gray leaves are broad and rigid with sharp terminal spines, making it a striking focal point. Agave Americana is monocarpic — it blooms once after 10–30 years, sending up a towering flower stalk up to 25 feet tall, then dies. Offsets (pups) ensure the colony lives on. Extremely drought and heat tolerant.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Once in lifetime (typically summer)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "mexican fence post",
@@ -77,7 +99,17 @@
           "price": 180,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 10,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Central Mexico",
+      "description": "A tall, columnar cactus with distinctive white-ribbed margins that give it a striking striped appearance. Grows in tight, upright columns and is commonly used as a living fence or privacy screen in desert landscapes — hence the name. Produces small pink flowers along the ribs, followed by edible red fruit. Extremely low maintenance and one of the most architectural cacti available for residential design.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "honey mesquite",
@@ -106,7 +138,17 @@
           "price": 750,
           "laborCost": 250
         }
-      ]
+      ],
+      "matureHeightFt": 15,
+      "matureWidthFt": 20,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Southwestern United States, Mexico",
+      "description": "A native desert tree prized for its feathery, fine-textured canopy that casts dappled shade without completely blocking sunlight. Its deep taproot makes it exceptionally drought tolerant once established — one of the most water-wise shade trees available for arid climates. Produces fragrant yellow flower spikes in spring followed by long seed pods enjoyed by wildlife. The gnarled trunk and graceful canopy give landscapes a natural, rugged character.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Spring – Early Summer",
+      "growthRate": "Fast",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "orange tree",
@@ -130,7 +172,17 @@
           "price": 550,
           "laborCost": 200
         }
-      ]
+      ],
+      "matureHeightFt": 20,
+      "matureWidthFt": 15,
+      "sun": "Full Sun",
+      "water": "Moderate",
+      "origin": "Southeast Asia (widely cultivated)",
+      "description": "A classic citrus tree that brings fragrance, color, and edible fruit to residential landscapes. Its glossy dark green foliage, fragrant white blossoms, and bright orange fruit make it one of the most ornamentally versatile trees available. Thrives in full sun with regular watering and well-drained soil. Ideal for warm, frost-light climates. Often used as a specimen tree, espalier, or productive element in a kitchen garden design.",
+      "coldToleranceFahrenheit": 28,
+      "bloomPeriod": "Late Winter – Spring",
+      "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "gray boulder",
@@ -154,7 +206,17 @@
           "price": 350,
           "laborCost": 150
         }
-      ]
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert, Arizona",
+      "description": "A weathered gray granite boulder that adds natural texture and grounding weight to desert landscapes. Used as a focal point, border accent, or dry riverbed element. Boulders pair well with ornamental grasses, agave, and low-water perennials to create authentic Sonoran compositions. Zero maintenance once placed.",
+      "coldToleranceFahrenheit": -40,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "golden barrel cactus",
@@ -173,7 +235,17 @@
           "price": 140,
           "laborCost": 75
         }
-      ]
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 2,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Central Mexico",
+      "description": "One of the most iconic desert cacti, the Golden Barrel forms a perfect globe of bright golden spines that catch sunlight beautifully. A classic focal point in Sonoran and Mediterranean-style landscapes, it is commonly grouped in odd numbers for dramatic effect. Slow growing and extremely long lived, it requires virtually no maintenance once established. Toxic to pets and has sharp spines — place away from high-traffic areas.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "mexican fan palm",
@@ -197,7 +269,17 @@
           "price": 795,
           "laborCost": 250
         }
-      ]
+      ],
+      "matureHeightFt": 70,
+      "matureWidthFt": 10,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Northwestern Mexico",
+      "description": "The most widely planted palm in the American Southwest, the Mexican Fan Palm is prized for its dramatic height and slender silhouette. Its long fronds fan out at the crown, creating an unmistakably tropical skyline presence. Fast growing and extremely drought tolerant once established, it thrives in full sun and poor soils. Commonly used in rows along driveways, property borders, and commercial streetscapes for bold vertical impact.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Spring – Summer",
+      "growthRate": "Fast",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "saguaro",
@@ -221,7 +303,17 @@
           "price": 1200,
           "laborCost": 450
         }
-      ]
+      ],
+      "matureHeightFt": 40,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert, Arizona and Mexico",
+      "description": "The undisputed icon of the Sonoran Desert, the Saguaro is the largest cactus in the United States and one of the most recognizable plants on earth. Its tall columnar trunk and upward-reaching arms define the Arizona landscape. Incredibly slow growing — a 6-foot specimen may be 50–75 years old — and federally protected in Arizona. Adding a mature Saguaro to a landscape is a rare and premium statement piece. White flowers bloom at the crown in late spring, followed by edible red fruit prized by wildlife and indigenous peoples for centuries.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Late Spring",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "argentine toothpick",
@@ -240,7 +332,17 @@
           "price": 395,
           "laborCost": 175
         }
-      ]
+      ],
+      "matureHeightFt": 30,
+      "matureWidthFt": 10,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Argentina, Bolivia, Paraguay",
+      "description": "A striking tree-like cactus that forms a thick central trunk topped with a dramatic crown of upward-reaching blue-green columns. Its long white spines catch light beautifully, giving it an almost luminous quality in the landscape. The Argentine Toothpick makes a bold architectural statement as a specimen plant or grouped in a desert composition. Extremely drought and heat tolerant, it thrives in the low desert with virtually zero maintenance once established.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Spring – Summer",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "flat boulder",
@@ -264,7 +366,17 @@
           "price": 295,
           "laborCost": 150
         }
-      ]
+      ],
+      "matureHeightFt": 1,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert, Arizona",
+      "description": "A low-profile desert boulder with a broad, flat surface that blends naturally into the landscape. Ideal for stepping stone paths, dry riverbed accents, or anchoring plant groupings at ground level. Its horizontal form contrasts beautifully with the vertical lines of cacti and agave. Zero maintenance and extremely long lasting — a timeless hardscape element in any Southwest design.",
+      "coldToleranceFahrenheit": -40,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "az boulder 1",
@@ -288,55 +400,118 @@
           "price": 295,
           "laborCost": 150
         }
-      ]
+      ],
+      "matureHeightFt": 1,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert, Arizona",
+      "description": "A natural Arizona desert boulder scanned on-site, with weathered surfaces and authentic Sonoran character. Use it as a focal anchor, border accent, or dry riverbed element. Its rugged form pairs beautifully with cacti, agave, and low-water perennials. Zero maintenance and effectively permanent once placed.",
+      "coldToleranceFahrenheit": -40,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
-      "key": "rectangle pool",
-      "name": "Rectangle Pool",
+      "key": "swimming pool",
+      "name": "Swimming Pool",
       "botanicalName": null,
       "category": "Hardscape",
-      "thumbnail": "poolrect_thumb",
+      "thumbnail": "swimmingpool_thumb",
       "sizes": [
         {
           "size": "Small",
-          "price": 25000,
-          "laborCost": 12000
-        },
-        {
-          "size": "Medium",
-          "price": 35000,
-          "laborCost": 15000
+          "price": 32000,
+          "laborCost": 14000
         },
         {
           "size": "Large",
-          "price": 48000,
-          "laborCost": 18000
+          "price": 58000,
+          "laborCost": 22000
         }
-      ]
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "High",
+      "origin": "Prefabricated pool shell",
+      "description": "A prefabricated in-ground pool shell for quickly visualizing a pool in a yard. It's set flush to grade — the coping sits at ground level with the basin recessed below and a stainless ladder at one end. Use it to study proportions, placement, and how the water reads against surrounding hardscape and plantings. Demo asset (a downloaded model cleaned up for AR); finish and pricing are placeholders.",
+      "coldToleranceFahrenheit": null,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
-      "key": "kidney pool",
-      "name": "Kidney Pool",
+      "key": "landscape uplight",
+      "name": "Landscape Uplight",
       "botanicalName": null,
-      "category": "Hardscape",
-      "thumbnail": "poolkidney_thumb",
+      "category": "Lighting",
+      "thumbnail": "uplight_thumb",
       "sizes": [
         {
           "size": "Small",
-          "price": 24000,
-          "laborCost": 12000
-        },
-        {
-          "size": "Medium",
-          "price": 34000,
-          "laborCost": 15000
-        },
-        {
-          "size": "Large",
-          "price": 46000,
-          "laborCost": 18000
+          "price": 45,
+          "laborCost": 25
         }
-      ]
+      ],
+      "matureHeightFt": 0.7,
+      "matureWidthFt": 0.2,
+      "sun": "Full Shade",
+      "water": "Low",
+      "origin": "Low-voltage LED fixture",
+      "description": "A stake-mounted LED uplight for accenting trees, cacti, and walls after dark. Place it at the base of a plant and use the rotation gesture to aim the tilted head. Switch to Night Mode to see the warm 2700K beam light the foliage — in daylight the fixture shows as a small dark stake with an amber lens. Pricing is a placeholder.",
+      "coldToleranceFahrenheit": null,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "flood light",
+      "name": "Flood Light",
+      "botanicalName": null,
+      "category": "Lighting",
+      "thumbnail": "floodlight_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 65,
+          "laborCost": 30
+        }
+      ],
+      "matureHeightFt": 0.4,
+      "matureWidthFt": 0.3,
+      "sun": "Full Shade",
+      "water": "Low",
+      "origin": "Low-voltage LED fixture",
+      "description": "A ground-mounted LED flood for washing walls, facades, and large trees with broad warm light. The head throws its wide beam well off vertical — place it a few feet back from the surface and use the rotation gesture to aim the wash. Switch to Night Mode to see it light up; in daylight it reads as a small dark fixture. Pricing is a placeholder.",
+      "coldToleranceFahrenheit": null,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "path light",
+      "name": "Path Light",
+      "botanicalName": null,
+      "category": "Lighting",
+      "thumbnail": "pathlight_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 38,
+          "laborCost": 20
+        }
+      ],
+      "matureHeightFt": 1.75,
+      "matureWidthFt": 0.5,
+      "sun": "Full Shade",
+      "water": "Low",
+      "origin": "Low-voltage LED fixture",
+      "description": "A classic hat-style path light on a slim stake, throwing a soft warm pool about 5 ft across onto the walkway below — the lamp sits up inside the shade, so you see the light and not the bulb. Space them 5 to 7 ft apart so the pools just touch, and stagger sides for rhythm rather than a runway. Switch to Night Mode to see the glow; in daylight it reads as a slim dark fixture. Pricing is a placeholder.",
+      "coldToleranceFahrenheit": null,
+      "bloomPeriod": null,
+      "growthRate": null,
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "totem pole cactus",
@@ -355,7 +530,51 @@
           "price": 195,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 12,
+      "matureWidthFt": 2,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Baja California, Mexico",
+      "description": "A spineless, sculptural columnar cactus prized for its smooth, hand-carved look. Unlike most cacti, the Totem Pole bears no spines or sharp ribs — its blue-green columns are instead covered in irregular, rounded knobs that give it a totem-like silhouette. A slow-growing monstrose form of the Senita cactus, it makes a striking architectural focal point in desert and modern landscapes. Extremely drought tolerant and low maintenance, though slightly frost-sensitive. Pairs beautifully with boulders, agave, and fine gravel.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "organ pipe cactus",
+      "name": "Organ Pipe Cactus",
+      "botanicalName": "Stenocereus thurberi",
+      "category": "Succulent",
+      "thumbnail": "organpipe_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 225,
+          "laborCost": 95
+        },
+        {
+          "size": "24\" Box",
+          "price": 525,
+          "laborCost": 240
+        },
+        {
+          "size": "36\" Box",
+          "price": 950,
+          "laborCost": 400
+        }
+      ],
+      "matureHeightFt": 16,
+      "matureWidthFt": 12,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert (Arizona, Sonora, Baja California)",
+      "description": "A many-armed columnar cactus that branches from the base rather than the trunk, sending up a candelabra of ribbed green columns that reads as pure Sonoran Desert. Slower and more sculptural than a saguaro and legal to plant without a permit, it makes a superb evening focal point — the large white flowers open only at night and close by mid-morning, followed by sweet red fruit. Frost is its one limit: it wants a warm microclimate and a south or west exposure in the low desert. Give it room to widen, and light it from below to throw the rib shadows.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Late Spring to Summer (night-blooming)",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "agave truncata",
@@ -374,7 +593,17 @@
           "price": 145,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Highlands of Central Mexico",
+      "description": "The Artichoke Agave forms a tight, symmetrical rosette of broad, blue-gray leaves that overlap like the bracts of an artichoke. Compact and slow growing, it stays smaller and more refined than most agaves, making it an ideal focal point for tighter spaces, containers, and modern desert designs. Each leaf is tipped with a dark terminal spine and edged with fine teeth. Exceptionally drought tolerant and notably cold hardy, it thrives in full sun and well-drained soil with virtually no maintenance.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Once in lifetime (summer)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "tropical agave",
@@ -393,7 +622,17 @@
           "price": 145,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Mexico, Central America",
+      "description": "A bold, open-rosette agave with long, narrow, recurving blades that arch outward for a lush, tropical-looking silhouette. Its loose, spreading form softens the hard architecture of desert plantings and pairs beautifully with boulders, columnar cacti, and fine gravel. Each blade tapers to a fine point and catches light along its length. Exceptionally drought and heat tolerant, it thrives in full sun and well-drained soil with virtually no maintenance once established.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Once in lifetime (summer)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "fire barrel cactus",
@@ -412,7 +651,17 @@
           "price": 150,
           "laborCost": 75
         }
-      ]
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 2,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Baja California, Mexico",
+      "description": "A bold, globe-shaped barrel cactus prized for its deep vertical ribs and dramatic reddish spines that glow when backlit by the sun. A classic focal point in Sonoran and Mediterranean-style landscapes, it pairs beautifully with fine gravel, boulders, and golden barrels in odd-numbered groupings. Slow growing and extremely long lived, it requires virtually no maintenance once established. Sharp spines — place away from high-traffic areas.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "agave geminiflora",
@@ -431,7 +680,17 @@
           "price": 140,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Nayarit and Jalisco, Mexico",
+      "description": "The Twin-Flowered Agave forms a strikingly dense, symmetrical fountain of hundreds of slender, deep green leaves, each edged with fine curling white filaments that catch the light. Unlike most agaves, its narrow, flexible leaves carry no harsh terminal spine, giving it a soft, almost grass-like texture that reads beautifully in modern and naturalistic desert designs. Compact and slow growing, it makes an elegant container or focal specimen. Exceptionally drought and heat tolerant, it thrives in full sun and well-drained soil with virtually no maintenance.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Once in lifetime (summer)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "yellow bells",
@@ -450,7 +709,666 @@
           "price": 130,
           "laborCost": 85
         }
-      ]
+      ],
+      "matureHeightFt": 15,
+      "matureWidthFt": 10,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Southern United States to South America",
+      "description": "A fast-growing, sun-loving shrub prized for its profuse clusters of bright golden, trumpet-shaped flowers that bloom from spring through fall. Its lush green serrated foliage and continuous color make it a favorite for desert and Mediterranean landscapes, where it attracts hummingbirds, bees, and butterflies. Extremely heat and drought tolerant once established, Yellow Bells works beautifully as an informal hedge, screen, or colorful focal point. Can be kept shrubby with pruning or trained into a small multi-trunk tree.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Spring – Fall",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "firestick",
+      "name": "Firestick",
+      "botanicalName": "Euphorbia tirucalli 'Sticks on Fire'",
+      "category": "Succulent",
+      "thumbnail": "firestick_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 70,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 145,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 6,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "East and Southern Africa",
+      "description": "A striking, sculptural succulent made up of dense, pencil-thin cylindrical stems that branch like coral. In full sun and cool weather the new growth flushes brilliant shades of orange, red, and gold — the trait behind its 'Sticks on Fire' name — cooling to yellow-green in shade and heat. Leafless and architectural, it makes a bold vertical accent in desert and modern landscapes and pairs beautifully with boulders and blue agaves. Extremely heat and drought tolerant. Caution: the milky sap is a strong skin and eye irritant, so site it away from high-traffic areas and handle with gloves.",
+      "coldToleranceFahrenheit": 30,
+      "bloomPeriod": "Summer (insignificant)",
+      "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "little john bottlebrush",
+      "name": "Little John Bottlebrush",
+      "botanicalName": "Callistemon citrinus 'Little John'",
+      "category": "Shrub",
+      "thumbnail": "littlejohnbottlebrush_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 65,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 130,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Australia (cultivated dwarf form)",
+      "description": "A compact, dwarf evergreen shrub prized for its dense, mounding habit and fine blue-green foliage. New growth emerges with a bronze-purple tint, and in spring and summer it produces the classic crimson bottlebrush flowers that draw hummingbirds and bees. Little John stays naturally small and tidy without much pruning, making it a favorite for low hedges, borders, foundation plantings, and containers. Exceptionally heat and drought tolerant once established, it thrives in full sun and well-drained soil.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Spring – Summer",
+      "growthRate": "Slow",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "moroccan mound",
+      "name": "Moroccan Mound",
+      "botanicalName": "Euphorbia resinifera",
+      "category": "Succulent",
+      "thumbnail": "moroccanmound_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 75,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 150,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 5,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Atlas Mountains, Morocco",
+      "description": "A dense, clumping succulent that forms a low mound of upright, four-angled blue-green columns edged with small teeth. Native to the rocky slopes of Morocco's Atlas Mountains, Euphorbia resinifera is exceptionally heat and drought tolerant and spreads slowly into a broad cushion over time. Its architectural, coral-like massing makes a bold textural focal point among boulders, gravel, and other low-water desert plantings. Contains a caustic latex sap — site it away from high-traffic areas and handle with care.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "santa rita prickly pear",
+      "name": "Santa Rita Prickly Pear",
+      "botanicalName": "Opuntia santa-rita",
+      "category": "Succulent",
+      "thumbnail": "santaritapricklypear_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 85,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 165,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 5,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran and Chihuahuan Deserts, Arizona and Mexico",
+      "description": "The most colorful of the desert prickly pears, Santa Rita produces broad, spineless-looking blue-green pads that flush deep purple-lavender in cold weather and drought — the stress response that gives it its signature color. Bright yellow blooms open along the pad edges in spring, followed by red-purple fruit. It forms a wide, upright clump over time and reads as a bold sculptural mass against gravel, boulders, and low-water perennials. Extremely heat and drought tolerant with essentially no maintenance once established. The pads carry fine glochids (hair-like barbed spines) — site it away from walkways, pool decks, and play areas.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Spring",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "madagascar palm",
+      "name": "Madagascar Palm",
+      "botanicalName": "Pachypodium lamerei",
+      "category": "Succulent",
+      "thumbnail": "madagascarpalm_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 95,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 195,
+          "laborCost": 85
+        },
+        {
+          "size": "24\" Box",
+          "price": 395,
+          "laborCost": 145
+        }
+      ],
+      "matureHeightFt": 15,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Southern Madagascar",
+      "description": "Not a true palm at all but a succulent, the Madagascar Palm carries a thick silver-gray trunk armored in spines, topped by a rosette of long strap-shaped leaves that gives it an unmistakable palm-like silhouette. It reads as a living sculpture — a strong vertical accent beside entries, courtyards, and pool decks, or in a container where its form can be seen in the round. Extremely drought tolerant and slow growing, it wants full sun and sharp drainage. Fragrant white flowers appear at the crown on older plants. Frost sensitive below about 30°F and heavily spined — site it out of walkways.",
+      "coldToleranceFahrenheit": 30,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "black tip agave",
+      "name": "Black Tip Agave",
+      "botanicalName": "Agave geminiflora 'Black Tip'",
+      "category": "Succulent",
+      "thumbnail": "blacktipagave_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 80,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 160,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 3,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Nayarit, Mexico",
+      "description": "A dramatic, symmetrical rosette of hundreds of narrow, arching deep-green leaves, each tipped in a fine dark spine and edged with curling white filaments. Unlike the heavy blue agaves, this one reads soft and fountain-like, holding a nearly perfect sphere of foliage without offsetting. It makes an exceptional container specimen or a focal accent in gravel and boulder plantings, and its spineless margins make it safe alongside walkways. Extremely drought tolerant once established; appreciates a little afternoon shade in the hottest low-desert exposures.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Summer (once, at maturity)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "desert willow",
+      "name": "Desert Willow",
+      "botanicalName": "Chilopsis linearis",
+      "category": "Tree",
+      "thumbnail": "desertwillow_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 90,
+          "laborCost": 55
+        },
+        {
+          "size": "15g",
+          "price": 185,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 420,
+          "laborCost": 240
+        }
+      ],
+      "matureHeightFt": 25,
+      "matureWidthFt": 20,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Southwestern U.S. and northern Mexico",
+      "description": "Not a true willow but a member of the trumpet-creeper family, prized across the Southwest for its long, willowy leaves and orchid-like trumpet flowers in pink, burgundy, and white. It blooms heavily from late spring through fall, drawing hummingbirds all season, then drops its leaves for a sculptural winter silhouette of twisting trunks. Fast-growing, deeply drought tolerant, and happy in reflected heat, it works as a patio shade tree, a screening multi-trunk, or a flowering accent near seating. Prune to shape while young to build good structure.",
+      "coldToleranceFahrenheit": 10,
+      "bloomPeriod": "Late Spring – Fall",
+      "growthRate": "Fast",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "desert ironwood",
+      "name": "Desert Ironwood",
+      "botanicalName": "Olneya tesota",
+      "category": "Tree",
+      "thumbnail": "ironwood_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 95,
+          "laborCost": 55
+        },
+        {
+          "size": "15g",
+          "price": 195,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 450,
+          "laborCost": 240
+        }
+      ],
+      "matureHeightFt": 25,
+      "matureWidthFt": 25,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert",
+      "description": "One of the Sonoran Desert's great nurse trees and among the longest-lived — individuals can persist well over a century. Ironwood carries a dense canopy of small blue-grey leaflets on gnarled grey bark, and flushes lavender-pink pea flowers in late spring. Its wood is famously heavy and hard, sinking in water. Slow but tough as nails, it casts genuinely useful filtered shade, shelters understory plantings, and anchors a native design as a long-term signature tree. Give it room and almost no supplemental water once established.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Late Spring",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "jojoba",
+      "name": "Jojoba",
+      "botanicalName": "Simmondsia chinensis",
+      "category": "Shrub",
+      "thumbnail": "jojoba_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 60,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 8,
+      "matureWidthFt": 8,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert",
+      "description": "A dense, leathery evergreen shrub with thick blue-green leaves held upright, edge-on to the sun — a natural adaptation that keeps it looking fresh through brutal summers. Jojoba is the source of the liquid wax pressed from its seeds, and its tidy, naturally rounded habit makes it one of the best low-water screening and hedging shrubs for the desert. It takes shearing well, needs essentially no supplemental water once established, and stays evergreen year-round. Plants are male or female; only females set the seed capsules.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Winter – Spring (inconspicuous)",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "leatherleaf acacia",
+      "name": "Leatherleaf Acacia",
+      "botanicalName": "Acacia craspedocarpa",
+      "category": "Shrub",
+      "thumbnail": "leatherleafacacia_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 75,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 155,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 12,
+      "matureWidthFt": 10,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Western Australia",
+      "description": "A tough, upright evergreen with thick, round grey-green phyllodes that feel genuinely leathery — an unusual, coin-like texture among desert plants. It carries small yellow puffball flowers after rain and forms a dense screen with almost no care, tolerating heat, reflected sun, alkaline soil, and long dry spells. Trained up it becomes a handsome small patio tree; left alone it makes one of the most reliable privacy hedges available for low-water designs. Very low litter and no thorns.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Spring (after rains)",
+      "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "white dawn lantana",
+      "name": "White Dawn Lantana",
+      "botanicalName": "Lantana montevidensis 'White Dawn'",
+      "category": "Groundcover",
+      "thumbnail": "whitedawnlantana_thumb",
+      "sizes": [
+        {
+          "size": "1g",
+          "price": 18,
+          "laborCost": 15
+        },
+        {
+          "size": "5g",
+          "price": 45,
+          "laborCost": 35
+        }
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "South America (cultivated selection)",
+      "description": "A low, fast-spreading trailing lantana smothered in clean white flower clusters from spring until frost. It cascades beautifully over walls, boulders, and planter edges, and fills in quickly as a tough sun-loving groundcover that shrugs off reflected heat and poor soil. Butterflies work it constantly. Shear it back hard in late winter to keep it dense and to clear any frost damage — it rebounds fast. Reliably evergreen in mild winters and root-hardy well below that.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring – Frost",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "texas ebony",
+      "name": "Texas Ebony",
+      "botanicalName": "Ebenopsis ebano",
+      "category": "Tree",
+      "thumbnail": "texasebony_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 95,
+          "laborCost": 55
+        },
+        {
+          "size": "15g",
+          "price": 195,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 445,
+          "laborCost": 240
+        }
+      ],
+      "matureHeightFt": 30,
+      "matureWidthFt": 25,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "South Texas and northeastern Mexico",
+      "description": "A dense, dark evergreen with zigzagging thorny branches and small glossy compound leaflets that hold their deep green through the worst of summer. Texas Ebony grows slowly into a heavy, rounded canopy that casts genuinely deep shade — one of the few desert-adapted trees that reads lush rather than airy. Creamy, fragrant puffball flowers appear through summer, followed by thick woody seed pods. Its density and thorns make it an excellent privacy or barrier tree; give it clearance from walkways and expect to limb it up over a patio. Extremely drought and heat tolerant once established.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "blue palo verde",
+      "name": "Blue Palo Verde",
+      "botanicalName": "Parkinsonia florida",
+      "category": "Tree",
+      "thumbnail": "paloverde_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 165,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 425,
+          "laborCost": 240
+        },
+        {
+          "size": "36\" Box",
+          "price": 875,
+          "laborCost": 450
+        }
+      ],
+      "matureHeightFt": 30,
+      "matureWidthFt": 30,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran Desert — Arizona, southeastern California, Baja and Sonora",
+      "description": "Arizona's state tree, and the one that makes a desert yard read as desert. The whole trunk and every branch are smooth blue-green and photosynthesize on their own, so the tree stays alive-looking even after it drops its tiny leaves in drought or cold. For a few weeks each spring it disappears under a solid mass of yellow flowers heavy enough to carpet the ground beneath it. Fast growing, deeply drought tolerant, and multi-trunked by nature — it casts a light, moving shade that other plants can actually grow in, which is why saguaros so often start life under one. Give it real room: mature spread matches or exceeds its height, and the wood is brittle enough that it wants clearance from roofs and drives.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Spring (April – May)",
+      "growthRate": "Fast",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "chaste tree",
+      "name": "Chaste Tree",
+      "botanicalName": "Vitex agnus-castus 'Shoal Creek'",
+      "category": "Tree",
+      "thumbnail": "vitex_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 165,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 425,
+          "laborCost": 240
+        },
+        {
+          "size": "36\" Box",
+          "price": 875,
+          "laborCost": 450
+        }
+      ],
+      "matureHeightFt": 20,
+      "matureWidthFt": 20,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Mediterranean and western Asia — long naturalized across the Southwest",
+      "description": "The desert's answer to a lilac, and one of the few low-water trees that flowers all summer instead of for two weeks in spring. 'Shoal Creek' is the cultivar worth specifying: longer, deeper blue-purple spikes than the seedling form, and nearly sterile, so it drops far less litter and doesn't seed itself around. The leaves are grey-green and palmate — five to seven narrow fingers that read soft and tropical from a distance while asking for desert water. Naturally multi-trunked and vase-shaped, which makes it a natural patio or courtyard tree; it can be trained to a single trunk if a cleaner line is wanted. Deciduous and late to leaf out, so plan for a bare structural silhouette from December through March. Hardy well below anything Arizona sees, fast to fill in, and it will bloom repeatedly if the spent spikes are cut back after each flush.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Late spring through summer (May – September)",
+      "growthRate": "Fast",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "aloe ferox",
+      "name": "Aloe Ferox",
+      "botanicalName": "Aloe ferox",
+      "category": "Succulent",
+      "thumbnail": "aloeferox_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 75,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 150,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 10,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "South Africa — Eastern Cape and KwaZulu-Natal",
+      "description": "The big architectural aloe, and the one that reads as a specimen from across a yard. Thick blue-green leaves armed with reddish teeth spiral into a rosette that can span six feet, and with age the plant lifts itself onto a single bare trunk skirted in dried leaves. In midwinter — when almost nothing else in a desert garden is working — it throws candelabra spikes of hot orange-red flowers three feet above the foliage, and hummingbirds find them immediately. It is the source of the bitter aloe used medicinally, tougher and far more cold-hardy than Aloe vera, and it wants full sun, fast drainage, and almost no summer water once established. Give it room and a clear sightline; this is a plant to place deliberately, not to repeat.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Winter (January – March)",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "blue glow agave",
+      "name": "Blue Glow Agave",
+      "botanicalName": "Agave 'Blue Glow'",
+      "category": "Succulent",
+      "thumbnail": "blueglowagave_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 70,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 130,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 3,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Garden hybrid (Agave attenuata × Agave ocahui)",
+      "description": "One of the most refined agaves available, and the reason it shows up in so many contemporary desert designs: a tight, symmetrical rosette of smooth blue-green leaves, each edged in a thin translucent red-and-gold margin that lights up when the sun sits behind it. It stays small and solitary — no pups crowding the base — which makes it reliable in a row, in a pot, or as a single accent beside a walk. The terminal spine is short and the leaf edges are smooth, so it is safer than most agaves near seating and paths. Full sun to light afternoon shade, sharp drainage, and very little water. Like all agaves it flowers once and then dies, but that is typically a decade or more out.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Rarely — monocarpic, flowers once at the end of its life",
+      "growthRate": "Slow",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "purple lantana",
+      "name": "Purple Lantana",
+      "botanicalName": "Lantana montevidensis",
+      "category": "Groundcover",
+      "thumbnail": "purplelantana_thumb",
+      "sizes": [
+        {
+          "size": "1g",
+          "price": 18,
+          "laborCost": 15
+        },
+        {
+          "size": "5g",
+          "price": 45,
+          "laborCost": 35
+        }
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "South America",
+      "description": "The workhorse trailing lantana, and the one that carries colour through an Arizona summer when little else will. Low, fast, and relentlessly flowering — clusters of lavender-purple bloom from spring until frost with no deadheading — it spills over walls, boulders, and planter edges and knits into a dense weed-suppressing mat in a single season. It takes reflected heat off pavement and block walls without complaint, asks for poor soil and little water, and butterflies work it all day. Shear it back hard in late winter to clear frost damage and keep it from going woody in the middle; it rebounds fast. Evergreen in mild winters and root-hardy well below that.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring – Frost",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "yellow lantana",
+      "name": "Yellow Lantana",
+      "botanicalName": "Lantana camara 'New Gold'",
+      "category": "Groundcover",
+      "thumbnail": "yellowlantana_thumb",
+      "sizes": [
+        {
+          "size": "1g",
+          "price": 18,
+          "laborCost": 15
+        },
+        {
+          "size": "5g",
+          "price": 45,
+          "laborCost": 35
+        }
+      ],
+      "matureHeightFt": 2,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Tropical Americas (cultivated selection)",
+      "description": "The gold standard for Arizona colour, and the lantana most likely to still be blooming in August. 'New Gold' mounds rather than trails, building a dense rounded cushion smothered in clear golden-yellow clusters from spring until frost — no deadheading, no fading to orange, no seed set to slow it down. It takes full reflected heat off pavement and block walls, wants poor soil and little water, and holds its shape better than the trailing types, which makes it the safer choice along walks and driveway edges. Butterflies work it constantly. Shear it hard in late winter to clear frost damage and keep the centre from going woody; it rebounds fast. Evergreen in mild winters and root-hardy well below that.",
+      "coldToleranceFahrenheit": 25,
+      "bloomPeriod": "Spring – Frost",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "texas sage",
+      "name": "Texas Sage",
+      "botanicalName": "Leucophyllum frutescens",
+      "category": "Shrub",
+      "thumbnail": "texassage_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 65,
+          "laborCost": 45
+        },
+        {
+          "size": "15g",
+          "price": 135,
+          "laborCost": 85
+        }
+      ],
+      "matureHeightFt": 8,
+      "matureWidthFt": 8,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Chihuahuan Desert — West Texas and northern Mexico",
+      "description": "Also sold as Texas Ranger or barometer bush, and the second name is the honest one: it reads humidity and erupts into bloom a day or two after a monsoon rain, covering itself so completely in purple that the silver foliage disappears. Between flushes it is still doing work — soft woolly grey-white leaves that hold colour year-round and contrast with everything green around them. It is one of the toughest shrubs in the Southwest palette: full sun, reflected heat, alkaline soil, and essentially no supplemental water once established. Left alone it builds a loose, naturally rounded form and blooms hardest; shear it into a formal ball and you trade most of the flowers for the shape, so give it the room to be itself.",
+      "coldToleranceFahrenheit": 5,
+      "bloomPeriod": "Summer – Fall (flushes after monsoon humidity)",
+      "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "beaked yucca",
+      "name": "Beaked Yucca",
+      "botanicalName": "Yucca rostrata",
+      "category": "Succulent",
+      "thumbnail": "yuccarostrata_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 225,
+          "laborCost": 110
+        },
+        {
+          "size": "24\" Box",
+          "price": 575,
+          "laborCost": 240
+        },
+        {
+          "size": "36\" Box",
+          "price": 1150,
+          "laborCost": 450
+        }
+      ],
+      "matureHeightFt": 14,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Chihuahuan Desert — West Texas and northern Mexico",
+      "description": "The most architectural plant in the desert palette, and the one clients point at. A single smooth trunk carries a near-perfect sphere of stiff blue-green blades, each one finely toothed and tipped in gold, so the whole head catches low sun like a starburst. Unlike most yuccas it is genuinely tree-forming — old plants branch into candelabras — and unlike most it is cold-hardy well below anything Arizona sees, which is why it holds up in high-desert and mountain-town designs where agaves fail. Slow is the trade: a few inches of trunk a year, so buy the height you want rather than waiting for it. The blades are stiff but not dangerous, which makes it safe near walks and pool decks where an agave would not be. Give it hard drainage and full sun, plant it where it will be lit or backlit, and use it singly — this is a focal point, not a mass planting.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Late spring (May – June), creamy white panicle above the crown",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "red yucca",
+      "name": "Red Yucca",
+      "botanicalName": "Hesperaloe parviflora",
+      "category": "Succulent",
+      "thumbnail": "hesperaloe_thumb",
+      "sizes": [
+        {
+          "size": "1g",
+          "price": 18,
+          "laborCost": 15
+        },
+        {
+          "size": "5g",
+          "price": 45,
+          "laborCost": 32
+        },
+        {
+          "size": "15g",
+          "price": 110,
+          "laborCost": 70
+        }
+      ],
+      "matureHeightFt": 5,
+      "matureWidthFt": 5,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Chihuahuan Desert — central and west Texas into northern Mexico",
+      "description": "Not a yucca at all, and the most forgiving plant in the desert palette. A tight fountain of narrow blue-green blades throws coral-red tubular flowers on slender arching spikes for months on end, starting in spring and often repeating until frost — hummingbirds work it all summer. The blades are soft-tipped and completely harmless, which is the reason it goes where an agave or a true yucca cannot: along walks, beside pool decks, under windows, in parking islands and median strips. It takes reflected heat off paving, full sun, hard drought and cold well below anything Arizona sees, and it stays the same size for years rather than outgrowing its spot. Evergreen, essentially pest-free, and never needs pruning beyond cutting spent bloom stalks. Plant it in drifts of three or five for the flower show, or single it where the spikes can be backlit.",
+      "coldToleranceFahrenheit": -10,
+      "bloomPeriod": "Spring through fall (April – October), coral-red spikes, repeat blooming",
+      "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
     }
   ]
 }

@@ -46,6 +46,19 @@ const CATEGORY_RAW = {
   succulent: "Succulent",
   groundcover: "Groundcover",
   hardscape: "Hardscape",
+  lighting: "Lighting",
+};
+
+// Mirror the app's care enums (raw values are display-ready strings).
+const SUN_RAW = { fullSun: "Full Sun", partialShade: "Partial Shade", fullShade: "Full Shade" };
+const WATER_RAW = { low: "Low", moderate: "Moderate", high: "High" };
+const GROWTH_RAW = { slow: "Slow", moderate: "Moderate", fast: "Fast" };
+const LIFESPAN_RAW = {
+  annual: "Annual",
+  perennial: "Perennial",
+  shortLived: "Short-lived (3\u20135 yrs)",
+  longLived: "Long-lived (25+ yrs)",
+  veryLongLived: "Very long-lived (100+ yrs)",
 };
 
 // Matches the app's InventoryStore.normalizePriceKey so keys line up on
@@ -61,8 +74,18 @@ if (start === -1) throw new Error("sampleCatalog not found in " + SWIFT_PATH);
 const endMarker = swift.indexOf("extension SIMD3", start);
 const body = swift.slice(start, endMarker === -1 ? undefined : endMarker);
 
-const chunks = body.split(/PlantItem\(\s*\n/).slice(1);
-if (chunks.length === 0) throw new Error("No PlantItem entries parsed");
+const allChunks = body.split(/PlantItem\(\s*\n/).slice(1);
+if (allChunks.length === 0) throw new Error("No PlantItem entries parsed");
+
+// Hardscape surfaces (turf, paver styles) come from a factory whose name is
+// an expression, not a literal — they bill per sq ft, not per container, so
+// they are not catalog rows. Skip factory chunks; still fail on anything
+// that has no name line at all.
+const chunks = allChunks.filter((chunk) => {
+  const nameLine = chunk.match(/name:\s*(.+)/)?.[1];
+  if (!nameLine) throw new Error("PlantItem entry without a name line");
+  return /^"/.test(nameLine.trim());
+});
 
 const plants = chunks.map((chunk) => {
   const name = chunk.match(/name:\s*"([^"]+)"/)?.[1];
@@ -84,7 +107,36 @@ const plants = chunks.map((chunk) => {
   });
   if (sizes.length === 0) throw new Error(`${name}: no ContainerSize entries`);
 
-  return { key: plantKey(name), name, botanicalName, category, thumbnail, sizes };
+  const num = (field) => {
+    const m = chunk.match(new RegExp(field + String.raw`:\s*(-?[\d.]+)`));
+    return m ? Number(m[1]) : null;
+  };
+  const str = (field) => chunk.match(new RegExp(field + String.raw`:\s*"([^"]+)"`))?.[1] ?? null;
+  const enumCase = (field, map, label) => {
+    const c = chunk.match(new RegExp(field + String.raw`:\s*\.(\w+)`))?.[1];
+    if (!c) return null;
+    if (!(c in map)) throw new Error(`${name}: unknown ${label} .${c}`);
+    return map[c];
+  };
+
+  return {
+    key: plantKey(name),
+    name,
+    botanicalName,
+    category,
+    thumbnail,
+    sizes,
+    matureHeightFt: num("matureHeightFt"),
+    matureWidthFt: num("matureWidthFt"),
+    sun: enumCase("sun", SUN_RAW, "sun"),
+    water: enumCase("water", WATER_RAW, "water"),
+    origin: str("origin"),
+    description: str("description"),
+    coldToleranceFahrenheit: num("coldToleranceFahrenheit"),
+    bloomPeriod: str("bloomPeriod"),
+    growthRate: enumCase("growthRate", GROWTH_RAW, "growthRate"),
+    lifespan: enumCase("lifespan", LIFESPAN_RAW, "lifespan"),
+  };
 });
 
 const dupes = plants.map((p) => p.key).filter((k, i, a) => a.indexOf(k) !== i);

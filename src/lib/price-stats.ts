@@ -12,6 +12,18 @@ export type CatalogPlant = {
   category: string;
   thumbnail: string | null;
   sizes: CatalogSize[];
+  // Field-guide fields (gen-catalog.mjs pulls them from PlantItem.swift);
+  // the Plant Library page is the consumer.
+  matureHeightFt: number | null;
+  matureWidthFt: number | null;
+  sun: string | null;
+  water: string | null;
+  origin: string | null;
+  description: string | null;
+  coldToleranceFahrenheit: number | null;
+  bloomPeriod: string | null;
+  growthRate: string | null;
+  lifespan: string | null;
 };
 
 export type UsageRow = { key: string; size: string; count: number };
