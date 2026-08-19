@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { CatalogPlant } from "@/lib/price-stats";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { SymbolGlyph, type PlaceholderSymbol } from "@/lib/placeholder-symbols";
+import type { LibraryPlant } from "@/lib/custom-plants";
+import { PlaceholderForm } from "./placeholder-form";
 
 // Category filter chips, in display order. Labels group the botanical
 // categories the way a designer thinks about the palette.
@@ -14,6 +18,7 @@ const CATEGORY_LABELS: [string, string][] = [
   ["Grass", "Grasses"],
   ["Hardscape", "Boulders & Pools"],
   ["Lighting", "Lighting"],
+  ["Placeholder", "Placeholders"],
 ];
 
 const money = (n: number) =>
@@ -25,21 +30,37 @@ const feet = (n: number) =>
 export function PlantLibrary({
   plants,
   sizeOrder,
+  sizeOptions,
   priceOverrides,
   usage,
+  userId,
+  setupNote,
+  loadError,
 }: {
-  plants: CatalogPlant[];
+  plants: LibraryPlant[];
   sizeOrder: string[];
+  sizeOptions: string[];
   priceOverrides: Record<string, number>;
   usage: Record<string, number>;
+  userId: string;
+  setupNote: string | null;
+  loadError: string | null;
 }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // null = closed; { plant: null } = creating; { plant } = editing.
+  const [editing, setEditing] = useState<{ plant: LibraryPlant | null } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const priceFor = (plant: CatalogPlant, size: string) =>
+  const priceFor = (plant: LibraryPlant, size: string) =>
     priceOverrides[`${plant.key}|${size}`] ??
     plant.sizes.find((s) => s.size === size)?.price;
+
+  const placeholderCount = plants.filter((p) => p.custom).length;
+  const modelCount = plants.length - placeholderCount;
 
   const chips = useMemo(() => {
     const counts = new Map<string, number>();
@@ -67,6 +88,24 @@ export function PlantLibrary({
   const categoryLabel =
     CATEGORY_LABELS.find(([raw]) => raw === category)?.[1] ?? category;
 
+  async function removePlaceholder(plant: LibraryPlant) {
+    if (!plant.custom) return;
+    setDeleting(true);
+    setActionError(null);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("custom_plants")
+      .delete()
+      .eq("id", plant.custom.id);
+    setDeleting(false);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
+    setOpenKey(null);
+    router.refresh();
+  }
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpenKey(null);
@@ -85,19 +124,49 @@ export function PlantLibrary({
             The palette
           </h1>
           <p className="mt-1.5 text-sm text-muted">
-            Every asset you can place in a design — {plants.length} and
-            counting. These renders are the actual 3D models your clients
-            see in the headset.
+            {modelCount} modelled assets — these renders are what your
+            clients actually see in the headset.
+            {placeholderCount > 0 &&
+              ` Plus ${placeholderCount} placeholder${
+                placeholderCount === 1 ? "" : "s"
+              } your team added for plants we don't model yet.`}
           </p>
         </div>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search common or botanical name…"
-          className="w-full max-w-xs rounded-[10px] border border-edge bg-card px-3.5 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none"
-        />
+        <div className="flex w-full max-w-md items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search common or botanical name…"
+            className="min-w-0 flex-1 rounded-[10px] border border-edge bg-card px-3.5 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-accent focus:outline-none"
+          />
+          <button
+            onClick={() => setEditing({ plant: null })}
+            disabled={!!setupNote}
+            title={
+              setupNote
+                ? "Run the migration below to enable placeholders"
+                : undefined
+            }
+            className="shrink-0 rounded-[10px] bg-accent px-3.5 py-2 text-sm font-medium text-card transition-colors hover:bg-accent-bright disabled:opacity-40"
+          >
+            + Placeholder
+          </button>
+        </div>
       </header>
+
+      {setupNote && (
+        <p className="mt-4 rounded-[10px] border border-edge bg-card px-4 py-3 text-sm text-clay">
+          One-time setup to enable placeholder plants: run{" "}
+          <code className="font-mono text-xs">{setupNote}</code> in the
+          Supabase SQL editor.
+        </p>
+      )}
+      {loadError && (
+        <p className="mt-4 text-sm text-clay">
+          Could not load placeholders: {loadError}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {[{ raw: null as string | null, label: "All", count: plants.length }, ...chips].map(
@@ -143,7 +212,12 @@ export function PlantLibrary({
                   onClick={() => setOpenKey(p.key)}
                   className="group flex h-full w-full flex-col rounded-[14px] border border-edge bg-card text-left shadow-[0_14px_30px_-24px_rgba(28,42,33,0.4)] transition-colors hover:bg-card-hover"
                 >
-                  <div className="flex aspect-square items-center justify-center rounded-t-[14px] bg-[radial-gradient(closest-side,rgba(46,93,67,0.10),transparent)] p-4">
+                  <div className="relative flex aspect-square items-center justify-center rounded-t-[14px] bg-[radial-gradient(closest-side,rgba(46,93,67,0.10),transparent)] p-4">
+                    {p.custom && (
+                      <span className="absolute left-2.5 top-2.5 rounded-full bg-clay/90 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-card">
+                        Placeholder
+                      </span>
+                    )}
                     {p.thumbnail ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
@@ -151,6 +225,19 @@ export function PlantLibrary({
                         alt={p.name}
                         className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-[1.04]"
                         loading="lazy"
+                      />
+                    ) : p.photoUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={p.photoUrl}
+                        alt={p.name}
+                        className="h-full w-full rounded-[10px] object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+                        loading="lazy"
+                      />
+                    ) : p.custom ? (
+                      <SymbolGlyph
+                        symbol={p.custom.symbol as PlaceholderSymbol}
+                        className="h-2/3 w-2/3 text-accent/45"
                       />
                     ) : (
                       <span className="text-4xl text-accent/40">✦</span>
@@ -195,13 +282,32 @@ export function PlantLibrary({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex flex-col bg-[radial-gradient(closest-side,rgba(46,93,67,0.12),transparent)] p-6">
-              {open.thumbnail && (
+              {open.thumbnail ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={`/plants/${open.thumbnail}.webp`}
                   alt={open.name}
                   className="m-auto max-h-72 object-contain"
                 />
+              ) : open.photoUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={open.photoUrl}
+                  alt={open.name}
+                  className="m-auto max-h-72 rounded-[10px] object-contain"
+                />
+              ) : open.custom ? (
+                <SymbolGlyph
+                  symbol={open.custom.symbol as PlaceholderSymbol}
+                  className="m-auto h-48 w-48 text-accent/45"
+                />
+              ) : null}
+              {open.custom && (
+                <p className="mt-3 text-center text-xs leading-relaxed text-muted">
+                  {open.photoUrl
+                    ? "Your reference photo. In the headset this places as a stylized stand-in at the size below."
+                    : "No model yet — this places as a stylized stand-in at the size below. Adding a photo helps the client picture it."}
+                </p>
               )}
               {(usage[open.key] ?? 0) > 0 && (
                 <p className="mt-4 text-center text-xs text-muted">
@@ -233,6 +339,30 @@ export function PlantLibrary({
                   ✕
                 </button>
               </div>
+
+              {open.custom && (
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditing({ plant: open });
+                      setOpenKey(null);
+                    }}
+                    className="rounded-[9px] border border-edge bg-paper px-3 py-1.5 text-sm text-ink hover:bg-card-hover"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => removePlaceholder(open)}
+                    disabled={deleting}
+                    className="rounded-[9px] px-3 py-1.5 text-sm text-clay hover:bg-card-hover disabled:opacity-50"
+                  >
+                    {deleting ? "Deleting…" : "Delete"}
+                  </button>
+                </div>
+              )}
+              {actionError && (
+                <p className="mt-2 text-sm text-clay">{actionError}</p>
+              )}
 
               {open.description && (
                 <p className="mt-4 text-[0.84rem] leading-relaxed text-ink/85">
@@ -302,6 +432,15 @@ export function PlantLibrary({
             </div>
           </div>
         </div>
+      )}
+
+      {editing && (
+        <PlaceholderForm
+          sizeOptions={sizeOptions}
+          userId={userId}
+          existing={editing.plant?.custom ?? null}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
