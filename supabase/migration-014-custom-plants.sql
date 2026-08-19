@@ -1,5 +1,5 @@
--- Migration 013: custom placeholder plants
--- Run in the Supabase SQL editor AFTER migration-012.
+-- Migration 014: custom placeholder plants
+-- Run in the Supabase SQL editor AFTER migration-013.
 --
 -- The 3D library will never cover every plant a designer specifies. A
 -- placeholder lets them place a correctly-sized stand-in — a stylized

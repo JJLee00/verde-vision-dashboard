@@ -1,6 +1,6 @@
 // Placeholder plants — designer-created stand-ins for species the 3D
 // library doesn't cover yet. Stored per-org in public.custom_plants
-// (migration 013); see src/lib/placeholder-symbols.tsx for the symbol
+// (migration 014); see src/lib/placeholder-symbols.tsx for the symbol
 // vocabulary they draw with.
 
 import type { CatalogPlant } from "@/lib/price-stats";

@@ -10,7 +10,7 @@ import {
 import { loadPricesData } from "../prices/load-data";
 import { PlantLibrary } from "./plant-library";
 
-// Missing table: migration 013 hasn't been run yet (same codes the prices
+// Missing table: migration 014 hasn't been run yet (same codes the prices
 // loader tolerates). The library still renders, minus placeholders.
 const MISSING_TABLE = new Set(["42P01", "PGRST205"]);
 
@@ -75,7 +75,7 @@ export default async function PlantLibraryPage() {
       usage={usage}
       userId={user.id}
       setupNote={
-        customMissing ? "supabase/migration-013-custom-plants.sql" : null
+        customMissing ? "supabase/migration-014-custom-plants.sql" : null
       }
       loadError={
         customError && !customMissing ? customError.message : null
