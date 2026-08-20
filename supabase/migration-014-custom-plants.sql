@@ -134,10 +134,17 @@ create policy "Members can upload placeholder photos"
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
-create policy "Members can delete own placeholder photos"
+-- Deleting a photo is ORG-wide, matching the row policy above. An
+-- own-folder-only rule left photos orphaned in the bucket whenever one
+-- designer deleted a placeholder a teammate had created: the row went, the
+-- object stayed, and the bucket accumulated forever.
+create policy "Members can delete org placeholder photos"
   on storage.objects for delete to authenticated
   using (
     bucket_id = 'project-media'
     and (storage.foldername(name))[2] = 'placeholders'
-    and (storage.foldername(name))[1] = auth.uid()::text
+    and (storage.foldername(name))[1] in (
+      select user_id::text from public.org_members
+      where org_id = public.user_org_id()
+    )
   );

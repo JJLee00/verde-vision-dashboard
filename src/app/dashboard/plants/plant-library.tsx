@@ -93,15 +93,30 @@ export function PlantLibrary({
     setDeleting(true);
     setActionError(null);
     const supabase = createClient();
+    const photoPath = plant.custom.photo_path;
     const { error } = await supabase
       .from("custom_plants")
       .delete()
       .eq("id", plant.custom.id);
-    setDeleting(false);
     if (error) {
+      setDeleting(false);
       setActionError(error.message);
       return;
     }
+    // Remove the photo too, or the object outlives the row and the bucket
+    // accumulates forever. Deliberately AFTER the row delete and not
+    // awaited into the error path: a failed object delete leaves one
+    // orphan, while a failed row delete would leave a placeholder the
+    // designer thinks is gone.
+    if (photoPath) {
+      const { error: photoError } = await supabase.storage
+        .from("project-media")
+        .remove([photoPath]);
+      if (photoError) {
+        console.warn("Placeholder photo left behind:", photoError.message);
+      }
+    }
+    setDeleting(false);
     setOpenKey(null);
     router.refresh();
   }
