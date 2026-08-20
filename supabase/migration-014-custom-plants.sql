@@ -36,7 +36,8 @@ create table public.custom_plants (
   -- in src/lib/viewer/catalog.ts, so the blueprint viewer renders a
   -- placeholder with no special-casing.
   symbol text not null check (symbol in (
-    'tree', 'palm', 'shrub', 'groundcover', 'columnar', 'rosette', 'barrel'
+    'tree', 'palm', 'shrub', 'groundcover',
+    'saguaro', 'columnar', 'rosette', 'barrel'
   )),
 
   -- Massing. This is the real job of a placeholder: even without a

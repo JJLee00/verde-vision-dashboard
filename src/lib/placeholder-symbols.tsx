@@ -13,6 +13,7 @@ export type PlaceholderSymbol =
   | "palm"
   | "shrub"
   | "groundcover"
+  | "saguaro"
   | "columnar"
   | "rosette"
   | "barrel";
@@ -29,7 +30,8 @@ export const SYMBOLS: {
   { id: "palm", label: "Palm", hint: "Fronds on a bare trunk", defaultHeightFt: 25, defaultWidthFt: 12 },
   { id: "shrub", label: "Shrub", hint: "Rounded mass", defaultHeightFt: 5, defaultWidthFt: 5 },
   { id: "groundcover", label: "Groundcover", hint: "Low spreading mat", defaultHeightFt: 1, defaultWidthFt: 4 },
-  { id: "columnar", label: "Columnar cactus", hint: "Upright column or ribs", defaultHeightFt: 12, defaultWidthFt: 3 },
+  { id: "saguaro", label: "Saguaro", hint: "Column with raised arms", defaultHeightFt: 25, defaultWidthFt: 8 },
+  { id: "columnar", label: "Columnar cactus", hint: "Upright column, no arms", defaultHeightFt: 12, defaultWidthFt: 3 },
   { id: "rosette", label: "Agave / rosette", hint: "Spiky rosette", defaultHeightFt: 3, defaultWidthFt: 4 },
   { id: "barrel", label: "Barrel cactus", hint: "Squat globe", defaultHeightFt: 2, defaultWidthFt: 2 },
 ];
@@ -61,6 +63,12 @@ const PATHS: Record<PlaceholderSymbol, React.ReactNode> = {
   groundcover: (
     <>
       <path d="M5 44c2-6 6-9 10-9s6 2 9 5c3-3 5-5 9-5s8 3 10 9Z" />
+    </>
+  ),
+  saguaro: (
+    <>
+      <rect x="20" y="8" width="8" height="36" rx="4" />
+      <path d="M20 28h-7v-11M28 33h7v-11" />
     </>
   ),
   columnar: (

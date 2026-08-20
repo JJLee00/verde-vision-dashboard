@@ -24,7 +24,8 @@ const MISSING_TABLE = new Set(["42P01", "PGRST205"]);
 // Mirrors migration 014's CHECK constraint and PlaceholderSymbol in the
 // app — reject an unknown symbol here rather than let the DB 500.
 const SYMBOLS = new Set([
-  "tree", "palm", "shrub", "groundcover", "columnar", "rosette", "barrel",
+  "tree", "palm", "shrub", "groundcover",
+  "saguaro", "columnar", "rosette", "barrel",
 ]);
 
 // Same normalisation as scripts/gen-catalog.mjs and the app's
