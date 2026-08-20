@@ -102,3 +102,42 @@ export async function getOrgMembers(
 export function memberName(m: OrgMember): string {
   return m.full_name || m.email || "Team member";
 }
+
+export type Billing = {
+  status: "trial" | "active" | "past_due" | "canceled";
+  plan: "founding" | "standard" | null;
+  interval: "month" | "year" | null;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
+  extraSeats: number;
+  // False when the org has never completed checkout — the account page
+  // offers to start a subscription instead of managing one.
+  hasSubscription: boolean;
+};
+
+// Billing state for the org, or null on a database that hasn't run
+// migration-015 — same migration-gated tolerance as getMembership.
+export async function getBilling(
+  supabase: ServerClient,
+  orgId: string
+): Promise<Billing | null> {
+  const { data, error } = await supabase
+    .from("organizations")
+    .select(
+      "subscription_status, plan, billing_interval, trial_ends_at, current_period_end, extra_seats, stripe_subscription_id"
+    )
+    .eq("id", orgId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return {
+    status: data.subscription_status,
+    plan: data.plan ?? null,
+    interval: data.billing_interval ?? null,
+    trialEndsAt: data.trial_ends_at ?? null,
+    currentPeriodEnd: data.current_period_end ?? null,
+    extraSeats: data.extra_seats ?? 0,
+    hasSubscription: Boolean(data.stripe_subscription_id),
+  };
+}

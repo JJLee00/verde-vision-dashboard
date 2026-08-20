@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getMembership, getOrgMembers, memberName } from "@/lib/org";
+import { getMembership, getOrgMembers, getBilling, memberName } from "@/lib/org";
+import { billingConfigured } from "@/lib/stripe";
 import { TeamManager, type MemberLite } from "./team";
+import { BillingPanel } from "./billing";
 
 const longDate = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
@@ -31,6 +33,13 @@ export default async function AccountPage() {
     ? Math.max(membership.maxDesigners - designerCount, 0)
     : 0;
   const isOwner = membership?.role === "owner";
+
+  // Billing is owner-only and needs both Stripe configured and migration-015
+  // run — same migration-gated tolerance as the Team section above.
+  const billing =
+    isOwner && membership && billingConfigured()
+      ? await getBilling(supabase, membership.orgId)
+      : null;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-10 lg:py-10">
@@ -62,6 +71,18 @@ export default async function AccountPage() {
           designer.
         </p>
       </section>
+
+      {billing && membership && (
+        <section className="mt-8 max-w-xl rounded-[14px] border border-edge bg-card p-7 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
+          <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-faint">
+            Billing
+          </h2>
+          <BillingPanel
+            billing={billing}
+            maxDesigners={membership.maxDesigners}
+          />
+        </section>
+      )}
 
       {membership?.teamEnabled && (
         <section className="mt-8 max-w-xl rounded-[14px] border border-edge bg-card p-7 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">

@@ -1,8 +1,8 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getMembership, type Membership } from "@/lib/org";
+import { requireOwner as requireOwnerSession } from "@/lib/require-owner";
+import { type Membership } from "@/lib/org";
 
 // Team management: the org owner invites designer accounts and removes
 // them. Auth is the caller's own session (not an API key) — the service
@@ -10,30 +10,14 @@ import { getMembership, type Membership } from "@/lib/org";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// The shared owner gate plus the team-specific migration-011 requirement.
 async function requireOwner(): Promise<
   | { membership: Membership; userId: string }
   | { response: NextResponse }
 > {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      response: NextResponse.json({ error: "Not signed in" }, { status: 401 }),
-    };
-  }
-
-  const membership = await getMembership(supabase, user.id);
-  if (!membership || membership.role !== "owner") {
-    return {
-      response: NextResponse.json(
-        { error: "Only the account owner can manage the team" },
-        { status: 403 }
-      ),
-    };
-  }
-  if (!membership.teamEnabled) {
+  const gate = await requireOwnerSession("the team");
+  if ("response" in gate) return gate;
+  if (!gate.membership.teamEnabled) {
     return {
       response: NextResponse.json(
         { error: "Team features are not enabled yet (run migration-011)" },
@@ -41,7 +25,7 @@ async function requireOwner(): Promise<
       ),
     };
   }
-  return { membership, userId: user.id };
+  return gate;
 }
 
 export async function POST(request: NextRequest) {
