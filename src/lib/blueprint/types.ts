@@ -6,6 +6,8 @@
 // (Pima, Pinal, Regrid…) means adding a provider that speaks that GIS
 // server's dialect — nothing downstream changes.
 
+import type { BlueprintWarning, ImageryInfo } from "./enrich";
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -56,4 +58,21 @@ export interface BlueprintCandidate {
    */
   parcelXZ: [number, number][];
   attributes: ParcelAttributes;
+  /**
+   * House footprint in the same geo frame, extracted from the imagery
+   * building mask. Null when extraction failed — a boundary-only draft is
+   * still useful, and the designer can mark the house by hand. Present only
+   * on enriched (single-parcel) responses.
+   *
+   * These vertices are the corner-walk targets: the app makes them the only
+   * tappable points on the align map. Note they follow the ROOFLINE, not
+   * the walls (see enrich.ts).
+   */
+  houseXZ?: [number, number][] | null;
+  /** Roofed area of the extracted footprint, for cross-checking. */
+  houseAreaSqFt?: number | null;
+  /** Capture date, quality, and (on request) the ortho tile itself. */
+  imagery?: ImageryInfo | null;
+  /** Everything the designer should know before trusting this draft. */
+  warnings?: BlueprintWarning[];
 }
