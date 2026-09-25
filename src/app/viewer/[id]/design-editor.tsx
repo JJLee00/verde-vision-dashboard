@@ -53,6 +53,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   // changes commits an edit to the record.
   const [savedEdits, setSavedEdits] = useState<DesignEdit[]>([]);
   const [picking, setPicking] = useState(false);
+  // Both of these do something the designer can't casually take back —
+  // one throws work away, the other changes what the client sees.
+  const [confirming, setConfirming] = useState<"publish" | "discard" | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Drafts autosave, but silently — which read as "there's no way to save".
   // The state is now visible and there's a button that flushes it now.
@@ -354,6 +357,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   }, [editing, undoLast]);
 
   function discard() {
+    setConfirming(null);
     setEdits([]);
     setSavedEdits([]);
     setSelectedId(null);
@@ -368,6 +372,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   }
 
   function publish() {
+    setConfirming(null);
     setError(null);
     startPublish(async () => {
       // The dev fixture has no row and no session, so the real action would
@@ -519,6 +524,33 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           </button>
         </div>
       )}
+      {confirming === "publish" && (
+        <Confirm
+          title="Publish this revision?"
+          body={
+            changedPlantCount > 0
+              ? `${changedPlantCount} changed plant${changedPlantCount === 1 ? "" : "s"} will go to the client — the plan, the estimate and the share link all update.`
+              : "The plan, the estimate and the share link will all update."
+          }
+          confirmLabel="Publish revision"
+          onConfirm={publish}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+      {confirming === "discard" && (
+        <Confirm
+          destructive
+          title="Discard these changes?"
+          body={
+            changedPlantCount > 0
+              ? `${changedPlantCount} changed plant${changedPlantCount === 1 ? "" : "s"} will be thrown away and the design goes back to the last published revision. This can't be undone.`
+              : "The draft goes back to the last published revision. This can't be undone."
+          }
+          confirmLabel="Discard changes"
+          onConfirm={discard}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
       {editing && (
         <div className="flex flex-wrap items-center gap-3 border-t border-rule bg-card px-4 py-2.5">
           {dirty ? (
@@ -563,7 +595,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             <>
               <button
                 type="button"
-                onClick={discard}
+                onClick={() => setConfirming("discard")}
                 disabled={publishing}
                 className="text-sm text-muted transition hover:text-clay disabled:opacity-50"
               >
@@ -574,7 +606,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           {dirty && (
               <button
                 type="button"
-                onClick={publish}
+                onClick={() => setConfirming("publish")}
                 disabled={publishing}
                 className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:opacity-60"
               >
@@ -605,6 +637,76 @@ function designsDiffer(a: ProjectFileJSON, b: ProjectFileJSON): boolean {
     if ((q.containerType ?? null) !== (p.containerType ?? null)) return true;
   }
   return false;
+}
+
+/* ── Confirmation ─────────────────────────────────────────────────────── */
+
+function Confirm({
+  title,
+  body,
+  confirmLabel,
+  destructive = false,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-[14px] border border-edge bg-card p-6 shadow-[0_30px_60px_-20px_rgba(28,42,33,0.5)]"
+      >
+        <h2 id="confirm-title" className="font-serif text-xl text-ink">
+          {title}
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted">{body}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            // Focus lands on the way OUT: a stray Return shouldn't publish
+            // to a client or bin someone's afternoon.
+            autoFocus
+            className="rounded-lg border border-rule-strong bg-card-hover px-3.5 py-2 text-[13px] font-semibold text-ink transition hover:bg-card"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`rounded-lg border border-transparent px-3.5 py-2 text-[13px] font-semibold text-[#f5eeda] transition ${
+              destructive
+                ? "bg-clay hover:bg-clay/90"
+                : "bg-accent hover:bg-accent-bright"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // One button shape for the panel's actions.
