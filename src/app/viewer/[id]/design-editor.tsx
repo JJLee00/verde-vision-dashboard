@@ -312,6 +312,28 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     []
   );
 
+  /**
+   * Leaving a plant without saving reverts it.
+   *
+   * The panel is a form: pick a size, press Save to commit. A change that
+   * survives walking away makes Save a button that changes nothing you can
+   * see. Edits still apply to the plan the moment they're made — you have
+   * to see a size to judge it — they just don't outlive the selection
+   * unless they're saved.
+   */
+  const leaveSelected = useCallback(() => {
+    const leaving = selectedId;
+    if (!leaving) return;
+    setEdits((prev) => {
+      const keptFromOthers = prev.filter((e) => e.id !== leaving);
+      const savedForThis = savedEdits.filter((e) => e.id === leaving);
+      if (keptFromOthers.length + savedForThis.length === prev.length) {
+        return prev;
+      }
+      return [...keptFromOthers, ...savedForThis];
+    });
+  }, [selectedId, savedEdits]);
+
   const undoLast = useCallback(() => {
     setEdits((prev) => {
       if (prev.length === 0) return prev;
@@ -453,6 +475,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           editing={editing}
           selectedId={selectedId}
           onSelectInstance={(id) => {
+            if (id !== selectedId) leaveSelected();
             setSelectedId(id);
             setPicking(false);
           }}
@@ -479,6 +502,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               unsavedCount={hasUnsaved ? 1 : 0}
               onUndoPlant={undoPlant}
               onSelectChange={(id) => {
+                if (id !== selectedId) leaveSelected();
                 setSelectedId(id);
                 setPicking(false);
               }}
@@ -489,6 +513,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               onPick={() => setPicking(true)}
               onCancelPick={() => setPicking(false)}
               onBack={() => {
+                leaveSelected();
                 setSelectedId(null);
                 setPicking(false);
               }}
@@ -651,7 +676,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             <>
               <button
                 type="button"
-                onClick={() => setConfirming("discard")}
+                onClick={() => {
+                  leaveSelected();
+                  setConfirming("discard");
+                }}
                 disabled={publishing}
                 className="text-sm text-muted transition hover:text-clay disabled:opacity-50"
               >
@@ -662,7 +690,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           {dirty && (
               <button
                 type="button"
-                onClick={() => setConfirming("publish")}
+                onClick={() => {
+                  leaveSelected();
+                  setConfirming("publish");
+                }}
                 disabled={publishing}
                 className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:opacity-60"
               >
