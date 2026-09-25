@@ -393,7 +393,6 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               selectedId={selectedId}
               undoLabel={undoLabel}
               unsavedCount={unsavedCount}
-              onUndoLast={undoLast}
               onUndoOne={undoOne}
               onSelectChange={(id) => {
                 setSelectedId(id);
@@ -534,7 +533,6 @@ function EditorPanel({
   selectedId,
   undoLabel,
   unsavedCount,
-  onUndoLast,
   onUndoOne,
   onSelectChange,
   dirty,
@@ -555,7 +553,6 @@ function EditorPanel({
   selectedId: string | null;
   undoLabel: string | null;
   unsavedCount: number;
-  onUndoLast: () => void;
   onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
   onSelectChange: (id: string) => void;
   dirty: boolean;
@@ -582,7 +579,6 @@ function EditorPanel({
           selectedId={selectedId}
           undoLabel={undoLabel}
           unsavedCount={unsavedCount}
-          onUndoLast={onUndoLast}
           onUndoOne={onUndoOne}
           onSelect={onSelectChange}
         />
@@ -631,6 +627,11 @@ function EditorPanel({
             </span>
           )}
         </span>
+        {staged && (
+          <span className="shrink-0 rounded-full border border-clay/40 px-1.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-clay">
+            removing
+          </span>
+        )}
         <button
           type="button"
           onClick={onBack}
@@ -641,89 +642,86 @@ function EditorPanel({
         </button>
       </div>
 
-      {staged ? (
-        <div className="flex flex-1 flex-col justify-between gap-3 p-4">
-          <p className="text-sm text-clay">
-            Staged for removal. It stays on the plan as an outline until you
-            publish.
-          </p>
-          <button
-            type="button"
-            onClick={onUndelete}
-            className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-2 text-[13px] font-semibold text-ink transition hover:bg-card-hover"
-          >
-            Keep this plant
-          </button>
+      {/* Staging a removal does NOT change the panel's shape. Replace and
+          resize leave you in the same place doing the same kind of work;
+          delete used to swap the whole panel for a paragraph and a single
+          button — no size chips, no Replace, and no Save, so there was no
+          way to record the removal from where you stood. It reads as a
+          different screen because it was one. */}
+      <div className="border-b border-rule px-4 py-3">
+        <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
+          Size
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {plant.sizes.map((sz) => {
+            const on = sz.size === size?.size;
+            return (
+              <button
+                key={sz.size}
+                type="button"
+                onClick={() => onResize(sz.size)}
+                disabled={staged}
+                aria-pressed={on}
+                className={`rounded-lg border px-2 py-1 text-left text-xs transition disabled:opacity-40 ${
+                  on
+                    ? "border-accent bg-card-hover font-semibold text-accent-dim"
+                    : "border-rule bg-card-hover text-muted enabled:hover:border-accent/50"
+                }`}
+              >
+                {sz.size}
+                <span className="mt-0.5 block font-mono text-[0.68rem] tabular-nums">
+                  {currency.format(sz.price)}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      ) : (
-        <>
-          <div className="border-b border-rule px-4 py-3">
-            <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-              Size
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {plant.sizes.map((s) => {
-                const on = s.size === size?.size;
-                return (
-                  <button
-                    key={s.size}
-                    type="button"
-                    onClick={() => onResize(s.size)}
-                    aria-pressed={on}
-                    className={`rounded-lg border px-2 py-1 text-left text-xs transition ${
-                      on
-                        ? "border-accent bg-card-hover font-semibold text-accent-dim"
-                        : "border-rule bg-card-hover text-muted hover:border-accent/50"
-                    }`}
-                  >
-                    {s.size}
-                    <span className="mt-0.5 block font-mono text-[0.68rem] tabular-nums">
-                      {currency.format(s.price)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      </div>
 
-          <div className="flex flex-col gap-2 p-4">
-            <button
-              type="button"
-              onClick={onPick}
-              className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-2 text-[13px] font-semibold text-ink transition hover:bg-card-hover"
-            >
-              Replace plant
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="rounded-lg px-3 py-2 text-[13px] font-semibold text-clay transition hover:bg-clay/[0.08]"
-            >
-              Remove from design
-            </button>
-            {/* Saves the whole draft, not just this plant — but this is
-                where the designer's hands already are. */}
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={!dirty || saveState === "saving"}
-              className="mt-1 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:bg-paper-deep disabled:text-faint"
-            >
-              {saveState === "saving"
-                ? "Saving…"
-                : saveState === "saved" && !dirty
-                  ? "Saved"
-                  : "Save changes"}
-            </button>
-          </div>
-        </>
-      )}
+      <div className="flex flex-col gap-2 p-4">
+        <button
+          type="button"
+          onClick={onPick}
+          disabled={staged}
+          className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-2 text-[13px] font-semibold text-ink transition enabled:hover:bg-card-hover disabled:opacity-40"
+        >
+          Replace plant
+        </button>
+        {/* One slot, one action, and its own way back — which is why the
+            separate "Keep this plant" screen is gone. */}
+        <button
+          type="button"
+          onClick={staged ? onUndelete : onDelete}
+          className={`rounded-lg px-3 py-2 text-[13px] font-semibold transition ${
+            staged
+              ? "border border-rule-strong bg-paper-deep text-ink hover:bg-card-hover"
+              : "text-clay hover:bg-clay/[0.08]"
+          }`}
+        >
+          {staged ? "Undo remove" : "Remove from design"}
+        </button>
+        {/* Saves the whole draft, not just this plant — but this is where
+            the designer's hands already are. Present in every state: a
+            removal you can't save from is a dead end. */}
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={!dirty || saveState === "saving"}
+          className="mt-1 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:bg-paper-deep disabled:text-faint"
+        >
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved" && !dirty
+              ? "Saved"
+              : "Save changes"}
+        </button>
+      </div>
+
       <ChangeList
         changes={changes}
         selectedId={selectedId}
         undoLabel={undoLabel}
         unsavedCount={unsavedCount}
-        onUndoLast={onUndoLast}
         onUndoOne={onUndoOne}
         onSelect={onSelectChange}
       />
@@ -738,15 +736,14 @@ function ChangeList({
   selectedId,
   undoLabel,
   unsavedCount,
-  onUndoLast,
   onUndoOne,
   onSelect,
 }: {
   changes: ChangeRow[];
   selectedId: string | null;
+  /** Non-null when there's something ⌘Z would take back. */
   undoLabel: string | null;
   unsavedCount: number;
-  onUndoLast: () => void;
   onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
   onSelect: (id: string) => void;
 }) {
@@ -761,16 +758,7 @@ function ChangeList({
           Changes
         </span>
         {undoLabel && (
-          <button
-            type="button"
-            onClick={onUndoLast}
-            // Named rather than a bare arrow: knowing it's the remove you're
-            // about to take back is the difference between using it and not.
-            title="⌘Z"
-            className="text-xs font-semibold text-accent transition hover:text-accent-bright"
-          >
-            ↩ {undoLabel}
-          </button>
+          <span className="font-mono text-[0.68rem] text-faint">⌘Z to undo</span>
         )}
       </div>
       {unsavedCount > 0 && (
