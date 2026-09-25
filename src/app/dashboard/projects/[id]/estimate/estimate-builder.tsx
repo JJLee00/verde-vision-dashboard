@@ -398,6 +398,7 @@ export function EstimateBuilder({
           onChange={(d) => void saveSetting("estimate_detail", d)}
         />
         <Totals
+          projectId={projectId}
           settings={settings}
           totals={totals}
           readOnly={readOnly}
@@ -897,6 +898,7 @@ function ClientDetail({
 /* ── Totals ───────────────────────────────────────────────────────────── */
 
 function Totals({
+  projectId,
   settings,
   totals,
   readOnly,
@@ -904,6 +906,7 @@ function Totals({
   onRate,
   onDeposit,
 }: {
+  projectId: string;
   settings: EstimateSettings;
   totals: ReturnType<typeof computeTotals>;
   readOnly: boolean;
@@ -1029,14 +1032,24 @@ function Totals({
         </div>
       </dl>
 
-      <button
-        type="button"
-        disabled
-        title="Next phase: the branded proposal PDF is generated here."
-        className="mt-5 w-full rounded-lg border border-rule-strong bg-paper-deep px-4 py-2.5 text-[13px] font-semibold text-muted"
+      <a
+        href={`/dashboard/projects/${projectId}/estimate/pdf`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-5 block w-full rounded-lg bg-accent px-4 py-2.5 text-center text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
       >
-        Generate Proposal — coming next
-      </button>
+        Generate Proposal
+      </a>
+      <a
+        href={`/dashboard/projects/${projectId}/estimate/pdf?download=1`}
+        className="mt-2 block text-center text-xs font-semibold text-muted transition hover:text-accent"
+      >
+        Download PDF
+      </a>
+      <p className="mt-3 text-center text-[0.68rem] leading-relaxed text-faint">
+        Prints in the mode selected on the left, under your company&apos;s
+        letterhead.
+      </p>
     </section>
   );
 }
