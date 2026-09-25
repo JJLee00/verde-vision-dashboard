@@ -462,7 +462,17 @@ export default async function ProjectPage({
                 <p className="text-sm text-muted">No blueprint exported yet.</p>
               )}
             </SectionCard>
-            <SectionCard title="Estimate">
+            <SectionCard
+              title="Estimate"
+              action={
+                <Link
+                  href={`/dashboard/projects/${data.id}/estimate`}
+                  className="text-xs font-semibold text-accent transition hover:text-accent-bright"
+                >
+                  Open builder →
+                </Link>
+              }
+            >
               {data.estimateAmount != null ? (
                 <div className="flex items-baseline justify-between">
                   <span className="font-mono text-2xl font-semibold tabular-nums text-ink">
@@ -480,7 +490,10 @@ export default async function ProjectPage({
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-muted">No estimate synced yet.</p>
+                <p className="text-sm text-muted">
+                  Nothing synced yet — the builder is where irrigation, demo,
+                  delivery and labor get added.
+                </p>
               )}
             </SectionCard>
           </div>

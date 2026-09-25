@@ -43,10 +43,13 @@ export async function proxy(request: NextRequest) {
   // Public living-blueprint links — the unguessable token IS the auth.
   const isShareLink = request.nextUrl.pathname.startsWith("/share/");
   // Dev-only sample scenes (the pages 404 these ids in production).
+  // startsWith on the project fixture so its sub-pages (the estimate
+  // builder, and whatever comes next) are reachable too; they all 404 in
+  // production regardless.
   const isViewerFixture =
     process.env.NODE_ENV === "development" &&
     (request.nextUrl.pathname === "/viewer/fixture" ||
-      request.nextUrl.pathname === "/dashboard/projects/fixture");
+      request.nextUrl.pathname.startsWith("/dashboard/projects/fixture"));
 
   if (
     !user &&
