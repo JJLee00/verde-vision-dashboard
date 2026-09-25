@@ -335,10 +335,15 @@ function SectionCard({
 
 export default async function ProjectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ published?: string }>;
 }) {
   const { id } = await params;
+  // Publishing a revision lands here rather than leaving the designer in
+  // the editor wondering whether it took.
+  const published = (await searchParams)?.published ?? null;
 
   const data =
     id === "fixture" && process.env.NODE_ENV === "development"
@@ -350,6 +355,16 @@ export default async function ProjectPage({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
+      {published && (
+        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-[14px] border border-accent/40 bg-accent-soft/30 px-5 py-3.5">
+          <span className="text-sm font-semibold text-accent-dim">
+            Revision {published} published
+          </span>
+          <span className="text-sm text-muted">
+            The estimate and the client&apos;s view are up to date.
+          </span>
+        </div>
+      )}
       <Link
         href="/dashboard"
         className="text-sm text-muted transition hover:text-ink"

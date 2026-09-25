@@ -323,6 +323,13 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   function publish() {
     setError(null);
     startPublish(async () => {
+      // The dev fixture has no row and no session, so the real action would
+      // only ever answer "Not signed in". Walk the same path so the flow
+      // can be reviewed.
+      if (projectId === "fixture") {
+        router.push("/dashboard/projects/fixture?published=1");
+        return;
+      }
       const result = await publishRevision(projectId, staged);
       if (!result.ok) {
         setError(result.error);
@@ -332,7 +339,11 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
       setSavedEdits([]);
       setSelectedId(null);
       setEditing(false);
-      router.refresh();
+      // Land on the project record rather than sitting in the editor with
+      // nothing to say. Publishing is the end of a sitting; the page it
+      // lands on shows the new estimate total and the updated plan, which
+      // is the confirmation that actually means something.
+      router.push(`/dashboard/projects/${projectId}?published=${result.revision}`);
     });
   }
 
@@ -448,7 +459,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             </span>
           )}
           <span className="flex-1" />
-          {dirty && (
+          {dirty && !publishing && (
             <>
               <button
                 type="button"
@@ -458,6 +469,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               >
                 Discard
               </button>
+            </>
+          )}
+          {dirty && (
               <button
                 type="button"
                 onClick={publish}
@@ -466,7 +480,6 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               >
                 {publishing ? "Publishing…" : "Publish revision"}
               </button>
-            </>
           )}
         </div>
       )}
