@@ -16,9 +16,11 @@ import {
   PLANTS,
   applyEdits,
   currentSize,
+  changeSize,
   plantForKey,
   plantForModel,
   plantsSubtotal,
+  swapSpecies,
   thumbnailURL,
   type CatalogPlant,
   type DesignEdit,
@@ -80,28 +82,61 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [staged, viewer.priceOverrides]
   );
 
-  // Every staged edit, described in the designer's terms. Built off `base`
-  // so a swapped plant still says what it USED to be — which is the whole
-  // point of being able to undo it.
-  const changes = useMemo(() => {
-    const byId = new Map((base.placements ?? []).map((p) => [p.id, p]));
-    return edits.map((e) => {
-      const was = byId.get(e.id);
-      const wasPlant = was ? plantForModel(was.plantModelName) : null;
-      const title = wasPlant?.name ?? "Plant";
+  // Every staged edit as an exact before → after: "15g Agave Americana"
+  // becoming "5g Aloe Vera" is the row a designer can actually check,
+  // because the size is what moves the price.
+  //
+  // Walked in order against a running copy of the design rather than read
+  // off `base`, so a plant edited twice describes each step from where that
+  // step actually started.
+  const changes = useMemo<ChangeRow[]>(() => {
+    const state = new Map((base.placements ?? []).map((p) => [p.id, p]));
+
+    const describe = (p: PlacedPlantJSON | undefined) => {
+      if (!p) return "Plant";
+      const plant = plantForModel(p.plantModelName);
+      if (!plant) return p.containerType ?? "Plant";
+      const size = currentSize(plant, p);
+      return size ? `${size.size} ${plant.name}` : plant.name;
+    };
+
+    return edits.flatMap((e): ChangeRow[] => {
+      const was = state.get(e.id);
+      const from = describe(was);
+
+      if (e.kind === "delete") {
+        return [{ key: `${e.id}:delete`, id: e.id, kind: e.kind, from, to: "removed" }];
+      }
+      if (!was) return [];
+
       if (e.kind === "swap") {
-        return {
-          key: `${e.id}:swap`,
+        const to = plantForKey(e.plantKey);
+        const next = to ? swapSpecies(was, to) : null;
+        if (next) state.set(e.id, next);
+        return [
+          {
+            key: `${e.id}:swap`,
+            id: e.id,
+            kind: e.kind,
+            from,
+            to: describe(next ?? undefined),
+          },
+        ];
+      }
+
+      const plant = plantForModel(was.plantModelName);
+      const size = plant?.sizes.find((sz) => sz.size === e.size);
+      if (size) state.set(e.id, changeSize(was, size));
+      // Same plant, so the size alone says it: "15g → 24\" Box".
+      return [
+        {
+          key: `${e.id}:resize`,
           id: e.id,
           kind: e.kind,
-          title,
-          detail: `→ ${plantForKey(e.plantKey)?.name ?? "another plant"}`,
-        };
-      }
-      if (e.kind === "resize") {
-        return { key: `${e.id}:resize`, id: e.id, kind: e.kind, title, detail: `→ ${e.size}` };
-      }
-      return { key: `${e.id}:delete`, id: e.id, kind: e.kind, title, detail: "removed" };
+          from,
+          to: e.size,
+        },
+      ];
     });
   }, [edits, base]);
 
@@ -422,8 +457,10 @@ type ChangeRow = {
   key: string;
   id: string;
   kind: DesignEdit["kind"];
-  title: string;
-  detail: string;
+  /** What it was, size first: "15g Agave Americana". */
+  from: string;
+  /** What it became: "5g Aloe Vera", a bare size, or "removed". */
+  to: string;
 };
 
 function EditorPanel({
@@ -670,21 +707,21 @@ function ChangeList({
               onClick={() => onSelect(c.id)}
               className="min-w-0 flex-1 text-left"
             >
-              <span className="block truncate text-[13px] text-ink">
-                {c.title}
+              <span className="block truncate text-[13px] text-muted">
+                {c.from}
               </span>
               <span
-                className={`block truncate text-xs ${
-                  c.kind === "delete" ? "text-clay" : "text-muted"
+                className={`block truncate text-[13px] font-medium ${
+                  c.kind === "delete" ? "text-clay" : "text-ink"
                 }`}
               >
-                {c.detail}
+                {c.kind === "delete" ? "removed" : `→ ${c.to}`}
               </span>
             </button>
             <button
               type="button"
               onClick={() => onUndoOne(c.id, c.kind)}
-              aria-label={`Undo ${c.detail}`}
+              aria-label={`Undo ${c.from} ${c.to}`}
               title="Undo this change"
               className="shrink-0 px-1 text-xs text-faint transition hover:text-ink"
             >
