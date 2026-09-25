@@ -15,13 +15,10 @@ import { createClient } from "@/lib/supabase/client";
 import {
   PLANTS,
   applyEdits,
-  changeSize,
   closestSize,
   currentSize,
-  plantForKey,
   plantForModel,
   plantsSubtotal,
-  swapSpecies,
   thumbnailURL,
   type CatalogPlant,
   type DesignEdit,
@@ -87,59 +84,45 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [staged, viewer.priceOverrides]
   );
 
-  // Every staged edit as an exact before → after: "15g Agave Americana"
-  // becoming "5g Aloe Vera" is the row a designer can actually check,
-  // because the size is what moves the price.
-  //
-  // Walked in order against a running copy of the design rather than read
-  // off `base`, so a plant edited twice describes each step from where that
-  // step actually started.
+  // ONE row per plant, describing its NET effect — not one row per
+  // keystroke. Swapping to a 5 gal and then picking 15 gal is one decision
+  // about one plant, saved once; listing the 5 gal step describes how you
+  // got there, which nobody needs. A plant changed and changed back
+  // produces no row at all, for the same reason.
   const changes = useMemo<ChangeRow[]>(() => {
-    const state = new Map((base.placements ?? []).map((p) => [p.id, p]));
+    const before = new Map((base.placements ?? []).map((p) => [p.id, p]));
+    const saved = applyEdits(base, savedEdits);
+    const after = new Map((saved.placements ?? []).map((p) => [p.id, p]));
 
-    const describe = (p: PlacedPlantJSON | undefined) => {
-      if (!p) return "Plant";
+    const describe = (p: PlacedPlantJSON) => {
       const plant = plantForModel(p.plantModelName);
       if (!plant) return p.containerType ?? "Plant";
       const size = currentSize(plant, p);
       return size ? `${size.size} ${plant.name}` : plant.name;
     };
 
-    return savedEdits.flatMap((e): ChangeRow[] => {
-      const was = state.get(e.id);
-      const from = describe(was);
+    const touched: string[] = [];
+    for (const e of savedEdits) if (!touched.includes(e.id)) touched.push(e.id);
 
-      if (e.kind === "delete") {
-        return [{ key: `${e.id}:delete`, id: e.id, kind: e.kind, from, to: "removed" }];
-      }
+    return touched.flatMap((id): ChangeRow[] => {
+      const was = before.get(id);
       if (!was) return [];
-
-      if (e.kind === "swap") {
-        const to = plantForKey(e.plantKey);
-        const next = to ? swapSpecies(was, to, e.size) : null;
-        if (next) state.set(e.id, next);
-        return [
-          {
-            key: `${e.id}:swap`,
-            id: e.id,
-            kind: e.kind,
-            from,
-            to: describe(next ?? undefined),
-          },
-        ];
+      const now = after.get(id);
+      if (!now) {
+        return [{ key: id, id, kind: "delete", from: describe(was), to: "removed" }];
       }
-
-      const plant = plantForModel(was.plantModelName);
-      const size = plant?.sizes.find((sz) => sz.size === e.size);
-      if (size) state.set(e.id, changeSize(was, size));
-      // Same plant, so the size alone says it: "15g → 24\" Box".
+      const wasKey = plantForModel(was.plantModelName)?.key;
+      const nowKey = plantForModel(now.plantModelName)?.key;
+      const speciesChanged = wasKey !== nowKey;
+      const sizeChanged = (was.containerType ?? null) !== (now.containerType ?? null);
+      if (!speciesChanged && !sizeChanged) return [];
       return [
         {
-          key: `${e.id}:resize`,
-          id: e.id,
-          kind: e.kind,
-          from,
-          to: e.size,
+          key: id,
+          id,
+          kind: speciesChanged ? "swap" : "resize",
+          from: describe(was),
+          to: speciesChanged ? describe(now) : (now.containerType ?? describe(now)),
         },
       ];
     });
@@ -155,7 +138,30 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         ? "Undo replace"
         : "Undo size change"
     : null;
-  const unsavedCount = edits.length - savedEdits.length;
+  const unsavedCount = edits.length > savedEdits.length ? 1 : 0;
+
+  // Counted in PLANTS, not operations, so the bar agrees with the change
+  // list: swapping a plant and then picking a different size for it is one
+  // changed plant, however many taps it took.
+  const changedPlantCount = useMemo(() => {
+    const before = new Map((base.placements ?? []).map((p) => [p.id, p]));
+    const after = new Map((staged.placements ?? []).map((p) => [p.id, p]));
+    let n = 0;
+    for (const [id, was] of before) {
+      const now = after.get(id);
+      if (!now) {
+        n++;
+        continue;
+      }
+      if (
+        now.plantModelName !== was.plantModelName ||
+        (now.containerType ?? null) !== (was.containerType ?? null)
+      ) {
+        n++;
+      }
+    }
+    return n;
+  }, [base, staged]);
 
   const selected = useMemo(
     () => shown.placements?.find((p) => p.id === selectedId) ?? null,
@@ -281,13 +287,29 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     });
   }, [base, saveDraft]);
 
-  const undoOne = useCallback(
+  /** Drops one operation. "Undo remove" must not also revert a swap that
+   *  was made before it. */
+  const undoEdit = useCallback(
     (id: string, kind: DesignEdit["kind"]) => {
       setSavedEdits((saved) =>
         saved.filter((e) => !(e.id === id && e.kind === kind))
       );
       setEdits((prev) => {
         const list = prev.filter((e) => !(e.id === id && e.kind === kind));
+        saveDraft(applyEdits(base, list));
+        return list;
+      });
+    },
+    [base, saveDraft]
+  );
+
+  /** Reverts a plant entirely — what the change list's ✕ means, since a row
+   *  is the plant's whole change. */
+  const undoPlant = useCallback(
+    (id: string) => {
+      setSavedEdits((saved) => saved.filter((e) => e.id !== id));
+      setEdits((prev) => {
+        const list = prev.filter((e) => e.id !== id);
         saveDraft(applyEdits(base, list));
         return list;
       });
@@ -399,7 +421,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               selectedId={selectedId}
               undoLabel={undoLabel}
               unsavedCount={unsavedCount}
-              onUndoOne={undoOne}
+              onUndoPlant={undoPlant}
               onSelectChange={(id) => {
                 setSelectedId(id);
                 setPicking(false);
@@ -429,7 +451,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               }}
               onUndelete={() => {
                 if (!selectedId) return;
-                undoOne(selectedId, "delete");
+                undoEdit(selectedId, "delete");
               }}
             />
           }
@@ -462,8 +484,8 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
                 }`}
               />
               <span className="text-sm text-ink">
-                {edits.length > 0
-                  ? `${edits.length} unpublished change${edits.length === 1 ? "" : "s"}`
+                {changedPlantCount > 0
+                  ? `${changedPlantCount} plant${changedPlantCount === 1 ? "" : "s"} changed`
                   : "Draft in progress"}
               </span>
               <span className="text-xs text-faint">
@@ -539,7 +561,7 @@ function EditorPanel({
   selectedId,
   undoLabel,
   unsavedCount,
-  onUndoOne,
+  onUndoPlant,
   onSelectChange,
   dirty,
   saveState,
@@ -559,7 +581,7 @@ function EditorPanel({
   selectedId: string | null;
   undoLabel: string | null;
   unsavedCount: number;
-  onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
+  onUndoPlant: (id: string) => void;
   onSelectChange: (id: string) => void;
   dirty: boolean;
   saveState: "idle" | "saving" | "saved";
@@ -585,7 +607,7 @@ function EditorPanel({
           selectedId={selectedId}
           undoLabel={undoLabel}
           unsavedCount={unsavedCount}
-          onUndoOne={onUndoOne}
+          onUndoPlant={onUndoPlant}
           onSelect={onSelectChange}
         />
       </div>
@@ -728,7 +750,7 @@ function EditorPanel({
         selectedId={selectedId}
         undoLabel={undoLabel}
         unsavedCount={unsavedCount}
-        onUndoOne={onUndoOne}
+        onUndoPlant={onUndoPlant}
         onSelect={onSelectChange}
       />
     </div>
@@ -742,7 +764,7 @@ function ChangeList({
   selectedId,
   undoLabel,
   unsavedCount,
-  onUndoOne,
+  onUndoPlant,
   onSelect,
 }: {
   changes: ChangeRow[];
@@ -750,7 +772,7 @@ function ChangeList({
   /** Non-null when there's something ⌘Z would take back. */
   undoLabel: string | null;
   unsavedCount: number;
-  onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
+  onUndoPlant: (id: string) => void;
   onSelect: (id: string) => void;
 }) {
   // Still render for unsaved work — otherwise Undo would vanish exactly
@@ -769,8 +791,7 @@ function ChangeList({
       </div>
       {unsavedCount > 0 && (
         <p className="border-t border-rule/60 px-4 py-2 text-xs text-muted">
-          {unsavedCount} unsaved change{unsavedCount === 1 ? "" : "s"} — press
-          Save changes to record {unsavedCount === 1 ? "it" : "them"} here.
+          Unsaved changes — press Save changes to record them here.
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -799,7 +820,7 @@ function ChangeList({
             </button>
             <button
               type="button"
-              onClick={() => onUndoOne(c.id, c.kind)}
+              onClick={() => onUndoPlant(c.id)}
               aria-label={`Undo ${c.from} ${c.to}`}
               title="Undo this change"
               className="shrink-0 px-1 text-xs text-faint transition hover:text-ink"
