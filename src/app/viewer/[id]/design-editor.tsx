@@ -578,6 +578,10 @@ function designsDiffer(a: ProjectFileJSON, b: ProjectFileJSON): boolean {
   return false;
 }
 
+// One button shape for the panel's actions.
+const ACTION =
+  "w-full rounded-lg px-3 py-2 text-[13px] font-semibold transition";
+
 /* ── The panel that replaces the rail ─────────────────────────────────── */
 
 type ChangeRow = {
@@ -742,43 +746,57 @@ function EditorPanel({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 p-4">
-        <button
-          type="button"
-          onClick={onPick}
-          disabled={staged}
-          className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-2 text-[13px] font-semibold text-ink transition enabled:hover:bg-card-hover disabled:opacity-40"
-        >
-          Replace plant
-        </button>
-        {/* One slot, one action, and its own way back — which is why the
-            separate "Keep this plant" screen is gone. */}
-        <button
-          type="button"
-          onClick={staged ? onUndelete : onDelete}
-          className={`rounded-lg px-3 py-2 text-[13px] font-semibold transition ${
-            staged
-              ? "border border-rule-strong bg-paper-deep text-ink hover:bg-card-hover"
-              : "text-clay hover:bg-clay/[0.08]"
-          }`}
-        >
-          {staged ? "Undo remove" : "Remove from design"}
-        </button>
-        {/* Saves the whole draft, not just this plant — but this is where
-            the designer's hands already are. Present in every state: a
-            removal you can't save from is a dead end. */}
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={!dirty || saveState === "saving"}
-          className="mt-1 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:bg-paper-deep disabled:text-faint"
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "saved" && !dirty
-              ? "Saved"
-              : "Save changes"}
-        </button>
+      {/* One shape for all three — same height, same radius, same width —
+          with colour carrying the meaning instead of the box. Before this
+          it went boxed, bare text, boxed, which read as three unrelated
+          things rather than two actions and a commit. */}
+      <div className="p-4">
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={onPick}
+            disabled={staged}
+            className={`${ACTION} border border-rule-strong bg-card-hover text-ink enabled:hover:border-accent/60 enabled:hover:bg-card disabled:opacity-40`}
+          >
+            Replace plant
+          </button>
+          {/* One slot, one action, and its own way back — which is why the
+              separate "Keep this plant" screen is gone. */}
+          <button
+            type="button"
+            onClick={staged ? onUndelete : onDelete}
+            className={`${ACTION} ${
+              staged
+                ? "border border-rule-strong bg-card-hover text-ink hover:border-accent/60 hover:bg-card"
+                : "border border-clay/35 text-clay hover:border-clay/60 hover:bg-clay/[0.06]"
+            }`}
+          >
+            {staged ? "Undo remove" : "Remove from design"}
+          </button>
+        </div>
+
+        {/* The commit sits apart from the two plant actions. Saves the whole
+            draft, not just this plant — but this is where the designer's
+            hands already are. Present in every state: a removal you can't
+            save from is a dead end. */}
+        <div className="mt-3 border-t border-rule pt-3">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!dirty || saveState === "saving"}
+            className={`${ACTION} w-full ${
+              dirty && saveState !== "saving"
+                ? "border border-transparent bg-accent text-[#f5eeda] hover:bg-accent-bright"
+                : "border border-rule bg-transparent text-faint"
+            }`}
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "saved" && !dirty
+                ? "Saved"
+                : "Save changes"}
+          </button>
+        </div>
       </div>
 
       <ChangeList
