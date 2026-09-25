@@ -138,7 +138,21 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         ? "Undo replace"
         : "Undo size change"
     : null;
-  const unsavedCount = edits.length > savedEdits.length ? 1 : 0;
+
+
+  // What's recorded, as a design — the thing "unsaved" is measured against.
+  const savedDesign = useMemo(
+    () => applyEdits(base, savedEdits),
+    [base, savedEdits]
+  );
+
+  // There is something to save only when the design actually DIFFERS.
+  // Counting edit entries said yes to a size changed and changed straight
+  // back, leaving Save lit with nothing behind it.
+  const hasUnsaved = useMemo(
+    () => designsDiffer(staged, savedDesign),
+    [staged, savedDesign]
+  );
 
   // Counted in PLANTS, not operations, so the bar agrees with the change
   // list: swapping a plant and then picking a different size for it is one
@@ -389,7 +403,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     });
   }
 
-  const dirty = edits.length > 0 || draftDesign != null;
+  // Net, not per-operation: reverting everything leaves nothing to publish
+  // or discard, so the bar goes back to its hint.
+  const dirty = changedPlantCount > 0 || draftDesign != null;
 
   return (
     <div className="flex h-dvh flex-col">
@@ -420,13 +436,13 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               changes={changes}
               selectedId={selectedId}
               undoLabel={undoLabel}
-              unsavedCount={unsavedCount}
+              unsavedCount={hasUnsaved ? 1 : 0}
               onUndoPlant={undoPlant}
               onSelectChange={(id) => {
                 setSelectedId(id);
                 setPicking(false);
               }}
-              dirty={dirty && saveState !== "saved"}
+              dirty={hasUnsaved}
               saveState={saveState}
               onSave={saveNow}
               picking={picking}
@@ -540,6 +556,26 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
       )}
     </div>
   );
+}
+
+/**
+ * Do two designs differ in any way an editor can change?
+ *
+ * Model and container only: scale follows from the container, and position
+ * isn't editable here yet.
+ */
+function designsDiffer(a: ProjectFileJSON, b: ProjectFileJSON): boolean {
+  const left = a.placements ?? [];
+  const right = b.placements ?? [];
+  if (left.length !== right.length) return true;
+  const byId = new Map(right.map((p) => [p.id, p]));
+  for (const p of left) {
+    const q = byId.get(p.id);
+    if (!q) return true;
+    if (q.plantModelName !== p.plantModelName) return true;
+    if ((q.containerType ?? null) !== (p.containerType ?? null)) return true;
+  }
+  return false;
 }
 
 /* ── The panel that replaces the rail ─────────────────────────────────── */
