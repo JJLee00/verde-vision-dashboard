@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  createVersion,
+  currentPublishedVersion,
+  diffPlants,
+  summarize,
+} from "@/lib/versions";
+import type { ProjectFileJSON } from "@/lib/viewer/types";
 
 /**
  * Ingest endpoint for the Verde Vision Pro app.
@@ -244,6 +251,38 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Record this sync as a version, so the design has a history instead of
+  // being overwritten in place (migration-015). `projects.project_json`
+  // above still holds the current published design and every existing
+  // reader keeps working unchanged.
+  //
+  // Deliberately after the update and deliberately silent on failure: on a
+  // database that hasn't run migration-015 there is no project_versions
+  // table, and a designer standing in a yard must not have their sync
+  // rejected over a history row. createVersion() returns null there.
+  let syncedRevision: number | null = null;
+  if (projectJson) {
+    const previous = await currentPublishedVersion(supabase, project.id);
+    const version = await createVersion(supabase, {
+      projectId: project.id,
+      source: "headset",
+      json: projectJson as ProjectFileJSON,
+      // Headset syncs publish immediately. The designer was standing in the
+      // yard when they made the change; there is nothing to review.
+      status: "published",
+      summary: summarize(
+        diffPlants(previous?.project_json ?? null, projectJson as ProjectFileJSON)
+      ),
+    });
+    if (version) {
+      await supabase
+        .from("projects")
+        .update({ current_version_id: version.id })
+        .eq("id", project.id);
+      syncedRevision = version.revision;
+    }
+  }
+
   // anchor_paths lives in its own update: the photos are already stored,
   // and a project synced before migration-010 (no column yet) shouldn't
   // fail the whole request — just skip recording the paths.
@@ -257,5 +296,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, project_id: project.id });
+  // `revision` is null on a database that hasn't run migration-015; the app
+  // treats that as "no version history" and simply doesn't ask for changes.
+  return NextResponse.json({
+    ok: true,
+    project_id: project.id,
+    revision: syncedRevision,
+  });
 }
