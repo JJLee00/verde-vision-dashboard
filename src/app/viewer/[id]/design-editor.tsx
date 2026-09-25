@@ -330,7 +330,21 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         router.push("/dashboard/projects/fixture?published=1");
         return;
       }
-      const result = await publishRevision(projectId, staged);
+      let result;
+      try {
+        result = await publishRevision(projectId, staged);
+      } catch (err) {
+        // A server action that THROWS rather than returning left the button
+        // stuck on "Publishing…" with nothing said — indistinguishable from
+        // a button that does nothing.
+        console.error("[publish] server action threw", err);
+        setError(
+          err instanceof Error
+            ? `Publish failed: ${err.message}`
+            : "Publish failed — check the server logs."
+        );
+        return;
+      }
       if (!result.ok) {
         setError(result.error);
         return;
@@ -417,11 +431,25 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         />
       </div>
 
+      {editing && error && (
+        <div className="flex items-start gap-3 border-t border-clay/40 bg-clay/[0.08] px-4 py-3">
+          <span className="mt-0.5 text-sm font-semibold text-clay">
+            Couldn&apos;t publish
+          </span>
+          <span className="flex-1 text-sm text-clay">{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            aria-label="Dismiss"
+            className="shrink-0 text-sm text-clay/70 transition hover:text-clay"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {editing && (
         <div className="flex flex-wrap items-center gap-3 border-t border-rule bg-card px-4 py-2.5">
-          {error ? (
-            <span className="text-sm text-clay">{error}</span>
-          ) : dirty ? (
+          {dirty ? (
             <>
               <span
                 className={`h-[7px] w-[7px] rounded-full ${
