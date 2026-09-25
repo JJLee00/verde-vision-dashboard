@@ -230,6 +230,12 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   const saveNow = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     setSavedEdits(edits);
+    // Saving finishes with that plant, so the panel goes back to the list —
+    // which puts the row you just recorded in front of you. A greyed-out
+    // button was weak confirmation; the record itself is the strong one.
+    // Same shape as Publish, which also leaves the context it commits.
+    setSelectedId(null);
+    setPicking(false);
     if (projectId === "fixture") {
       setSaveState("saved");
       return;
