@@ -114,6 +114,8 @@ export function LivingBlueprint({
     saved3d: Cam;
   } | null>(null);
 
+  const hoverRef = useRef<string | null>(null);
+
   const onSelectRef = useRef(onSelectInstance);
   useEffect(() => {
     onSelectRef.current = onSelectInstance;
@@ -383,11 +385,20 @@ export function LivingBlueprint({
       // until the revision is published — so the plan doesn't silently
       // rearrange itself and the delete is one click to undo.
       const ghost = st.deletedIds.has(inst.id);
+      // Nothing else says a plant is clickable, or WHICH one a click would
+      // land on — the hit radius is generous and the symbols crowd.
+      const hover = st.editing && !sel && hoverRef.current === inst.id;
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
-      const stroke = ghost ? CLAY : sel ? GOLD : verde(0.85);
-      const fill = ghost ? "rgba(0,0,0,0)" : sel ? gold(0.14) : verde(0.08);
-      const lw = sel ? 2 : 1.4;
+      const stroke = ghost ? CLAY : sel || hover ? GOLD : verde(0.85);
+      const fill = ghost
+        ? "rgba(0,0,0,0)"
+        : sel
+          ? gold(0.14)
+          : hover
+            ? gold(0.07)
+            : verde(0.08);
+      const lw = sel ? 2 : hover ? 1.8 : 1.4;
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
       const { x, z } = inst;
@@ -782,9 +793,14 @@ export function LivingBlueprint({
       dragDist = 0;
       cv!.style.cursor = "grabbing";
     };
+    const onLeave = () => {
+      hoverRef.current = null;
+    };
     const onMove = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) {
-        cv!.style.cursor = nearest(e) ? "pointer" : "grab";
+        const over = nearest(e);
+        cv!.style.cursor = over ? "pointer" : "grab";
+        hoverRef.current = over?.id ?? null;
         return;
       }
       const prev = pointers.get(e.pointerId)!;
@@ -833,6 +849,7 @@ export function LivingBlueprint({
     if (!embed) {
       cv.addEventListener("pointerdown", onDown);
       cv.addEventListener("pointermove", onMove);
+      cv.addEventListener("pointerleave", onLeave);
       cv.addEventListener("pointerup", onUp);
       cv.addEventListener("pointercancel", onCancel);
       cv.addEventListener("wheel", onWheel, { passive: false });
@@ -868,6 +885,7 @@ export function LivingBlueprint({
       ro.disconnect();
       cv.removeEventListener("pointerdown", onDown);
       cv.removeEventListener("pointermove", onMove);
+      cv.removeEventListener("pointerleave", onLeave);
       cv.removeEventListener("pointerup", onUp);
       cv.removeEventListener("pointercancel", onCancel);
       cv.removeEventListener("wheel", onWheel);
@@ -897,6 +915,12 @@ export function LivingBlueprint({
         role="img"
         aria-label={`Interactive plan of ${projectName}. Drag to orbit, tap a plant to highlight that species.`}
       />
+      {!embed && editing && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 border-2 border-accent/70"
+        />
+      )}
       {!embed && onToggleEditing && (
         <button
           type="button"
@@ -916,7 +940,7 @@ export function LivingBlueprint({
           <p className="pointer-events-none absolute right-3.5 top-3 text-right font-mono text-[11px] leading-relaxed text-faint">
             drag to orbit · scroll to zoom
             <br />
-            tap a plant to find its kind
+            {editing ? "click a plant to edit it" : "tap a plant to find its kind"}
           </p>
           <p className="pointer-events-none absolute bottom-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
             {projectName} · drawn to scale from headset data · Verde Vision
