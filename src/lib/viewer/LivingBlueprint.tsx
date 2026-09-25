@@ -69,8 +69,14 @@ export type LivingBlueprintProps = {
   onSelectInstance?: (id: string | null) => void;
   /** Absent means the Edit control isn't offered at all. */
   onToggleEditing?: () => void;
-  /** Replaces the plant-material rail while editing. */
+  /** Sits above the plant-material rail while editing. */
   editorPanel?: React.ReactNode;
+  /** The panel needs the whole column (the replace picker does). */
+  editorFullColumn?: boolean;
+  /** Species of the selected plant — highlights its row while editing. */
+  selectedModel?: string | null;
+  /** Rail row clicked while editing. */
+  onSelectSpecies?: (model: string) => void;
 };
 
 const EMPTY_IDS: Set<string> = new Set();
@@ -90,6 +96,9 @@ export function LivingBlueprint({
   onSelectInstance,
   onToggleEditing,
   editorPanel,
+  editorFullColumn = false,
+  selectedModel = null,
+  onSelectSpecies,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -98,11 +107,20 @@ export function LivingBlueprint({
   );
 
   const [mode, setMode] = useState<"3d" | "plan">("3d");
-  const [growth, setGrowth] = useState<"young" | "mature">("mature");
+  // Plants always draw at planting size. The mature/at-planting toggle was
+  // removed Sep 2026 — a stylized 2D plan barely shows the difference, and
+  // the real mature view is the one in the headset.
   const [selected, setSelected] = useState<string | null>(null);
   // Stable empty set so the rAF mirror below doesn't see a new object every
   // render when nothing is staged for deletion.
   const deleted = useMemo(() => deletedIds ?? EMPTY_IDS, [deletedIds]);
+
+  type Cam = { az: number; el: number; dist: number; fov: number };
+  const camRef = useRef<{
+    cur: Cam & { zoom: number; planT: number; growth: number };
+    tgt: Cam & { zoom: number; planT: number; growth: number };
+    saved3d: Cam;
+  } | null>(null);
 
   const onSelectRef = useRef(onSelectInstance);
   useEffect(() => {
@@ -116,31 +134,32 @@ export function LivingBlueprint({
   // Mirror interactive state into refs so the rAF loop never restarts.
   const stateRef = useRef({
     mode,
-    growth,
     selected,
     editing,
     selectedId,
+    selectedModel,
     deletedIds: deleted,
   });
   useEffect(() => {
     stateRef.current = {
       mode,
-      growth,
       selected,
       editing,
       selectedId,
+      selectedModel,
       deletedIds: deleted,
     };
-  }, [mode, growth, selected, editing, selectedId, deleted]);
+  }, [mode, selected, editing, selectedId, selectedModel, deleted]);
 
   const selectSpecies = useCallback((model: string | null) => {
     setSelected((prev) => (prev === model ? null : model));
   }, []);
 
   useEffect(() => {
-    if (!selected) return;
-    rowRefs.current.get(selected)?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
+    const model = editing ? selectedModel : selected;
+    if (!model) return;
+    rowRefs.current.get(model)?.scrollIntoView({ block: "nearest" });
+  }, [selected, selectedModel, editing]);
 
   /* ── Canvas renderer ──────────────────────────────────────────── */
   useEffect(() => {
@@ -157,9 +176,20 @@ export function LivingBlueprint({
     const [cx, cz] = scene.center;
     const V3D = { az: -30, el: 30, dist: R * 2.6, fov: 40 };
     const VPLAN = { az: 0, el: 88.5, dist: R * 10.2, fov: 10 };
-    const cur = { ...V3D, zoom: 1, planT: 0, growth: 1 };
-    const tgt = { ...V3D, zoom: 1, planT: 0, growth: 1 };
-    let saved3d = { ...V3D };
+    // The camera lives OUTSIDE this effect. Editing a design hands down a new
+    // `project`, which rebuilds `scene`, which re-runs this whole effect — and
+    // a camera created in here would snap back to its opening angle on every
+    // size tap. It survives across rebuilds and is only created once.
+    if (!camRef.current) {
+      camRef.current = {
+        cur: { ...V3D, zoom: 1, planT: 0, growth: YOUNG_FACTOR },
+        tgt: { ...V3D, zoom: 1, planT: 0, growth: YOUNG_FACTOR },
+        saved3d: { ...V3D },
+      };
+    }
+    const cam = camRef.current;
+    const cur = cam.cur;
+    const tgt = cam.tgt;
     let lastMode: "3d" | "plan" = "3d";
 
     let W = 0;
@@ -364,10 +394,19 @@ export function LivingBlueprint({
       // until the revision is published — so the plan doesn't silently
       // rearrange itself and the delete is one click to undo.
       const ghost = st.deletedIds.has(inst.id);
+      const kin =
+        st.editing && !sel && st.selectedModel != null &&
+        st.selectedModel === inst.model;
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
-      const stroke = ghost ? CLAY : sel ? GOLD : verde(0.85);
-      const fill = ghost ? "rgba(0,0,0,0)" : sel ? gold(0.14) : verde(0.08);
+      const stroke = ghost ? CLAY : sel || kin ? GOLD : verde(0.85);
+      const fill = ghost
+        ? "rgba(0,0,0,0)"
+        : sel
+          ? gold(0.14)
+          : kin
+            ? gold(0.06)
+            : verde(0.08);
       const lw = sel ? 2 : 1.4;
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
@@ -829,12 +868,12 @@ export function LivingBlueprint({
       const m = stateRef.current.mode;
       if (m !== lastMode) {
         if (lastMode === "3d")
-          saved3d = { az: cur.az, el: cur.el, dist: cur.dist, fov: cur.fov };
-        Object.assign(tgt, m === "plan" ? VPLAN : saved3d);
+          cam.saved3d = { az: cur.az, el: cur.el, dist: cur.dist, fov: cur.fov };
+        Object.assign(tgt, m === "plan" ? VPLAN : cam.saved3d);
         tgt.planT = m === "plan" ? 1 : 0;
         lastMode = m;
       }
-      tgt.growth = stateRef.current.growth === "young" ? YOUNG_FACTOR : 1;
+      tgt.growth = YOUNG_FACTOR;
       for (const k of ["az", "el", "dist", "fov", "zoom", "planT", "growth"] as const) {
         cur[k] += (tgt[k] - cur[k]) * K;
         if (Math.abs(tgt[k] - cur[k]) < 0.0005) cur[k] = tgt[k];
@@ -878,6 +917,20 @@ export function LivingBlueprint({
         role="img"
         aria-label={`Interactive plan of ${projectName}. Drag to orbit, tap a plant to highlight that species.`}
       />
+      {!embed && onToggleEditing && (
+        <button
+          type="button"
+          onClick={onToggleEditing}
+          aria-pressed={editing}
+          className={`absolute left-3.5 top-3 rounded-lg border px-3.5 py-1.5 text-[13px] font-semibold shadow-[0_6px_18px_-10px_rgba(28,42,33,0.6)] transition ${
+            editing
+              ? "border-accent bg-accent text-[#f5eeda]"
+              : "border-rule-strong bg-card/90 text-ink backdrop-blur hover:bg-card"
+          }`}
+        >
+          {editing ? "Done editing" : "Edit design"}
+        </button>
+      )}
       {!embed && (
         <>
           <p className="pointer-events-none absolute right-3.5 top-3 text-right font-mono text-[11px] leading-relaxed text-faint">
@@ -930,38 +983,6 @@ export function LivingBlueprint({
               Plan
             </button>
           </div>
-          <div className="flex overflow-hidden rounded-lg border border-rule bg-card">
-            <button
-              type="button"
-              className={seg(growth === "young")}
-              aria-pressed={growth === "young"}
-              onClick={() => setGrowth("young")}
-            >
-              At planting
-            </button>
-            <button
-              type="button"
-              className={seg(growth === "mature")}
-              aria-pressed={growth === "mature"}
-              onClick={() => setGrowth("mature")}
-            >
-              Mature
-            </button>
-          </div>
-          {onToggleEditing && (
-            <button
-              type="button"
-              onClick={onToggleEditing}
-              aria-pressed={editing}
-              className={`rounded-lg border px-3.5 py-1.5 text-[13px] font-semibold transition ${
-                editing
-                  ? "border-accent bg-accent text-[#f5eeda]"
-                  : "border-rule bg-card text-muted hover:text-ink"
-              }`}
-            >
-              {editing ? "Done editing" : "Edit"}
-            </button>
-          )}
           {(documents?.blueprint || documents?.estimate) && (
             <div className="flex overflow-hidden rounded-lg border border-rule bg-card">
               {documents.blueprint && (
@@ -994,9 +1015,18 @@ export function LivingBlueprint({
 
         {/* rail — or the editor, while editing */}
         <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-rule bg-card/60 md:max-h-none md:w-[320px] md:border-l md:border-t-0">
-          {editing && editorPanel ? (
-            editorPanel
-          ) : (
+          {editing && editorPanel && (
+            <div
+              className={
+                editorFullColumn
+                  ? "flex min-h-0 flex-1 flex-col"
+                  : "shrink-0 border-b-2 border-rule-strong"
+              }
+            >
+              {editorPanel}
+            </div>
+          )}
+          {!(editing && editorFullColumn) && (
           <>
           <div className="border-b border-rule px-4 py-3">
             <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-faint">
@@ -1011,7 +1041,9 @@ export function LivingBlueprint({
               </p>
             )}
             {rail.rows.map((row) => {
-              const isSel = selected === row.model;
+              const isSel = editing
+                ? selectedModel === row.model
+                : selected === row.model;
               return (
                 <button
                   key={row.model}
@@ -1020,7 +1052,11 @@ export function LivingBlueprint({
                     if (el) rowRefs.current.set(row.model, el);
                     else rowRefs.current.delete(row.model);
                   }}
-                  onClick={() => selectSpecies(row.model)}
+                  onClick={() =>
+                    editing
+                      ? onSelectSpecies?.(row.model)
+                      : selectSpecies(row.model)
+                  }
                   aria-pressed={isSel}
                   className={`flex w-full items-center gap-3 border-b border-rule px-4 py-2.5 text-left transition ${
                     isSel ? "bg-gold/10" : "hover:bg-ink/[0.04]"
