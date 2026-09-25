@@ -51,6 +51,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   const [editing, setEditing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [edits, setEdits] = useState<DesignEdit[]>([]);
+  // The Changes list records what has been SAVED, not what is being fiddled
+  // with. Autosave deliberately doesn't touch this — only pressing Save
+  // changes commits an edit to the record.
+  const [savedEdits, setSavedEdits] = useState<DesignEdit[]>([]);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Drafts autosave, but silently — which read as "there's no way to save".
@@ -101,7 +105,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
       return size ? `${size.size} ${plant.name}` : plant.name;
     };
 
-    return edits.flatMap((e): ChangeRow[] => {
+    return savedEdits.flatMap((e): ChangeRow[] => {
       const was = state.get(e.id);
       const from = describe(was);
 
@@ -139,9 +143,11 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         },
       ];
     });
-  }, [edits, base]);
+  }, [savedEdits, base]);
 
-  const last = changes.at(-1) ?? null;
+  // Undo still walks the live stack — otherwise an unsaved mistake would
+  // have no way back at all.
+  const last = edits.at(-1) ?? null;
   const undoLabel = last
     ? last.kind === "delete"
       ? "Undo remove"
@@ -149,6 +155,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         ? "Undo replace"
         : "Undo size change"
     : null;
+  const unsavedCount = edits.length - savedEdits.length;
 
   const selected = useMemo(
     () => shown.placements?.find((p) => p.id === selectedId) ?? null,
@@ -222,12 +229,13 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   /** Skip the debounce — the designer asked for it now. */
   const saveNow = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    setSavedEdits(edits);
     if (projectId === "fixture") {
       setSaveState("saved");
       return;
     }
     void writeDraft(staged);
-  }, [projectId, writeDraft, staged]);
+  }, [projectId, writeDraft, staged, edits]);
 
   const edit = useCallback(
     (next: DesignEdit) => {
@@ -253,14 +261,25 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   const undoLast = useCallback(() => {
     setEdits((prev) => {
       if (prev.length === 0) return prev;
+      const dropped = prev[prev.length - 1];
       const list = prev.slice(0, -1);
       saveDraft(applyEdits(base, list));
+      // If the undone edit had already been recorded, it leaves the list
+      // too — a row you can't get back to isn't a record, it's a lie.
+      setSavedEdits((saved) =>
+        saved.filter(
+          (e) => !(e.id === dropped.id && e.kind === dropped.kind)
+        )
+      );
       return list;
     });
   }, [base, saveDraft]);
 
   const undoOne = useCallback(
     (id: string, kind: DesignEdit["kind"]) => {
+      setSavedEdits((saved) =>
+        saved.filter((e) => !(e.id === id && e.kind === kind))
+      );
       setEdits((prev) => {
         const list = prev.filter((e) => !(e.id === id && e.kind === kind));
         saveDraft(applyEdits(base, list));
@@ -289,6 +308,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
 
   function discard() {
     setEdits([]);
+    setSavedEdits([]);
     setSelectedId(null);
     setPicking(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -309,6 +329,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         return;
       }
       setEdits([]);
+      setSavedEdits([]);
       setSelectedId(null);
       setEditing(false);
       router.refresh();
@@ -346,6 +367,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               changes={changes}
               selectedId={selectedId}
               undoLabel={undoLabel}
+              unsavedCount={unsavedCount}
               onUndoLast={undoLast}
               onUndoOne={undoOne}
               onSelectChange={(id) => {
@@ -470,6 +492,7 @@ function EditorPanel({
   changes,
   selectedId,
   undoLabel,
+  unsavedCount,
   onUndoLast,
   onUndoOne,
   onSelectChange,
@@ -490,6 +513,7 @@ function EditorPanel({
   changes: ChangeRow[];
   selectedId: string | null;
   undoLabel: string | null;
+  unsavedCount: number;
   onUndoLast: () => void;
   onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
   onSelectChange: (id: string) => void;
@@ -516,6 +540,7 @@ function EditorPanel({
           changes={changes}
           selectedId={selectedId}
           undoLabel={undoLabel}
+          unsavedCount={unsavedCount}
           onUndoLast={onUndoLast}
           onUndoOne={onUndoOne}
           onSelect={onSelectChange}
@@ -656,6 +681,7 @@ function EditorPanel({
         changes={changes}
         selectedId={selectedId}
         undoLabel={undoLabel}
+        unsavedCount={unsavedCount}
         onUndoLast={onUndoLast}
         onUndoOne={onUndoOne}
         onSelect={onSelectChange}
@@ -670,6 +696,7 @@ function ChangeList({
   changes,
   selectedId,
   undoLabel,
+  unsavedCount,
   onUndoLast,
   onUndoOne,
   onSelect,
@@ -677,11 +704,14 @@ function ChangeList({
   changes: ChangeRow[];
   selectedId: string | null;
   undoLabel: string | null;
+  unsavedCount: number;
   onUndoLast: () => void;
   onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
   onSelect: (id: string) => void;
 }) {
-  if (changes.length === 0) return null;
+  // Still render for unsaved work — otherwise Undo would vanish exactly
+  // when a mistake has just been made and nothing recorded yet.
+  if (changes.length === 0 && unsavedCount === 0) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t border-rule">
@@ -702,6 +732,12 @@ function ChangeList({
           </button>
         )}
       </div>
+      {unsavedCount > 0 && (
+        <p className="border-t border-rule/60 px-4 py-2 text-xs text-muted">
+          {unsavedCount} unsaved change{unsavedCount === 1 ? "" : "s"} — press
+          Save changes to record {unsavedCount === 1 ? "it" : "them"} here.
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {changes.map((c) => (
           <div
