@@ -18,7 +18,7 @@ import {
 } from "react";
 import Link from "next/link";
 import type { ProjectFileJSON } from "./types";
-import { buildScene, buildRail, YOUNG_FACTOR, type Instance } from "./scene";
+import { buildScene, buildRail, type Instance } from "./scene";
 
 /* ── Brand-locked palette (matches globals.css / the marketing site).
       The viewer is a Verde Vision document — it does not follow the OS
@@ -99,9 +99,14 @@ export function LivingBlueprint({
   );
 
   const [mode, setMode] = useState<"3d" | "plan">("3d");
-  // Plants always draw at planting size. The mature/at-planting toggle was
-  // removed Sep 2026 — a stylized 2D plan barely shows the difference, and
-  // the real mature view is the one in the headset.
+  // Symbols draw at MATURE spread, which is what a landscape plan is for:
+  // the diameter is how you catch two trees planted twelve feet apart that
+  // both reach twenty. It also means a 5 gal and a 24" Box of the same tree
+  // draw identically — correct, because they become the same tree. The
+  // container belongs in the callout and the schedule, not in the symbol.
+  //
+  // The mature/at-planting toggle was removed Sep 2026; pinning everything
+  // to 0.45 of mature, which is what replaced it, was neither convention.
   const [selected, setSelected] = useState<string | null>(null);
   // Stable empty set so the rAF mirror below doesn't see a new object every
   // render when nothing is staged for deletion.
@@ -173,8 +178,8 @@ export function LivingBlueprint({
     // size tap. It survives across rebuilds and is only created once.
     if (!camRef.current) {
       camRef.current = {
-        cur: { ...V3D, zoom: 1, planT: 0, growth: YOUNG_FACTOR },
-        tgt: { ...V3D, zoom: 1, planT: 0, growth: YOUNG_FACTOR },
+        cur: { ...V3D, zoom: 1, planT: 0, growth: 1 },
+        tgt: { ...V3D, zoom: 1, planT: 0, growth: 1 },
         saved3d: { ...V3D },
       };
     }
@@ -583,7 +588,11 @@ export function LivingBlueprint({
       if (labelA > 0.45) {
         ctx!.font = "600 10px ui-monospace, Menlo, monospace";
         ctx!.fillStyle = sel ? GOLD : ink(0.6 * labelA);
-        ctx!.fillText(meta.code, c0[0] + ftPx(x, z, symR) * 0.72 + 4, c0[1] - 4);
+        const label =
+          sel && inst.containerType
+            ? `${meta.code} · ${inst.containerType}`
+            : meta.code;
+        ctx!.fillText(label, c0[0] + ftPx(x, z, symR) * 0.72 + 4, c0[1] - 4);
       }
       ctx!.setLineDash([]);
       hits.push({
@@ -870,7 +879,7 @@ export function LivingBlueprint({
         tgt.planT = m === "plan" ? 1 : 0;
         lastMode = m;
       }
-      tgt.growth = YOUNG_FACTOR;
+      tgt.growth = 1;
       for (const k of ["az", "el", "dist", "fov", "zoom", "planT", "growth"] as const) {
         cur[k] += (tgt[k] - cur[k]) * K;
         if (Math.abs(tgt[k] - cur[k]) < 0.0005) cur[k] = tgt[k];
