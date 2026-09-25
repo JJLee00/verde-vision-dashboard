@@ -66,14 +66,19 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [edits]
   );
 
-  // What the canvas draws: swaps and resizes applied, deletes still present
-  // so they can be drawn as outlines.
-  const shown = useMemo(
+  // What would be published — and now also exactly what the canvas draws.
+  // A removed plant leaves the drawing immediately: it used to linger as a
+  // dashed outline, which made the plan disagree with the estimate, and the
+  // ghost's whole job (seeing it, getting it back) is done better by the
+  // change list, ⌘Z, and Undo remove in the panel.
+  const staged = useMemo(() => applyEdits(base, edits), [base, edits]);
+
+  // Deletes NOT applied — only so the panel can keep showing a plant you
+  // just removed, with its way back, after it has left the drawing.
+  const withoutDeletes = useMemo(
     () => applyEdits(base, edits.filter((e) => e.kind !== "delete")),
     [base, edits]
   );
-  // What would actually be published.
-  const staged = useMemo(() => applyEdits(base, edits), [base, edits]);
 
   const before = useMemo(
     () => plantsSubtotal(base, viewer.priceOverrides ?? {}),
@@ -178,8 +183,8 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   }, [base, staged]);
 
   const selected = useMemo(
-    () => shown.placements?.find((p) => p.id === selectedId) ?? null,
-    [shown, selectedId]
+    () => withoutDeletes.placements?.find((p) => p.id === selectedId) ?? null,
+    [withoutDeletes, selectedId]
   );
 
   const writeDraft = useCallback(
@@ -412,10 +417,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
       <div className="min-h-0 flex-1">
         <LivingBlueprint
           {...viewer}
-          project={shown}
+          project={staged}
           editing={editing}
           selectedId={selectedId}
-          deletedIds={deletedIds}
           onSelectInstance={(id) => {
             setSelectedId(id);
             setPicking(false);

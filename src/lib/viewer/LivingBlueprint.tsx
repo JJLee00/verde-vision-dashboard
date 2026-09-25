@@ -64,8 +64,6 @@ export type LivingBlueprintProps = {
   // selection and the ghosts, but owns none of the edit state.
   editing?: boolean;
   selectedId?: string | null;
-  /** Staged for deletion — drawn as a dashed outline until published. */
-  deletedIds?: Set<string>;
   onSelectInstance?: (id: string | null) => void;
   /** Absent means the Edit control isn't offered at all. */
   onToggleEditing?: () => void;
@@ -74,7 +72,7 @@ export type LivingBlueprintProps = {
   editorPanel?: React.ReactNode;
 };
 
-const EMPTY_IDS: Set<string> = new Set();
+
 
 export function LivingBlueprint({
   project,
@@ -87,7 +85,6 @@ export function LivingBlueprint({
   embed = false,
   editing = false,
   selectedId = null,
-  deletedIds,
   onSelectInstance,
   onToggleEditing,
   editorPanel,
@@ -108,9 +105,6 @@ export function LivingBlueprint({
   // The mature/at-planting toggle was removed Sep 2026; pinning everything
   // to 0.45 of mature, which is what replaced it, was neither convention.
   const [selected, setSelected] = useState<string | null>(null);
-  // Stable empty set so the rAF mirror below doesn't see a new object every
-  // render when nothing is staged for deletion.
-  const deleted = useMemo(() => deletedIds ?? EMPTY_IDS, [deletedIds]);
 
   type Cam = { az: number; el: number; dist: number; fov: number };
   const camRef = useRef<{
@@ -136,7 +130,6 @@ export function LivingBlueprint({
     selected,
     editing,
     selectedId,
-    deletedIds: deleted,
   });
   useEffect(() => {
     stateRef.current = {
@@ -144,9 +137,8 @@ export function LivingBlueprint({
       selected,
       editing,
       selectedId,
-      deletedIds: deleted,
     };
-  }, [mode, selected, editing, selectedId, deleted]);
+  }, [mode, selected, editing, selectedId]);
 
   const selectSpecies = useCallback((model: string | null) => {
     setSelected((prev) => (prev === model ? null : model));
@@ -386,23 +378,13 @@ export function LivingBlueprint({
       const sel = st.editing
         ? st.selectedId === inst.id
         : st.selected === inst.model;
-      // A plant staged for deletion stays on the plan, drawn as an outline,
-      // until the revision is published — so the plan doesn't silently
-      // rearrange itself and the delete is one click to undo.
-      const ghost = st.deletedIds.has(inst.id);
       // Nothing else says a plant is clickable, or WHICH one a click would
       // land on — the hit radius is generous and the symbols crowd.
       const hover = st.editing && !sel && hoverRef.current === inst.id;
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
-      const stroke = ghost ? CLAY : sel || hover ? GOLD : verde(0.85);
-      const fill = ghost
-        ? "rgba(0,0,0,0)"
-        : sel
-          ? gold(0.14)
-          : hover
-            ? gold(0.07)
-            : verde(0.08);
+      const stroke = sel || hover ? GOLD : verde(0.85);
+      const fill = sel ? gold(0.14) : hover ? gold(0.07) : verde(0.08);
       const lw = sel ? 2 : hover ? 1.8 : 1.4;
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
@@ -583,7 +565,6 @@ export function LivingBlueprint({
         ctx!.arc(c0[0], c0[1], 1.6, 0, 7);
         ctx!.fill();
       }
-      if (ghost) ctx!.setLineDash([4, 3]);
       const labelA = Math.max(t, sel ? 1 : 0);
       if (labelA > 0.45) {
         ctx!.font = "600 10px ui-monospace, Menlo, monospace";
