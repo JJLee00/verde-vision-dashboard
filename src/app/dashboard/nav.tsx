@@ -39,6 +39,16 @@ const items = [
     ),
   },
   {
+    href: "/dashboard/company",
+    label: "Company",
+    icon: (
+      <>
+        <path d="M3.5 21h17M5 21V8.5L12 4l7 4.5V21" />
+        <path d="M9.5 21v-5h5v5M9.5 11h1.5M13 11h1.5" />
+      </>
+    ),
+  },
+  {
     href: "/dashboard/account",
     label: "Account",
     icon: (

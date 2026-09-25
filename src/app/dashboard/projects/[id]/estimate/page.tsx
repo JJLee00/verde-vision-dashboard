@@ -36,6 +36,7 @@ type PageData = {
   clientId: string;
   items: EstimateItem[];
   settings: EstimateSettings;
+  terms: string;
   savedItems: SavedItem[];
   canEdit: boolean;
   isOwner: boolean;
@@ -58,6 +59,7 @@ function buildFixtureData(): PageData {
     clientId: "fixture",
     items: FIXTURE_ITEMS,
     settings: FIXTURE_SETTINGS,
+    terms: "",
     savedItems: FIXTURE_SAVED_ITEMS,
     canEdit: false,
     isOwner: true,
@@ -86,7 +88,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
         .single(),
       supabase
         .from("projects")
-        .select("tax_rate, deposit_percent, estimate_detail")
+        .select("tax_rate, deposit_percent, estimate_detail, estimate_terms")
         .eq("id", id)
         .single(),
       supabase
@@ -124,6 +126,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     clientId: base.client_id,
     items: sortItems((itemsRes.data ?? []).map(fromRow)),
     settings,
+    terms: settingsRes.data?.estimate_terms ?? "",
     // Pre-015 the price book still answers, just without the new categories.
     savedItems: (savedRes.data ?? []).map((r) => ({
       id: r.id as string,
@@ -197,6 +200,7 @@ export default async function EstimatePage({
         projectId={data.id}
         initialItems={data.items}
         initialSettings={data.settings}
+        initialTerms={data.terms}
         savedItems={data.savedItems}
         canEdit={data.canEdit}
         isOwner={data.isOwner}

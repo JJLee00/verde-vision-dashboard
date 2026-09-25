@@ -56,6 +56,7 @@ export function EstimateBuilder({
   projectId,
   initialItems,
   initialSettings,
+  initialTerms,
   savedItems,
   canEdit,
   isOwner,
@@ -63,6 +64,7 @@ export function EstimateBuilder({
   projectId: string;
   initialItems: EstimateItem[];
   initialSettings: EstimateSettings;
+  initialTerms: string;
   savedItems: SavedItem[];
   canEdit: boolean;
   isOwner: boolean;
@@ -229,6 +231,19 @@ export function EstimateBuilder({
     setItems(renumbered);
   }
 
+  async function saveTerms(value: string) {
+    setError(null);
+    const { error: err } = await createClient()
+      .from("projects")
+      .update({ estimate_terms: value.trim() || null })
+      .eq("id", projectId);
+    if (err) {
+      setError("Could not save the terms for this estimate.");
+      return;
+    }
+    flash("estimate_terms");
+  }
+
   async function saveSetting(
     column: "tax_rate" | "deposit_percent" | "estimate_detail",
     value: number | string
@@ -390,13 +405,21 @@ export function EstimateBuilder({
       </section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <ClientDetail
-          detail={settings.detail}
-          groups={groups}
-          subtotal={totals.subtotal}
-          readOnly={readOnly}
-          onChange={(d) => void saveSetting("estimate_detail", d)}
-        />
+        <div className="space-y-6">
+          <ClientDetail
+            detail={settings.detail}
+            groups={groups}
+            subtotal={totals.subtotal}
+            readOnly={readOnly}
+            onChange={(d) => void saveSetting("estimate_detail", d)}
+          />
+          <TermsOverride
+            initial={initialTerms}
+            readOnly={readOnly}
+            washing={wash === "estimate_terms"}
+            onSave={(v) => void saveTerms(v)}
+          />
+        </div>
         <Totals
           projectId={projectId}
           settings={settings}
@@ -1050,6 +1073,76 @@ function Totals({
         Prints in the mode selected on the left, under your company&apos;s
         letterhead.
       </p>
+    </section>
+  );
+}
+
+/* ── Terms for this one estimate ──────────────────────────────────────── */
+
+function TermsOverride({
+  initial,
+  readOnly,
+  washing,
+  onSave,
+}: {
+  initial: string;
+  readOnly: boolean;
+  washing: boolean;
+  onSave: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(initial.trim() !== "");
+  const [text, setText] = useState(initial);
+
+  return (
+    <section className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="font-serif text-xl text-ink">Terms</h2>
+        <button
+          type="button"
+          disabled={readOnly}
+          onClick={() => {
+            if (open && text.trim() !== "") {
+              // Closing the panel clears the override rather than hiding a
+              // paragraph that would still print.
+              setText("");
+              onSave("");
+            }
+            setOpen((o) => !o);
+          }}
+          className="text-xs font-semibold text-accent transition hover:text-accent-bright disabled:opacity-40"
+        >
+          {open ? "Use company terms" : "Override for this estimate"}
+        </button>
+      </div>
+
+      {open ? (
+        <>
+          <textarea
+            value={text}
+            disabled={readOnly}
+            rows={5}
+            placeholder="Terms for this job only…"
+            onChange={(e) => setText(e.target.value)}
+            onBlur={() => {
+              if (text.trim() === initial.trim()) return;
+              onSave(text);
+            }}
+            aria-label="Terms for this estimate"
+            className={`mt-3 w-full resize-y rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm leading-relaxed text-body outline-none transition placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60 ${
+              washing ? "save-wash" : ""
+            }`}
+          />
+          <p className="mt-2 text-[0.68rem] text-faint">
+            Replaces your company terms on this proposal only.
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 max-w-lg text-sm text-muted">
+          This proposal prints your company&apos;s standard terms, set once on
+          the Company page. Override them here when one job needs different
+          wording.
+        </p>
+      )}
     </section>
   );
 }
