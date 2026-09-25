@@ -57,7 +57,23 @@ export type LivingBlueprintProps = {
   // Canvas-only preview: no header, rail, or interaction — a slow orbit
   // instead. Used as the clickable 3D card on the project page.
   embed?: boolean;
+
+  // ── Editing ──
+  // Supplied by the design editor that wraps this component. The viewer
+  // stays a renderer: it reports which plant was clicked and draws the
+  // selection and the ghosts, but owns none of the edit state.
+  editing?: boolean;
+  selectedId?: string | null;
+  /** Staged for deletion — drawn as a dashed outline until published. */
+  deletedIds?: Set<string>;
+  onSelectInstance?: (id: string | null) => void;
+  /** Absent means the Edit control isn't offered at all. */
+  onToggleEditing?: () => void;
+  /** Replaces the plant-material rail while editing. */
+  editorPanel?: React.ReactNode;
 };
+
+const EMPTY_IDS: Set<string> = new Set();
 
 export function LivingBlueprint({
   project,
@@ -68,6 +84,12 @@ export function LivingBlueprint({
   backHref,
   documents,
   embed = false,
+  editing = false,
+  selectedId = null,
+  deletedIds,
+  onSelectInstance,
+  onToggleEditing,
+  editorPanel,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -78,16 +100,38 @@ export function LivingBlueprint({
   const [mode, setMode] = useState<"3d" | "plan">("3d");
   const [growth, setGrowth] = useState<"young" | "mature">("mature");
   const [selected, setSelected] = useState<string | null>(null);
+  // Stable empty set so the rAF mirror below doesn't see a new object every
+  // render when nothing is staged for deletion.
+  const deleted = useMemo(() => deletedIds ?? EMPTY_IDS, [deletedIds]);
+
+  const onSelectRef = useRef(onSelectInstance);
+  useEffect(() => {
+    onSelectRef.current = onSelectInstance;
+  }, [onSelectInstance]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   // Mirror interactive state into refs so the rAF loop never restarts.
-  const stateRef = useRef({ mode, growth, selected });
+  const stateRef = useRef({
+    mode,
+    growth,
+    selected,
+    editing,
+    selectedId,
+    deletedIds: deleted,
+  });
   useEffect(() => {
-    stateRef.current = { mode, growth, selected };
-  }, [mode, growth, selected]);
+    stateRef.current = {
+      mode,
+      growth,
+      selected,
+      editing,
+      selectedId,
+      deletedIds: deleted,
+    };
+  }, [mode, growth, selected, editing, selectedId, deleted]);
 
   const selectSpecies = useCallback((model: string | null) => {
     setSelected((prev) => (prev === model ? null : model));
@@ -264,7 +308,7 @@ export function LivingBlueprint({
     }
 
     /* per-frame screen cache for hit testing */
-    const hits: { model: string; sx: number; sy: number; r: number }[] = [];
+    const hits: { model: string; id: string; sx: number; sy: number; r: number }[] = [];
 
     function drawExtruded(pts: [number, number][], hFt: number, label: string | null, t: number) {
       const quads = pts
@@ -310,11 +354,20 @@ export function LivingBlueprint({
 
     function drawInstance(inst: Instance, g: number, t: number) {
       const { meta } = inst;
-      const sel = stateRef.current.selected === inst.model;
+      const st = stateRef.current;
+      // Editing addresses ONE plant; browsing still highlights the species,
+      // which is how a designer finds where they put the hopseeds.
+      const sel = st.editing
+        ? st.selectedId === inst.id
+        : st.selected === inst.model;
+      // A plant staged for deletion stays on the plan, drawn as an outline,
+      // until the revision is published — so the plan doesn't silently
+      // rearrange itself and the delete is one click to undo.
+      const ghost = st.deletedIds.has(inst.id);
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
-      const stroke = sel ? GOLD : verde(0.85);
-      const fill = sel ? gold(0.14) : verde(0.08);
+      const stroke = ghost ? CLAY : sel ? GOLD : verde(0.85);
+      const fill = ghost ? "rgba(0,0,0,0)" : sel ? gold(0.14) : verde(0.08);
       const lw = sel ? 2 : 1.4;
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
@@ -495,14 +548,17 @@ export function LivingBlueprint({
         ctx!.arc(c0[0], c0[1], 1.6, 0, 7);
         ctx!.fill();
       }
+      if (ghost) ctx!.setLineDash([4, 3]);
       const labelA = Math.max(t, sel ? 1 : 0);
       if (labelA > 0.45) {
         ctx!.font = "600 10px ui-monospace, Menlo, monospace";
         ctx!.fillStyle = sel ? GOLD : ink(0.6 * labelA);
         ctx!.fillText(meta.code, c0[0] + ftPx(x, z, symR) * 0.72 + 4, c0[1] - 4);
       }
+      ctx!.setLineDash([]);
       hits.push({
         model: inst.model,
+        id: inst.id,
         sx: c0[0],
         sy: c0[1],
         r: Math.max(ftPx(x, z, symR), 16),
@@ -689,13 +745,13 @@ export function LivingBlueprint({
     }
     function nearest(e: PointerEvent) {
       const [mx, my] = canvasXY(e);
-      let best: string | null = null;
+      let best: { model: string; id: string } | null = null;
       let bd = 1e9;
       for (const h of hits) {
         const d = Math.hypot(h.sx - mx, h.sy - my);
         if (d < h.r && d < bd) {
           bd = d;
-          best = h.model;
+          best = { model: h.model, id: h.id };
         }
       }
       return best;
@@ -736,9 +792,14 @@ export function LivingBlueprint({
       lastPinch = 0;
       cv!.style.cursor = "grab";
       if (dragDist < 6) {
-        const model = nearest(e);
-        if (model) selectSpecies(model);
-        else setSelected(null);
+        const hit = nearest(e);
+        if (stateRef.current.editing) {
+          onSelectRef.current?.(hit?.id ?? null);
+        } else if (hit) {
+          selectSpecies(hit.model);
+        } else {
+          setSelected(null);
+        }
       }
     };
     const onCancel = (e: PointerEvent) => {
@@ -887,6 +948,20 @@ export function LivingBlueprint({
               Mature
             </button>
           </div>
+          {onToggleEditing && (
+            <button
+              type="button"
+              onClick={onToggleEditing}
+              aria-pressed={editing}
+              className={`rounded-lg border px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                editing
+                  ? "border-accent bg-accent text-[#f5eeda]"
+                  : "border-rule bg-card text-muted hover:text-ink"
+              }`}
+            >
+              {editing ? "Done editing" : "Edit"}
+            </button>
+          )}
           {(documents?.blueprint || documents?.estimate) && (
             <div className="flex overflow-hidden rounded-lg border border-rule bg-card">
               {documents.blueprint && (
@@ -917,8 +992,12 @@ export function LivingBlueprint({
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {canvasPane}
 
-        {/* rail */}
+        {/* rail — or the editor, while editing */}
         <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-rule bg-card/60 md:max-h-none md:w-[320px] md:border-l md:border-t-0">
+          {editing && editorPanel ? (
+            editorPanel
+          ) : (
+          <>
           <div className="border-b border-rule px-4 py-3">
             <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-faint">
               Plant material
@@ -1019,6 +1098,8 @@ export function LivingBlueprint({
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </aside>
       </div>

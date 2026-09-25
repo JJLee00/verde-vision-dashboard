@@ -9,6 +9,10 @@ import { speciesMeta, type SpeciesMeta } from "./catalog";
 export const YOUNG_FACTOR = 0.45;
 
 export type Instance = {
+  // The placement's own UUID, straight from the app. Without it the viewer
+  // can only address a species — which is why clicking a plant used to
+  // highlight every plant of that kind, and why the editor needs this.
+  id: string;
   model: string;
   meta: SpeciesMeta;
   x: number; // feet, plan
@@ -49,6 +53,7 @@ export function buildScene(project: ProjectFileJSON): Scene {
   const instances: Instance[] = (project.placements ?? []).map((p) => {
     const [x, z] = toPlan(p.positionX, p.positionZ);
     return {
+      id: p.id,
       model: p.plantModelName,
       meta: speciesMeta(p.plantModelName),
       x,

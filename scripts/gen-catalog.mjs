@@ -96,14 +96,27 @@ const plants = chunks.map((chunk) => {
   if (!category) throw new Error(`${name}: unknown category .${categoryCase}`);
   const thumbnail = chunk.match(/thumbnailName:\s*"([^"]+)"/)?.[1] ?? null;
 
+  // modelName and heightMultiplier were read and discarded until the
+  // dashboard could edit a design. Both are now load-bearing: a swap or a
+  // resize has to write the mesh the app should render AND the scale that
+  // goes with it. Scale is the container's heightMultiplier, and those are
+  // per-plant — carrying the old plant's scale across a swap renders the new
+  // species at the old one's proportions. They are per-SIZE because a plant
+  // may ship a different mesh per container ("size ladders").
   const sizes = [
     ...chunk.matchAll(
-      /ContainerSize\(type:\s*\.(\w+),\s*price:\s*([\d.]+),\s*heightMultiplier:\s*[\d.]+,\s*modelName:\s*"[^"]*",\s*laborCost:\s*([\d.]+)/g
+      /ContainerSize\(type:\s*\.(\w+),\s*price:\s*([\d.]+),\s*heightMultiplier:\s*([\d.]+),\s*modelName:\s*"([^"]*)",\s*laborCost:\s*([\d.]+)/g
     ),
-  ].map(([, typeCase, price, laborCost]) => {
+  ].map(([, typeCase, price, heightMultiplier, modelName, laborCost]) => {
     const size = SIZE_RAW[typeCase];
     if (!size) throw new Error(`${name}: unknown size .${typeCase}`);
-    return { size, price: Number(price), laborCost: Number(laborCost) };
+    return {
+      size,
+      price: Number(price),
+      laborCost: Number(laborCost),
+      heightMultiplier: Number(heightMultiplier),
+      modelName,
+    };
   });
   if (sizes.length === 0) throw new Error(`${name}: no ContainerSize entries`);
 

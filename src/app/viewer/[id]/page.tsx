@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
+import { getMembership } from "@/lib/org";
+import { DesignEditor } from "./design-editor";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 
@@ -23,7 +24,10 @@ export default async function ViewerPage({
   // headset data (and without touching the shared database).
   if (id === "fixture" && process.env.NODE_ENV === "development") {
     return (
-      <LivingBlueprint
+      <DesignEditor
+        projectId="fixture"
+        canEdit
+        draftDesign={null}
         project={FIXTURE_PROJECT}
         projectName={FIXTURE_PROJECT.projectName}
         estimateAmount={8460}
@@ -47,7 +51,7 @@ export default async function ViewerPage({
   const [baseRes, extraRes, priceRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, estimate_amount, blueprint_path, estimate_path")
+      .select("id, name, estimate_amount, blueprint_path, estimate_path, client_id")
       .eq("id", id)
       .single(),
     supabase
@@ -119,8 +123,29 @@ export default async function ViewerPage({
     };
   }
 
+  // Editing is org work: the designer who owns the project, or an owner.
+  // Read tolerantly — a pre-015 database has no project_versions table, and
+  // the viewer must still open.
+  const membership = await getMembership(supabase, user.id);
+  const canEdit =
+    project.client_id === user.id || membership?.role === "owner";
+
+  let draftDesign: ProjectFileJSON | null = null;
+  if (canEdit) {
+    const { data: draft } = await supabase
+      .from("project_versions")
+      .select("project_json")
+      .eq("project_id", id)
+      .eq("status", "draft")
+      .maybeSingle();
+    draftDesign = (draft?.project_json as ProjectFileJSON | null) ?? null;
+  }
+
   return (
-    <LivingBlueprint
+    <DesignEditor
+      projectId={id}
+      canEdit={canEdit}
+      draftDesign={draftDesign}
       project={projectJson}
       projectName={project.name}
       estimateAmount={project.estimate_amount}

@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-08-19",
+  "generatedAt": "2026-09-25",
   "sizeOrder": [
     "1g",
     "5g",
@@ -18,7 +18,7 @@
     "15g": 85,
     "24\" Box": 240,
     "36\" Box": 450,
-    "48\" Box": 250,
+    "48\" Box": 650,
     "Small": 55,
     "Medium": 95,
     "Large": 150
@@ -34,12 +34,16 @@
         {
           "size": "5g",
           "price": 55,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.5,
+          "modelName": "Aloe Vera"
         },
         {
           "size": "15g",
           "price": 120,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 1,
+          "modelName": "Aloe Vera"
         }
       ],
       "matureHeightFt": 2,
@@ -63,12 +67,16 @@
         {
           "size": "5g",
           "price": 70,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.17,
+          "modelName": "AgaveAmericana"
         },
         {
           "size": "15g",
           "price": 125,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.24,
+          "modelName": "AgaveAmericana"
         }
       ],
       "matureHeightFt": 6,
@@ -92,12 +100,16 @@
         {
           "size": "5g",
           "price": 85,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.4,
+          "modelName": "MexicanFencePost"
         },
         {
           "size": "15g",
           "price": 180,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.6,
+          "modelName": "MexicanFencePost"
         }
       ],
       "matureHeightFt": 10,
@@ -121,22 +133,30 @@
         {
           "size": "15g",
           "price": 125,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 3,
+          "modelName": "HoneyMesquite"
         },
         {
           "size": "24\" Box",
           "price": 275,
-          "laborCost": 125
+          "laborCost": 125,
+          "heightMultiplier": 4,
+          "modelName": "HoneyMesquite"
         },
         {
           "size": "36\" Box",
           "price": 450,
-          "laborCost": 175
+          "laborCost": 175,
+          "heightMultiplier": 6,
+          "modelName": "HoneyMesquite"
         },
         {
           "size": "48\" Box",
           "price": 750,
-          "laborCost": 250
+          "laborCost": 250,
+          "heightMultiplier": 8,
+          "modelName": "HoneyMesquite"
         }
       ],
       "matureHeightFt": 15,
@@ -160,17 +180,23 @@
         {
           "size": "15g",
           "price": 150,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 0.6,
+          "modelName": "Orange_Tree"
         },
         {
           "size": "24\" Box",
           "price": 325,
-          "laborCost": 145
+          "laborCost": 145,
+          "heightMultiplier": 0.75,
+          "modelName": "Orange_Tree"
         },
         {
           "size": "36\" Box",
           "price": 550,
-          "laborCost": 200
+          "laborCost": 200,
+          "heightMultiplier": 1,
+          "modelName": "Orange_Tree"
         }
       ],
       "matureHeightFt": 20,
@@ -194,17 +220,23 @@
         {
           "size": "Small",
           "price": 95,
-          "laborCost": 55
+          "laborCost": 55,
+          "heightMultiplier": 1,
+          "modelName": "GrayBoulder"
         },
         {
           "size": "Medium",
           "price": 195,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 2,
+          "modelName": "GrayBoulder"
         },
         {
           "size": "Large",
           "price": 350,
-          "laborCost": 150
+          "laborCost": 150,
+          "heightMultiplier": 4,
+          "modelName": "GrayBoulder"
         }
       ],
       "matureHeightFt": 3,
@@ -228,12 +260,16 @@
         {
           "size": "5g",
           "price": 65,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 1,
+          "modelName": "GoldenBarrel"
         },
         {
           "size": "15g",
           "price": 140,
-          "laborCost": 75
+          "laborCost": 75,
+          "heightMultiplier": 1.3,
+          "modelName": "GoldenBarrel"
         }
       ],
       "matureHeightFt": 3,
@@ -257,17 +293,23 @@
         {
           "size": "24\" Box",
           "price": 295,
-          "laborCost": 125
+          "laborCost": 125,
+          "heightMultiplier": 1,
+          "modelName": "MexFanPalm"
         },
         {
           "size": "36\" Box",
           "price": 495,
-          "laborCost": 175
+          "laborCost": 175,
+          "heightMultiplier": 1.5,
+          "modelName": "MexFanPalm"
         },
         {
           "size": "48\" Box",
           "price": 795,
-          "laborCost": 250
+          "laborCost": 250,
+          "heightMultiplier": 3,
+          "modelName": "MexFanPalm"
         }
       ],
       "matureHeightFt": 70,
@@ -291,17 +333,23 @@
         {
           "size": "Small",
           "price": 600,
-          "laborCost": 250
+          "laborCost": 250,
+          "heightMultiplier": 1,
+          "modelName": "SaguaroSpear"
         },
         {
           "size": "Medium",
           "price": 900,
-          "laborCost": 350
+          "laborCost": 350,
+          "heightMultiplier": 1.5,
+          "modelName": "SaguaroSpear"
         },
         {
           "size": "Large",
           "price": 1200,
-          "laborCost": 450
+          "laborCost": 450,
+          "heightMultiplier": 2.5,
+          "modelName": "SaguaroSpear"
         }
       ],
       "matureHeightFt": 40,
@@ -316,6 +364,46 @@
       "lifespan": "Very long-lived (100+ yrs)"
     },
     {
+      "key": "ocotillo",
+      "name": "Ocotillo",
+      "botanicalName": "Fouquieria splendens",
+      "category": "Succulent",
+      "thumbnail": "ocotillo_thumb",
+      "sizes": [
+        {
+          "size": "Small",
+          "price": 125,
+          "laborCost": 55,
+          "heightMultiplier": 0.42,
+          "modelName": "Ocotillo"
+        },
+        {
+          "size": "Medium",
+          "price": 195,
+          "laborCost": 95,
+          "heightMultiplier": 0.58,
+          "modelName": "Ocotillo"
+        },
+        {
+          "size": "Large",
+          "price": 275,
+          "laborCost": 150,
+          "heightMultiplier": 0.75,
+          "modelName": "Ocotillo"
+        }
+      ],
+      "matureHeightFt": 15,
+      "matureWidthFt": 12,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Sonoran and Chihuahuan Deserts — Arizona, southern California, Texas and northern Mexico",
+      "description": "A fountain of whip-like canes rising from a single crown, and the most sculptural line in the desert palette. Ocotillo is leafless and gray most of the year — that is the plant, not a problem — then leafs out within days of rain in a coat of small bright-green leaves and drops them again when the soil dries, repeating several times a season. In spring every cane tips in a flame of tubular red-orange flowers that hummingbirds fight over. Use it as a vertical exclamation against a wall or the sky, in a group of three at different heights, or planted close as a living fence (the canes root and the spines do the rest). It is sold bare root by height, and the one thing it asks is patience: a transplant can take a full season or two to leaf reliably. Full sun, sharp drainage, essentially no water once established, and cold-hardy to about 10 °F.",
+      "coldToleranceFahrenheit": 10,
+      "bloomPeriod": "Spring (March – June), red-orange cane tips; flushes of leaves after any rain",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
       "key": "argentine toothpick",
       "name": "Argentine Toothpick",
       "botanicalName": "Stetsonia coryne",
@@ -325,12 +413,16 @@
         {
           "size": "15g",
           "price": 185,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 0.15,
+          "modelName": "ArgentineToothpick"
         },
         {
           "size": "24\" Box",
           "price": 395,
-          "laborCost": 175
+          "laborCost": 175,
+          "heightMultiplier": 0.2,
+          "modelName": "ArgentineToothpick"
         }
       ],
       "matureHeightFt": 30,
@@ -354,17 +446,23 @@
         {
           "size": "Small",
           "price": 75,
-          "laborCost": 55
+          "laborCost": 55,
+          "heightMultiplier": 0.5,
+          "modelName": "FlatBoulder"
         },
         {
           "size": "Medium",
           "price": 165,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 0.7,
+          "modelName": "FlatBoulder"
         },
         {
           "size": "Large",
           "price": 295,
-          "laborCost": 150
+          "laborCost": 150,
+          "heightMultiplier": 1.1,
+          "modelName": "FlatBoulder"
         }
       ],
       "matureHeightFt": 1,
@@ -388,17 +486,23 @@
         {
           "size": "Small",
           "price": 75,
-          "laborCost": 55
+          "laborCost": 55,
+          "heightMultiplier": 0.7,
+          "modelName": "AZBoulder1"
         },
         {
           "size": "Medium",
           "price": 165,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 1,
+          "modelName": "AZBoulder1"
         },
         {
           "size": "Large",
           "price": 295,
-          "laborCost": 150
+          "laborCost": 150,
+          "heightMultiplier": 1.3,
+          "modelName": "AZBoulder1"
         }
       ],
       "matureHeightFt": 1,
@@ -422,12 +526,16 @@
         {
           "size": "Small",
           "price": 32000,
-          "laborCost": 14000
+          "laborCost": 14000,
+          "heightMultiplier": 1,
+          "modelName": "SwimmingPool"
         },
         {
           "size": "Large",
           "price": 58000,
-          "laborCost": 22000
+          "laborCost": 22000,
+          "heightMultiplier": 2,
+          "modelName": "SwimmingPool"
         }
       ],
       "matureHeightFt": 3,
@@ -451,7 +559,9 @@
         {
           "size": "Small",
           "price": 45,
-          "laborCost": 25
+          "laborCost": 25,
+          "heightMultiplier": 1,
+          "modelName": "NightUplight"
         }
       ],
       "matureHeightFt": 0.7,
@@ -475,7 +585,9 @@
         {
           "size": "Small",
           "price": 65,
-          "laborCost": 30
+          "laborCost": 30,
+          "heightMultiplier": 1,
+          "modelName": "NightFloodlight"
         }
       ],
       "matureHeightFt": 0.4,
@@ -499,7 +611,9 @@
         {
           "size": "Small",
           "price": 38,
-          "laborCost": 20
+          "laborCost": 20,
+          "heightMultiplier": 1,
+          "modelName": "NightPathlight"
         }
       ],
       "matureHeightFt": 1.75,
@@ -523,12 +637,16 @@
         {
           "size": "5g",
           "price": 95,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 1.2,
+          "modelName": "TotemPole"
         },
         {
           "size": "15g",
           "price": 195,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 1.8,
+          "modelName": "TotemPole"
         }
       ],
       "matureHeightFt": 12,
@@ -552,17 +670,23 @@
         {
           "size": "15g",
           "price": 225,
-          "laborCost": 95
+          "laborCost": 95,
+          "heightMultiplier": 0.37,
+          "modelName": "OrganPipe"
         },
         {
           "size": "24\" Box",
           "price": 525,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 0.58,
+          "modelName": "OrganPipe"
         },
         {
           "size": "36\" Box",
           "price": 950,
-          "laborCost": 400
+          "laborCost": 400,
+          "heightMultiplier": 0.79,
+          "modelName": "OrganPipe"
         }
       ],
       "matureHeightFt": 16,
@@ -586,12 +710,16 @@
         {
           "size": "5g",
           "price": 75,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 1,
+          "modelName": "AgaveTruncata"
         },
         {
           "size": "15g",
           "price": 145,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 1.3,
+          "modelName": "AgaveTruncata"
         }
       ],
       "matureHeightFt": 2,
@@ -615,12 +743,16 @@
         {
           "size": "5g",
           "price": 75,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.7,
+          "modelName": "TropicalAgave"
         },
         {
           "size": "15g",
           "price": 145,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 1.4,
+          "modelName": "TropicalAgave"
         }
       ],
       "matureHeightFt": 3,
@@ -644,12 +776,16 @@
         {
           "size": "5g",
           "price": 70,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 1,
+          "modelName": "Firebarrel"
         },
         {
           "size": "15g",
           "price": 150,
-          "laborCost": 75
+          "laborCost": 75,
+          "heightMultiplier": 1.3,
+          "modelName": "Firebarrel"
         }
       ],
       "matureHeightFt": 3,
@@ -673,12 +809,16 @@
         {
           "size": "5g",
           "price": 70,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.4,
+          "modelName": "AgaveGeminiflora"
         },
         {
           "size": "15g",
           "price": 140,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.6,
+          "modelName": "AgaveGeminiflora"
         }
       ],
       "matureHeightFt": 2,
@@ -702,12 +842,16 @@
         {
           "size": "5g",
           "price": 65,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.3,
+          "modelName": "YellowBells"
         },
         {
           "size": "15g",
           "price": 130,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.5,
+          "modelName": "YellowBells"
         }
       ],
       "matureHeightFt": 15,
@@ -731,12 +875,16 @@
         {
           "size": "5g",
           "price": 70,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.15,
+          "modelName": "Firestick"
         },
         {
           "size": "15g",
           "price": 145,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.25,
+          "modelName": "Firestick"
         }
       ],
       "matureHeightFt": 6,
@@ -760,12 +908,16 @@
         {
           "size": "5g",
           "price": 65,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.3,
+          "modelName": "LittleJohnBottlebrush"
         },
         {
           "size": "15g",
           "price": 130,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.45,
+          "modelName": "LittleJohnBottlebrush"
         }
       ],
       "matureHeightFt": 3,
@@ -789,12 +941,16 @@
         {
           "size": "5g",
           "price": 75,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.1,
+          "modelName": "MoroccanMound"
         },
         {
           "size": "15g",
           "price": 150,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.15,
+          "modelName": "MoroccanMound"
         }
       ],
       "matureHeightFt": 3,
@@ -818,12 +974,16 @@
         {
           "size": "5g",
           "price": 85,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.34,
+          "modelName": "SantaRitaPricklyPear"
         },
         {
           "size": "15g",
           "price": 165,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.54,
+          "modelName": "SantaRitaPricklyPear"
         }
       ],
       "matureHeightFt": 5,
@@ -847,17 +1007,23 @@
         {
           "size": "5g",
           "price": 95,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.32,
+          "modelName": "MadagascarPalm"
         },
         {
           "size": "15g",
           "price": 195,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.57,
+          "modelName": "MadagascarPalm"
         },
         {
           "size": "24\" Box",
           "price": 395,
-          "laborCost": 145
+          "laborCost": 145,
+          "heightMultiplier": 0.84,
+          "modelName": "MadagascarPalm"
         }
       ],
       "matureHeightFt": 15,
@@ -881,12 +1047,16 @@
         {
           "size": "5g",
           "price": 80,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.15,
+          "modelName": "BlackTipAgave"
         },
         {
           "size": "15g",
           "price": 160,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.25,
+          "modelName": "BlackTipAgave"
         }
       ],
       "matureHeightFt": 3,
@@ -910,17 +1080,23 @@
         {
           "size": "5g",
           "price": 90,
-          "laborCost": 55
+          "laborCost": 55,
+          "heightMultiplier": 0.47,
+          "modelName": "DesertWillow"
         },
         {
           "size": "15g",
           "price": 185,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 0.79,
+          "modelName": "DesertWillow"
         },
         {
           "size": "24\" Box",
           "price": 420,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 1.19,
+          "modelName": "DesertWillow"
         }
       ],
       "matureHeightFt": 25,
@@ -944,17 +1120,23 @@
         {
           "size": "5g",
           "price": 95,
-          "laborCost": 55
+          "laborCost": 55,
+          "heightMultiplier": 0.5,
+          "modelName": "Ironwood"
         },
         {
           "size": "15g",
           "price": 195,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 0.84,
+          "modelName": "Ironwood"
         },
         {
           "size": "24\" Box",
           "price": 450,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 1.27,
+          "modelName": "Ironwood"
         }
       ],
       "matureHeightFt": 25,
@@ -978,12 +1160,16 @@
         {
           "size": "5g",
           "price": 60,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.15,
+          "modelName": "Jojoba"
         },
         {
           "size": "15g",
           "price": 125,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.3,
+          "modelName": "Jojoba"
         }
       ],
       "matureHeightFt": 8,
@@ -1007,12 +1193,16 @@
         {
           "size": "5g",
           "price": 75,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.48,
+          "modelName": "LeatherleafAcacia"
         },
         {
           "size": "15g",
           "price": 155,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.77,
+          "modelName": "LeatherleafAcacia"
         }
       ],
       "matureHeightFt": 12,
@@ -1036,12 +1226,16 @@
         {
           "size": "1g",
           "price": 18,
-          "laborCost": 15
+          "laborCost": 15,
+          "heightMultiplier": 0.2,
+          "modelName": "WhiteDawnLantana"
         },
         {
           "size": "5g",
           "price": 45,
-          "laborCost": 35
+          "laborCost": 35,
+          "heightMultiplier": 0.25,
+          "modelName": "WhiteDawnLantana"
         }
       ],
       "matureHeightFt": 2,
@@ -1063,19 +1257,32 @@
       "thumbnail": "texasebony_thumb",
       "sizes": [
         {
-          "size": "5g",
-          "price": 95,
-          "laborCost": 55
-        },
-        {
           "size": "15g",
           "price": 195,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 1,
+          "modelName": "TexasEbonySm"
         },
         {
           "size": "24\" Box",
           "price": 445,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 0.85,
+          "modelName": "TexasEbonyMd"
+        },
+        {
+          "size": "36\" Box",
+          "price": 875,
+          "laborCost": 450,
+          "heightMultiplier": 1,
+          "modelName": "TexasEbonyMd"
+        },
+        {
+          "size": "48\" Box",
+          "price": 1450,
+          "laborCost": 650,
+          "heightMultiplier": 1.2,
+          "modelName": "TexasEbonyMd"
         }
       ],
       "matureHeightFt": 30,
@@ -1090,6 +1297,53 @@
       "lifespan": "Very long-lived (100+ yrs)"
     },
     {
+      "key": "mulga",
+      "name": "Mulga",
+      "botanicalName": "Acacia aneura",
+      "category": "Tree",
+      "thumbnail": "mulga_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 150,
+          "laborCost": 110,
+          "heightMultiplier": 0.65,
+          "modelName": "MulgaAcaciaSm"
+        },
+        {
+          "size": "24\" Box",
+          "price": 350,
+          "laborCost": 240,
+          "heightMultiplier": 0.85,
+          "modelName": "MulgaAcaciaSm"
+        },
+        {
+          "size": "36\" Box",
+          "price": 700,
+          "laborCost": 450,
+          "heightMultiplier": 1,
+          "modelName": "MulgaAcaciaSm"
+        },
+        {
+          "size": "48\" Box",
+          "price": 1200,
+          "laborCost": 650,
+          "heightMultiplier": 0.75,
+          "modelName": "MulgaAcaciaLg"
+        }
+      ],
+      "matureHeightFt": 20,
+      "matureWidthFt": 15,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Arid interior of Australia",
+      "description": "The most useful evergreen in the low-water palette: a neat, upright tree of silver-gray foliage that holds its colour and its shape through the worst of summer on almost no irrigation. The \\",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Spring, and after summer rains — short yellow rods",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
       "key": "blue palo verde",
       "name": "Blue Palo Verde",
       "botanicalName": "Parkinsonia florida",
@@ -1099,17 +1353,23 @@
         {
           "size": "15g",
           "price": 165,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 0.22,
+          "modelName": "PaloVerde"
         },
         {
           "size": "24\" Box",
           "price": 425,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 0.36,
+          "modelName": "PaloVerde"
         },
         {
           "size": "36\" Box",
           "price": 875,
-          "laborCost": 450
+          "laborCost": 450,
+          "heightMultiplier": 0.49,
+          "modelName": "PaloVerde"
         }
       ],
       "matureHeightFt": 30,
@@ -1133,17 +1393,23 @@
         {
           "size": "15g",
           "price": 165,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 0.42,
+          "modelName": "Vitex"
         },
         {
           "size": "24\" Box",
           "price": 425,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 0.58,
+          "modelName": "Vitex"
         },
         {
           "size": "36\" Box",
           "price": 875,
-          "laborCost": 450
+          "laborCost": 450,
+          "heightMultiplier": 0.77,
+          "modelName": "Vitex"
         }
       ],
       "matureHeightFt": 20,
@@ -1167,12 +1433,16 @@
         {
           "size": "5g",
           "price": 75,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.15,
+          "modelName": "AloeFerox"
         },
         {
           "size": "15g",
           "price": 150,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.25,
+          "modelName": "AloeFerox"
         }
       ],
       "matureHeightFt": 10,
@@ -1196,12 +1466,16 @@
         {
           "size": "5g",
           "price": 70,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.28,
+          "modelName": "BlueGlowAgave"
         },
         {
           "size": "15g",
           "price": 130,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.37,
+          "modelName": "BlueGlowAgave"
         }
       ],
       "matureHeightFt": 2,
@@ -1225,12 +1499,16 @@
         {
           "size": "1g",
           "price": 18,
-          "laborCost": 15
+          "laborCost": 15,
+          "heightMultiplier": 0.15,
+          "modelName": "PurpleLantana"
         },
         {
           "size": "5g",
           "price": 45,
-          "laborCost": 35
+          "laborCost": 35,
+          "heightMultiplier": 0.25,
+          "modelName": "PurpleLantana"
         }
       ],
       "matureHeightFt": 2,
@@ -1254,12 +1532,16 @@
         {
           "size": "1g",
           "price": 18,
-          "laborCost": 15
+          "laborCost": 15,
+          "heightMultiplier": 0.15,
+          "modelName": "YellowLantana"
         },
         {
           "size": "5g",
           "price": 45,
-          "laborCost": 35
+          "laborCost": 35,
+          "heightMultiplier": 0.2,
+          "modelName": "YellowLantana"
         }
       ],
       "matureHeightFt": 2,
@@ -1283,12 +1565,16 @@
         {
           "size": "5g",
           "price": 65,
-          "laborCost": 45
+          "laborCost": 45,
+          "heightMultiplier": 0.15,
+          "modelName": "TexasSage"
         },
         {
           "size": "15g",
           "price": 135,
-          "laborCost": 85
+          "laborCost": 85,
+          "heightMultiplier": 0.3,
+          "modelName": "TexasSage"
         }
       ],
       "matureHeightFt": 8,
@@ -1303,6 +1589,39 @@
       "lifespan": "Long-lived (25+ yrs)"
     },
     {
+      "key": "green hopseed",
+      "name": "Green Hopseed",
+      "botanicalName": "Dodonaea viscosa",
+      "category": "Shrub",
+      "thumbnail": "greenhopseed_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 40,
+          "laborCost": 45,
+          "heightMultiplier": 0.25,
+          "modelName": "GreenHopseed"
+        },
+        {
+          "size": "15g",
+          "price": 115,
+          "laborCost": 85,
+          "heightMultiplier": 0.45,
+          "modelName": "GreenHopseed"
+        }
+      ],
+      "matureHeightFt": 12,
+      "matureWidthFt": 8,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Arizona native — Sonoran Desert foothills and chaparral, pantropical",
+      "description": "The workhorse screen of the desert palette: a fast, upright evergreen that goes from a 5-gallon whip to a 10 ft privacy hedge in three or four seasons on almost no water. Narrow, glossy, willow-like leaves give it a fine texture that takes shearing into a formal wall or, left alone, builds a loose vase of arching stems. Inconspicuous spring flowers are followed by papery, winged seed capsules that flush pink-tan and rattle in the wind through summer. Plant it on 4–5 ft centres along a fence or property line, use a single specimen as a soft backdrop for cactus and agave, or limb it up into a small multi-trunk tree. Full sun, sharp drainage, hardy to the mid-teens — one of the few native hedges that looks good in August.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Spring (inconspicuous) — pink-tan winged seed capsules through summer",
+      "growthRate": "Fast",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
       "key": "beaked yucca",
       "name": "Beaked Yucca",
       "botanicalName": "Yucca rostrata",
@@ -1312,17 +1631,23 @@
         {
           "size": "15g",
           "price": 225,
-          "laborCost": 110
+          "laborCost": 110,
+          "heightMultiplier": 0.15,
+          "modelName": "YuccaRostrataSm"
         },
         {
           "size": "24\" Box",
           "price": 575,
-          "laborCost": 240
+          "laborCost": 240,
+          "heightMultiplier": 0.25,
+          "modelName": "YuccaRostrataSm"
         },
         {
           "size": "36\" Box",
           "price": 1150,
-          "laborCost": 450
+          "laborCost": 450,
+          "heightMultiplier": 0.35,
+          "modelName": "YuccaRostrataMd"
         }
       ],
       "matureHeightFt": 14,
@@ -1346,17 +1671,23 @@
         {
           "size": "1g",
           "price": 18,
-          "laborCost": 15
+          "laborCost": 15,
+          "heightMultiplier": 0.25,
+          "modelName": "HesperaloeSm"
         },
         {
           "size": "5g",
           "price": 45,
-          "laborCost": 32
+          "laborCost": 32,
+          "heightMultiplier": 0.5,
+          "modelName": "HesperaloeMd"
         },
         {
           "size": "15g",
           "price": 110,
-          "laborCost": 70
+          "laborCost": 70,
+          "heightMultiplier": 0.66,
+          "modelName": "HesperaloeLg"
         }
       ],
       "matureHeightFt": 5,
@@ -1368,6 +1699,166 @@
       "coldToleranceFahrenheit": -10,
       "bloomPeriod": "Spring through fall (April – October), coral-red spikes, repeat blooming",
       "growthRate": "Moderate",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "regal mist",
+      "name": "Regal Mist",
+      "botanicalName": "Muhlenbergia capillaris 'Lenca'",
+      "category": "Grass",
+      "thumbnail": "regalmist_thumb",
+      "sizes": [
+        {
+          "size": "1g",
+          "price": 18,
+          "laborCost": 15,
+          "heightMultiplier": 0.28,
+          "modelName": "RegalMist"
+        },
+        {
+          "size": "5g",
+          "price": 42,
+          "laborCost": 30,
+          "heightMultiplier": 0.5,
+          "modelName": "RegalMist"
+        }
+      ],
+      "matureHeightFt": 4,
+      "matureWidthFt": 4,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Southeastern and central United States — a nursery selection grown throughout the desert Southwest",
+      "description": "The one plant in the desert palette that stops traffic in October. A tidy, fine-textured green fountain for most of the year, then it throws a three-foot cloud of pink-rose bloom that catches low sun and glows — plant it where the afternoon light comes through it from behind and the whole clump turns to smoke. Tough in a way the effect does not suggest: full sun, reflected heat, hard drought once established, and cold well below anything Arizona sees. Plant it in drifts of five, seven or twelve along a wash, a driveway edge or a wall, where the mass is the point; a single clump reads as an accident. Cut it to a few inches in late winter before new growth starts and it comes back thicker. Evergreen-ish in mild winters, dormant tan in cold ones, and completely pest-free.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Late summer through fall (September – November) — pink-rose bloom clouds",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
+    },
+    {
+      "key": "desert spoon",
+      "name": "Desert Spoon",
+      "botanicalName": "Dasylirion wheeleri",
+      "category": "Succulent",
+      "thumbnail": "desertspoon_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 40,
+          "laborCost": 32,
+          "heightMultiplier": 0.55,
+          "modelName": "DesertSpoonSm"
+        },
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 70,
+          "heightMultiplier": 0.9,
+          "modelName": "DesertSpoonSm"
+        },
+        {
+          "size": "24\" Box",
+          "price": 395,
+          "laborCost": 240,
+          "heightMultiplier": 1,
+          "modelName": "DesertSpoonLg"
+        }
+      ],
+      "matureHeightFt": 5,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Chihuahuan Desert — southeastern Arizona, New Mexico, West Texas and northern Mexico",
+      "description": "A perfect sphere of narrow blue-gray blades, each edged in fine golden teeth, that reads as a single sculptural object from any angle — the desert's answer to a boxwood ball, without the water or the shearing. Desert Spoon grows slowly to a 4–5 ft rosette and in age lifts itself on a short trunk skirted in dry leaves; in early summer a mature plant sends up a single 10–15 ft flower pole that stands for months. Use it in threes and fives to stitch a planting together, singly as a focal point against gravel or a wall, or in a row where it makes a formal rhythm with no maintenance. The teeth are sharp enough to keep it a step back from paths. Full sun, hard drainage, drought-proof once established, and hardy well below anything Arizona sees.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Late spring – summer, a single tall flower pole (not modelled)",
+      "growthRate": "Slow",
+      "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "texas ebony ao spike",
+      "name": "Texas Ebony · AO spike",
+      "botanicalName": "Ebenopsis ebano",
+      "category": "Tree",
+      "thumbnail": "texasebony_thumb",
+      "sizes": [
+        {
+          "size": "15g",
+          "price": 195,
+          "laborCost": 110,
+          "heightMultiplier": 1,
+          "modelName": "TexasEbonySmAO"
+        },
+        {
+          "size": "24\" Box",
+          "price": 445,
+          "laborCost": 240,
+          "heightMultiplier": 0.85,
+          "modelName": "TexasEbonyMdAO"
+        },
+        {
+          "size": "36\" Box",
+          "price": 875,
+          "laborCost": 450,
+          "heightMultiplier": 1,
+          "modelName": "TexasEbonyMdAO"
+        },
+        {
+          "size": "48\" Box",
+          "price": 1450,
+          "laborCost": 650,
+          "heightMultiplier": 1.2,
+          "modelName": "TexasEbonyMdAO"
+        }
+      ],
+      "matureHeightFt": 30,
+      "matureWidthFt": 25,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "South Texas and northeastern Mexico",
+      "description": "DEBUG A/B: the Texas Ebony ladder with baked sky occlusion. Compare against the real entry, size for size and in Mature Mode.",
+      "coldToleranceFahrenheit": 15,
+      "bloomPeriod": "Summer",
+      "growthRate": "Slow",
+      "lifespan": "Very long-lived (100+ yrs)"
+    },
+    {
+      "key": "desert spoon ao spike",
+      "name": "Desert Spoon · AO spike",
+      "botanicalName": "Dasylirion wheeleri",
+      "category": "Succulent",
+      "thumbnail": "desertspoon_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 40,
+          "laborCost": 32,
+          "heightMultiplier": 0.55,
+          "modelName": "DesertSpoonSmAO"
+        },
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 70,
+          "heightMultiplier": 0.9,
+          "modelName": "DesertSpoonSmAO"
+        },
+        {
+          "size": "24\" Box",
+          "price": 395,
+          "laborCost": 240,
+          "heightMultiplier": 1,
+          "modelName": "DesertSpoonLgAO"
+        }
+      ],
+      "matureHeightFt": 5,
+      "matureWidthFt": 6,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Chihuahuan Desert",
+      "description": "DEBUG A/B: the Desert Spoon ladder with baked sky occlusion. Compare against the real entry, size for size and in Mature Mode.",
+      "coldToleranceFahrenheit": 0,
+      "bloomPeriod": "Late spring – summer",
+      "growthRate": "Slow",
       "lifespan": "Long-lived (25+ yrs)"
     }
   ]
