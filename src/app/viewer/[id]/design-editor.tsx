@@ -831,19 +831,31 @@ function ChangeList({
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {changes.map((c) => (
+        {changes.map((c) => {
+          // Gold is the selection colour on the plan, so the row of the
+          // plant you're working on wears it too — the two views name the
+          // same plant the same way.
+          const on = c.id === selectedId;
+          return (
           <div
             key={c.key}
-            className={`flex items-center gap-2 border-t border-rule/60 px-4 py-2 ${
-              c.id === selectedId ? "bg-gold/10" : ""
+            className={`flex items-center gap-2 border-t px-4 py-2 transition ${
+              on
+                ? "border-l-[3px] border-l-gold border-t-gold/30 bg-gold/[0.14] pl-[13px]"
+                : "border-rule/60"
             }`}
           >
             <button
               type="button"
               onClick={() => onSelect(c.id)}
+              aria-current={on ? "true" : undefined}
               className="min-w-0 flex-1 text-left"
             >
-              <span className="block truncate text-[13px] text-muted">
+              <span
+                className={`block truncate text-[13px] ${
+                  on ? "text-gold" : "text-muted"
+                }`}
+              >
                 {c.from}
               </span>
               <span
@@ -859,12 +871,15 @@ function ChangeList({
               onClick={() => onUndoPlant(c.id)}
               aria-label={`Undo ${c.from} ${c.to}`}
               title="Undo this change"
-              className="shrink-0 px-1 text-xs text-faint transition hover:text-ink"
+              className={`shrink-0 px-1 text-xs transition ${
+                on ? "text-gold hover:text-ink" : "text-faint hover:text-ink"
+              }`}
             >
               ✕
             </button>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
