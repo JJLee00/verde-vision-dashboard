@@ -55,14 +55,15 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   const [picking, setPicking] = useState(false);
   // Both of these do something the designer can't casually take back —
   // one throws work away, the other changes what the client sees.
-  const [confirming, setConfirming] = useState<"publish" | "discard" | null>(null);
+  const [confirming, setConfirming] = useState<
+    "publish" | "discard" | "exit" | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   // Drafts autosave, but silently — which read as "there's no way to save".
   // The state is now visible and there's a button that flushes it now.
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [publishing, startPublish] = useTransition();
   const router = useRouter();
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const deletedIds = useMemo(
     () => new Set(edits.filter((e) => e.kind === "delete").map((e) => e.id)),
@@ -241,35 +242,38 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [projectId]
   );
 
-  // Debounced so a run of size taps is one write, not five.
-  const saveDraft = useCallback(
-    (design: ProjectFileJSON) => {
-      setSaveState("idle");
+  /**
+   * Writes the draft to mirror a set of saved edits.
+   *
+   * There is no autosave. Edits apply to the plan and the estimate the
+   * moment they're made — you have to see them to judge them — but only
+   * Save commits them, so leaving without saving leaves them behind. An
+   * 800ms debounce used to persist everything regardless, which made Save
+   * a button that changed nothing except a list.
+   */
+  const persist = useCallback(
+    (nextSaved: DesignEdit[]) => {
       // The dev fixture is a sample scene with no row behind it; editing it
       // is for looking at the UI, not for persisting anything.
-      if (projectId === "fixture") return;
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => void writeDraft(design), 800);
+      if (projectId === "fixture") {
+        setSaveState("saved");
+        return;
+      }
+      void writeDraft(applyEdits(base, nextSaved));
     },
-    [projectId, writeDraft]
+    [projectId, writeDraft, base]
   );
 
-  /** Skip the debounce — the designer asked for it now. */
   const saveNow = useCallback(() => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
     setSavedEdits(edits);
+    persist(edits);
     // Saving finishes with that plant, so the panel goes back to the list —
     // which puts the row you just recorded in front of you. A greyed-out
     // button was weak confirmation; the record itself is the strong one.
     // Same shape as Publish, which also leaves the context it commits.
     setSelectedId(null);
     setPicking(false);
-    if (projectId === "fixture") {
-      setSaveState("saved");
-      return;
-    }
-    void writeDraft(staged);
-  }, [projectId, writeDraft, staged, edits]);
+  }, [edits, persist]);
 
   const edit = useCallback(
     (next: DesignEdit) => {
@@ -284,60 +288,66 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           if (e.kind === next.kind) return false;
           return !(next.kind === "swap" && e.kind === "resize");
         });
-        const list = [...kept, next];
-        saveDraft(applyEdits(base, list));
-        return list;
+        return [...kept, next];
       });
     },
-    [base, saveDraft]
+    []
   );
 
   const undoLast = useCallback(() => {
     setEdits((prev) => {
       if (prev.length === 0) return prev;
       const dropped = prev[prev.length - 1];
-      const list = prev.slice(0, -1);
-      saveDraft(applyEdits(base, list));
-      // If the undone edit had already been recorded, it leaves the list
-      // too — a row you can't get back to isn't a record, it's a lie.
-      setSavedEdits((saved) =>
-        saved.filter(
+      // If the undone edit had already been recorded, it leaves the saved
+      // set too, and the draft follows — a row you can't get back to isn't
+      // a record, it's a lie.
+      setSavedEdits((saved) => {
+        const next = saved.filter(
           (e) => !(e.id === dropped.id && e.kind === dropped.kind)
-        )
-      );
-      return list;
+        );
+        if (next.length !== saved.length) persist(next);
+        return next;
+      });
+      return prev.slice(0, -1);
     });
-  }, [base, saveDraft]);
+  }, [persist]);
 
   /** Drops one operation. "Undo remove" must not also revert a swap that
    *  was made before it. */
   const undoEdit = useCallback(
     (id: string, kind: DesignEdit["kind"]) => {
-      setSavedEdits((saved) =>
-        saved.filter((e) => !(e.id === id && e.kind === kind))
-      );
-      setEdits((prev) => {
-        const list = prev.filter((e) => !(e.id === id && e.kind === kind));
-        saveDraft(applyEdits(base, list));
-        return list;
+      setSavedEdits((saved) => {
+        const next = saved.filter((e) => !(e.id === id && e.kind === kind));
+        if (next.length !== saved.length) persist(next);
+        return next;
       });
+      setEdits((prev) => prev.filter((e) => !(e.id === id && e.kind === kind)));
     },
-    [base, saveDraft]
+    [persist]
   );
 
   /** Reverts a plant entirely — what the change list's ✕ means, since a row
    *  is the plant's whole change. */
   const undoPlant = useCallback(
     (id: string) => {
-      setSavedEdits((saved) => saved.filter((e) => e.id !== id));
-      setEdits((prev) => {
-        const list = prev.filter((e) => e.id !== id);
-        saveDraft(applyEdits(base, list));
-        return list;
+      setSavedEdits((saved) => {
+        const next = saved.filter((e) => e.id !== id);
+        if (next.length !== saved.length) persist(next);
+        return next;
       });
+      setEdits((prev) => prev.filter((e) => e.id !== id));
     },
-    [base, saveDraft]
+    [persist]
   );
+
+  // A reload or a closed tab loses unsaved edits the same way leaving edit
+  // mode does, and the browser is the only thing that can ask there.
+  useEffect(() => {
+    if (!hasUnsaved) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsaved]);
 
   // ⌘Z / Ctrl+Z. No redo, matching the deliberate call made for the
   // headset's own undo: a session-scoped stack and nothing to walk forward
@@ -362,7 +372,6 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     setSavedEdits([]);
     setSelectedId(null);
     setPicking(false);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
     void createClient()
       .from("project_versions")
       .delete()
@@ -432,6 +441,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           onToggleEditing={
             canEdit
               ? () => {
+                  if (editing && hasUnsaved) {
+                    setConfirming("exit");
+                    return;
+                  }
                   setEditing((e) => !e);
                   setSelectedId(null);
                   setPicking(false);
@@ -523,6 +536,31 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             ✕
           </button>
         </div>
+      )}
+      {confirming === "exit" && (
+        <Confirm
+          destructive
+          title="Leave without saving?"
+          body="Changes you haven't saved are only in this browser — leaving drops them. Saving keeps them in the draft until you publish."
+          confirmLabel="Leave without saving"
+          altLabel="Save and leave"
+          onAlt={() => {
+            saveNow();
+            setConfirming(null);
+            setEditing(false);
+            setSelectedId(null);
+            setPicking(false);
+          }}
+          onConfirm={() => {
+            setConfirming(null);
+            // Drop the unsaved edits back to what was recorded.
+            setEdits(savedEdits);
+            setEditing(false);
+            setSelectedId(null);
+            setPicking(false);
+          }}
+          onCancel={() => setConfirming(null)}
+        />
       )}
       {confirming === "publish" && (
         <Confirm
@@ -645,15 +683,20 @@ function Confirm({
   title,
   body,
   confirmLabel,
+  altLabel,
   destructive = false,
   onConfirm,
+  onAlt,
   onCancel,
 }: {
   title: string;
   body: string;
   confirmLabel: string;
+  /** The safe way forward, when there is one — "Save and leave". */
+  altLabel?: string;
   destructive?: boolean;
   onConfirm: () => void;
+  onAlt?: () => void;
   onCancel: () => void;
 }) {
   useEffect(() => {
@@ -695,14 +738,27 @@ function Confirm({
           <button
             type="button"
             onClick={onConfirm}
-            className={`rounded-lg border border-transparent px-3.5 py-2 text-[13px] font-semibold text-[#f5eeda] transition ${
-              destructive
-                ? "bg-clay hover:bg-clay/90"
-                : "bg-accent hover:bg-accent-bright"
-            }`}
+            className={
+              altLabel
+                ? "rounded-lg border border-clay/40 px-3.5 py-2 text-[13px] font-semibold text-clay transition hover:bg-clay/[0.06]"
+                : `rounded-lg border border-transparent px-3.5 py-2 text-[13px] font-semibold text-[#f5eeda] transition ${
+                    destructive
+                      ? "bg-clay hover:bg-clay/90"
+                      : "bg-accent hover:bg-accent-bright"
+                  }`
+            }
           >
             {confirmLabel}
           </button>
+          {altLabel && onAlt && (
+            <button
+              type="button"
+              onClick={onAlt}
+              className="rounded-lg border border-transparent bg-accent px-3.5 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright"
+            >
+              {altLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
