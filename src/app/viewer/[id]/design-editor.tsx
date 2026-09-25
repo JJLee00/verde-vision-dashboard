@@ -191,8 +191,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [withoutDeletes, selectedId]
   );
 
+  /** Returns whether the draft actually reached the database. */
   const writeDraft = useCallback(
-    async (design: ProjectFileJSON) => {
+    async (design: ProjectFileJSON): Promise<boolean> => {
         setSaveState("saving");
         const supabase = createClient();
         const { data: existing } = await supabase
@@ -203,12 +204,17 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           .maybeSingle();
 
         if (existing) {
-          await supabase
+          const { error: updateError } = await supabase
             .from("project_versions")
             .update({ project_json: design })
             .eq("id", existing.id);
+          if (updateError) {
+            setSaveState("idle");
+            setError("Couldn't save the draft.");
+            return false;
+          }
           setSaveState("saved");
-          return;
+          return true;
         }
         const { data: latest } = await supabase
           .from("project_versions")
@@ -235,9 +241,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               ? "Run migration-015 — changes can't be saved yet."
               : "Couldn't save the draft."
           );
-          return;
+          return false;
         }
         setSaveState("saved");
+        return true;
     },
     [projectId]
   );
@@ -252,27 +259,38 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
    * a button that changed nothing except a list.
    */
   const persist = useCallback(
-    (nextSaved: DesignEdit[]) => {
+    async (nextSaved: DesignEdit[]): Promise<boolean> => {
       // The dev fixture is a sample scene with no row behind it; editing it
       // is for looking at the UI, not for persisting anything.
       if (projectId === "fixture") {
         setSaveState("saved");
-        return;
+        return true;
       }
-      void writeDraft(applyEdits(base, nextSaved));
+      return writeDraft(applyEdits(base, nextSaved));
     },
     [projectId, writeDraft, base]
   );
 
+  /**
+   * Records the change ONLY once the write has landed.
+   *
+   * It used to record first and write after, so a database without
+   * migration-015 produced a change list, a cleared "unsaved" flag and a
+   * button reading "Saved" while nothing had been written at all. A save
+   * that lies is worse than one that fails.
+   */
   const saveNow = useCallback(() => {
-    setSavedEdits(edits);
-    persist(edits);
-    // Saving finishes with that plant, so the panel goes back to the list —
-    // which puts the row you just recorded in front of you. A greyed-out
-    // button was weak confirmation; the record itself is the strong one.
-    // Same shape as Publish, which also leaves the context it commits.
-    setSelectedId(null);
-    setPicking(false);
+    const snapshot = edits;
+    void persist(snapshot).then((ok) => {
+      if (!ok) return;
+      setSavedEdits(snapshot);
+      // Saving finishes with that plant, so the panel goes back to the list —
+      // which puts the row you just recorded in front of you. A greyed-out
+      // button was weak confirmation; the record itself is the strong one.
+      // Same shape as Publish, which also leaves the context it commits.
+      setSelectedId(null);
+      setPicking(false);
+    });
   }, [edits, persist]);
 
   const edit = useCallback(
@@ -305,7 +323,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         const next = saved.filter(
           (e) => !(e.id === dropped.id && e.kind === dropped.kind)
         );
-        if (next.length !== saved.length) persist(next);
+        if (next.length !== saved.length) void persist(next);
         return next;
       });
       return prev.slice(0, -1);
@@ -318,7 +336,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     (id: string, kind: DesignEdit["kind"]) => {
       setSavedEdits((saved) => {
         const next = saved.filter((e) => !(e.id === id && e.kind === kind));
-        if (next.length !== saved.length) persist(next);
+        if (next.length !== saved.length) void persist(next);
         return next;
       });
       setEdits((prev) => prev.filter((e) => !(e.id === id && e.kind === kind)));
@@ -332,7 +350,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     (id: string) => {
       setSavedEdits((saved) => {
         const next = saved.filter((e) => e.id !== id);
-        if (next.length !== saved.length) persist(next);
+        if (next.length !== saved.length) void persist(next);
         return next;
       });
       setEdits((prev) => prev.filter((e) => e.id !== id));
