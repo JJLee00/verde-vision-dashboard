@@ -15,8 +15,9 @@ import { createClient } from "@/lib/supabase/client";
 import {
   PLANTS,
   applyEdits,
-  currentSize,
   changeSize,
+  closestSize,
+  currentSize,
   plantForKey,
   plantForModel,
   plantsSubtotal,
@@ -111,7 +112,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
 
       if (e.kind === "swap") {
         const to = plantForKey(e.plantKey);
-        const next = to ? swapSpecies(was, to) : null;
+        const next = to ? swapSpecies(was, to, e.size) : null;
         if (next) state.set(e.id, next);
         return [
           {
@@ -361,9 +362,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
                 setSelectedId(null);
                 setPicking(false);
               }}
-              onSwap={(plant) => {
+              onSwap={(plant, size) => {
                 if (!selectedId) return;
-                edit({ kind: "swap", id: selectedId, plantKey: plant.key });
+                edit({ kind: "swap", id: selectedId, plantKey: plant.key, size });
                 setPicking(false);
               }}
               onResize={(size) => {
@@ -499,7 +500,7 @@ function EditorPanel({
   onPick: () => void;
   onCancelPick: () => void;
   onBack: () => void;
-  onSwap: (plant: CatalogPlant) => void;
+  onSwap: (plant: CatalogPlant, size: string) => void;
   onResize: (size: string) => void;
   onDelete: () => void;
   onUndelete: () => void;
@@ -537,11 +538,18 @@ function EditorPanel({
     );
   }
 
-  if (picking) {
-    return <Picker current={plant} onCancel={onCancelPick} onPick={onSwap} />;
-  }
-
   const size = currentSize(plant, selected);
+
+  if (picking) {
+    return (
+      <Picker
+        current={plant}
+        currentSizeName={size?.size ?? null}
+        onCancel={onCancelPick}
+        onPick={onSwap}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -738,14 +746,20 @@ function ChangeList({
 
 function Picker({
   current,
+  currentSizeName,
   onCancel,
   onPick,
 }: {
   current: CatalogPlant;
   onCancel: () => void;
-  onPick: (plant: CatalogPlant) => void;
+  onPick: (plant: CatalogPlant, size: string) => void;
+  /** The size the plant is on now — used to suggest one on the new plant. */
+  currentSizeName: string | null;
 }) {
   const [query, setQuery] = useState("");
+  // Choosing a plant opens its sizes rather than swapping straight away:
+  // 5 gal and 36" Box are the same species and a $500 difference.
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const q = query.trim().toLowerCase();
   const shown = q
     ? PLANTS.filter(
@@ -777,23 +791,59 @@ function Picker({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {shown.map((p) => (
-          <button
-            key={p.key}
-            type="button"
-            onClick={() => onPick(p)}
-            disabled={p.key === current.key}
-            className="flex w-full items-center gap-3 border-b border-rule px-4 py-2 text-left transition hover:bg-ink/[0.04] disabled:opacity-40"
-          >
-            <Thumb plant={p} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-ink">{p.name}</span>
-              <span className="block truncate text-xs text-muted">
-                {p.sizes.length > 0 &&
-                  `${p.sizes[0].size} ${currency.format(p.sizes[0].price)}`}
-                {p.key === current.key && " · current"}
+          <div key={p.key} className="border-b border-rule">
+            <button
+              type="button"
+              onClick={() => setOpenKey((k) => (k === p.key ? null : p.key))}
+              disabled={p.key === current.key}
+              aria-expanded={openKey === p.key}
+              className="flex w-full items-center gap-3 px-4 py-2 text-left transition hover:bg-ink/[0.04] disabled:opacity-40"
+            >
+              <Thumb plant={p} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-ink">{p.name}</span>
+                <span className="block truncate text-xs text-muted">
+                  {p.sizes.length} size{p.sizes.length === 1 ? "" : "s"}
+                  {p.sizes.length > 0 &&
+                    ` · from ${currency.format(
+                      Math.min(...p.sizes.map((z) => z.price))
+                    )}`}
+                  {p.key === current.key && " · current"}
+                </span>
               </span>
-            </span>
-          </button>
+              <span className="shrink-0 text-xs text-faint">
+                {openKey === p.key ? "▾" : "▸"}
+              </span>
+            </button>
+
+            {openKey === p.key && (
+              <div className="flex flex-wrap gap-1.5 bg-paper-deep/40 px-4 pb-3 pt-1">
+                {p.sizes.map((z) => {
+                  // Where the plant would land if nobody chose — worth
+                  // marking so the obvious pick is one glance away.
+                  const suggested =
+                    closestSize(p, currentSizeName)?.size === z.size;
+                  return (
+                    <button
+                      key={z.size}
+                      type="button"
+                      onClick={() => onPick(p, z.size)}
+                      className={`rounded-lg border px-2 py-1 text-left text-xs transition hover:border-accent ${
+                        suggested
+                          ? "border-accent/60 bg-card"
+                          : "border-rule bg-card-hover text-muted"
+                      }`}
+                    >
+                      <span className="block text-ink">{z.size}</span>
+                      <span className="mt-0.5 block font-mono text-[0.68rem] tabular-nums">
+                        {currency.format(z.price)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ))}
         {shown.length === 0 && (
           <p className="px-4 py-6 text-sm text-muted">

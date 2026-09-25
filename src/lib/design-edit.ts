@@ -141,12 +141,22 @@ function withSize(placement: PlacedPlantJSON, size: CatalogSize): PlacedPlantJSO
   };
 }
 
-/** Replace the species, keeping the spot it was planted in. */
+/**
+ * Replace the species, keeping the spot it was planted in.
+ *
+ * `sizeName` is what the designer actually chose. Without one this falls
+ * back to the closest size the new plant offers — fine as a default, but a
+ * guess about a priced decision, which is why the picker asks.
+ */
 export function swapSpecies(
   placement: PlacedPlantJSON,
-  to: CatalogPlant
+  to: CatalogPlant,
+  sizeName?: string | null
 ): PlacedPlantJSON | null {
-  const size = closestSize(to, placement.containerType ?? null);
+  const chosen = sizeName
+    ? to.sizes.find((s) => s.size === sizeName)
+    : undefined;
+  const size = chosen ?? closestSize(to, placement.containerType ?? null);
   if (!size) return null;
   return withSize(placement, size);
 }
@@ -162,7 +172,7 @@ export function changeSize(
 /* ── Applying edits to a design ───────────────────────────────────────── */
 
 export type DesignEdit =
-  | { kind: "swap"; id: string; plantKey: string }
+  | { kind: "swap"; id: string; plantKey: string; size?: string }
   | { kind: "resize"; id: string; size: string }
   | { kind: "delete"; id: string };
 
@@ -187,7 +197,7 @@ export function applyEdits(
     if (edit.kind === "swap") {
       const plant = plantForKey(edit.plantKey);
       if (!plant) continue;
-      const next = swapSpecies(placement, plant);
+      const next = swapSpecies(placement, plant, edit.size);
       if (next) placements[index] = next;
     } else {
       const plant = plantForModel(placement.plantModelName);
