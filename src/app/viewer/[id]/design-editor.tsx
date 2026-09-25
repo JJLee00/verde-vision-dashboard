@@ -138,10 +138,10 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
   // Debounced so a run of size taps is one write, not five.
   const saveDraft = useCallback(
     (design: ProjectFileJSON) => {
+      setSaveState("idle");
       // The dev fixture is a sample scene with no row behind it; editing it
       // is for looking at the UI, not for persisting anything.
       if (projectId === "fixture") return;
-      setSaveState("idle");
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => void writeDraft(design), 800);
     },
@@ -228,20 +228,6 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           project={shown}
           editing={editing}
           selectedId={selectedId}
-          selectedModel={selected?.plantModelName ?? null}
-          editorFullColumn={picking}
-          onSelectSpecies={(model) => {
-            // The rail is grouped by species; clicking a row selects one of
-            // that kind, and clicking again walks to the next — which is how
-            // you find the third of four hopseeds.
-            const of = (shown.placements ?? []).filter(
-              (p) => p.plantModelName === model
-            );
-            if (of.length === 0) return;
-            const at = of.findIndex((p) => p.id === selectedId);
-            setSelectedId(of[(at + 1) % of.length].id);
-            setPicking(false);
-          }}
           deletedIds={deletedIds}
           onSelectInstance={(id) => {
             setSelectedId(id);
@@ -260,6 +246,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             <EditorPanel
               selected={selected}
               staged={deletedIds.has(selectedId ?? "")}
+              dirty={dirty && saveState !== "saved"}
+              saveState={saveState}
+              onSave={saveNow}
               picking={picking}
               onPick={() => setPicking(true)}
               onCancelPick={() => setPicking(false)}
@@ -343,14 +332,6 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               </button>
               <button
                 type="button"
-                onClick={saveNow}
-                disabled={publishing || saveState === "saving"}
-                className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card-hover disabled:opacity-50"
-              >
-                Save draft
-              </button>
-              <button
-                type="button"
                 onClick={publish}
                 disabled={publishing}
                 className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:opacity-60"
@@ -370,6 +351,9 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
 function EditorPanel({
   selected,
   staged,
+  dirty,
+  saveState,
+  onSave,
   picking,
   onPick,
   onCancelPick,
@@ -381,6 +365,9 @@ function EditorPanel({
 }: {
   selected: PlacedPlantJSON | null;
   staged: boolean;
+  dirty: boolean;
+  saveState: "idle" | "saving" | "saved";
+  onSave: () => void;
   picking: boolean;
   onPick: () => void;
   onCancelPick: () => void;
@@ -392,10 +379,12 @@ function EditorPanel({
 }) {
   if (!selected) {
     return (
-      <p className="px-4 py-3 text-sm text-muted">
-        Click a plant — on the plan or in the list below — to replace it,
-        change its size, or remove it.
-      </p>
+      <div className="flex flex-1 items-center justify-center p-6 text-center">
+        <p className="max-w-[16rem] text-sm text-muted">
+          Click a plant on the plan to replace it, change its size, or remove
+          it.
+        </p>
+      </div>
     );
   }
 
@@ -420,8 +409,8 @@ function EditorPanel({
   const size = currentSize(plant, selected);
 
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-3 px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-3 border-b border-rule px-4 py-3">
         <Thumb plant={plant} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">
@@ -444,7 +433,7 @@ function EditorPanel({
       </div>
 
       {staged ? (
-        <div className="flex flex-col gap-3 px-4 pb-4">
+        <div className="flex flex-1 flex-col justify-between gap-3 p-4">
           <p className="text-sm text-clay">
             Staged for removal. It stays on the plan as an outline until you
             publish.
@@ -502,6 +491,20 @@ function EditorPanel({
               className="rounded-lg px-3 py-2 text-[13px] font-semibold text-clay transition hover:bg-clay/[0.08]"
             >
               Remove from design
+            </button>
+            {/* Saves the whole draft, not just this plant — but this is
+                where the designer's hands already are. */}
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={!dirty || saveState === "saving"}
+              className="mt-1 rounded-lg border-t border-rule bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:border-rule disabled:bg-paper-deep disabled:text-faint"
+            >
+              {saveState === "saving"
+                ? "Saving…"
+                : saveState === "saved" && !dirty
+                  ? "Saved"
+                  : "Save changes"}
             </button>
           </div>
         </>

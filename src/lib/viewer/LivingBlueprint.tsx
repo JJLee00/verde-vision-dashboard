@@ -69,14 +69,9 @@ export type LivingBlueprintProps = {
   onSelectInstance?: (id: string | null) => void;
   /** Absent means the Edit control isn't offered at all. */
   onToggleEditing?: () => void;
-  /** Sits above the plant-material rail while editing. */
+  /** Replaces the plant-material rail while editing. The rail groups by
+   *  species, so it can't address the single plant an editor works on. */
   editorPanel?: React.ReactNode;
-  /** The panel needs the whole column (the replace picker does). */
-  editorFullColumn?: boolean;
-  /** Species of the selected plant — highlights its row while editing. */
-  selectedModel?: string | null;
-  /** Rail row clicked while editing. */
-  onSelectSpecies?: (model: string) => void;
 };
 
 const EMPTY_IDS: Set<string> = new Set();
@@ -96,9 +91,6 @@ export function LivingBlueprint({
   onSelectInstance,
   onToggleEditing,
   editorPanel,
-  editorFullColumn = false,
-  selectedModel = null,
-  onSelectSpecies,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -137,7 +129,6 @@ export function LivingBlueprint({
     selected,
     editing,
     selectedId,
-    selectedModel,
     deletedIds: deleted,
   });
   useEffect(() => {
@@ -146,20 +137,18 @@ export function LivingBlueprint({
       selected,
       editing,
       selectedId,
-      selectedModel,
       deletedIds: deleted,
     };
-  }, [mode, selected, editing, selectedId, selectedModel, deleted]);
+  }, [mode, selected, editing, selectedId, deleted]);
 
   const selectSpecies = useCallback((model: string | null) => {
     setSelected((prev) => (prev === model ? null : model));
   }, []);
 
   useEffect(() => {
-    const model = editing ? selectedModel : selected;
-    if (!model) return;
-    rowRefs.current.get(model)?.scrollIntoView({ block: "nearest" });
-  }, [selected, selectedModel, editing]);
+    if (!selected) return;
+    rowRefs.current.get(selected)?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   /* ── Canvas renderer ──────────────────────────────────────────── */
   useEffect(() => {
@@ -394,19 +383,10 @@ export function LivingBlueprint({
       // until the revision is published — so the plan doesn't silently
       // rearrange itself and the delete is one click to undo.
       const ghost = st.deletedIds.has(inst.id);
-      const kin =
-        st.editing && !sel && st.selectedModel != null &&
-        st.selectedModel === inst.model;
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
-      const stroke = ghost ? CLAY : sel || kin ? GOLD : verde(0.85);
-      const fill = ghost
-        ? "rgba(0,0,0,0)"
-        : sel
-          ? gold(0.14)
-          : kin
-            ? gold(0.06)
-            : verde(0.08);
+      const stroke = ghost ? CLAY : sel ? GOLD : verde(0.85);
+      const fill = ghost ? "rgba(0,0,0,0)" : sel ? gold(0.14) : verde(0.08);
       const lw = sel ? 2 : 1.4;
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
@@ -1015,18 +995,9 @@ export function LivingBlueprint({
 
         {/* rail — or the editor, while editing */}
         <aside className="flex max-h-[45%] min-h-0 shrink-0 flex-col border-t border-rule bg-card/60 md:max-h-none md:w-[320px] md:border-l md:border-t-0">
-          {editing && editorPanel && (
-            <div
-              className={
-                editorFullColumn
-                  ? "flex min-h-0 flex-1 flex-col"
-                  : "shrink-0 border-b-2 border-rule-strong"
-              }
-            >
-              {editorPanel}
-            </div>
-          )}
-          {!(editing && editorFullColumn) && (
+          {editing && editorPanel ? (
+            editorPanel
+          ) : (
           <>
           <div className="border-b border-rule px-4 py-3">
             <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-faint">
@@ -1041,9 +1012,7 @@ export function LivingBlueprint({
               </p>
             )}
             {rail.rows.map((row) => {
-              const isSel = editing
-                ? selectedModel === row.model
-                : selected === row.model;
+              const isSel = selected === row.model;
               return (
                 <button
                   key={row.model}
@@ -1052,11 +1021,7 @@ export function LivingBlueprint({
                     if (el) rowRefs.current.set(row.model, el);
                     else rowRefs.current.delete(row.model);
                   }}
-                  onClick={() =>
-                    editing
-                      ? onSelectSpecies?.(row.model)
-                      : selectSpecies(row.model)
-                  }
+                  onClick={() => selectSpecies(row.model)}
                   aria-pressed={isSel}
                   className={`flex w-full items-center gap-3 border-b border-rule px-4 py-2.5 text-left transition ${
                     isSel ? "bg-gold/10" : "hover:bg-ink/[0.04]"
