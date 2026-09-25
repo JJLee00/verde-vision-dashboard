@@ -916,13 +916,17 @@ export function LivingBlueprint({
           type="button"
           onClick={onToggleEditing}
           aria-pressed={editing}
-          className={`absolute left-3.5 top-3 rounded-lg border px-3.5 py-1.5 text-[13px] font-semibold shadow-[0_6px_18px_-10px_rgba(28,42,33,0.6)] transition ${
+          // Being in a mode is not an action to take. While editing, this
+          // is a quiet escape hatch — the one filled green button on screen
+          // is Publish, which is the thing that actually finishes the work.
+          // Both being filled green made them fight over "done".
+          className={`absolute left-3.5 top-3 rounded-lg border px-3.5 py-1.5 text-[13px] font-semibold backdrop-blur transition ${
             editing
-              ? "border-accent bg-accent text-[#f5eeda]"
-              : "border-rule-strong bg-card/90 text-ink backdrop-blur hover:bg-card"
+              ? "border-accent/40 bg-card/85 text-accent-dim hover:bg-card"
+              : "border-rule-strong bg-card/90 text-ink shadow-[0_6px_18px_-10px_rgba(28,42,33,0.6)] hover:bg-card"
           }`}
         >
-          {editing ? "Done editing" : "Edit design"}
+          {editing ? "✕ Exit editing" : "Edit design"}
         </button>
       )}
       {!embed && (

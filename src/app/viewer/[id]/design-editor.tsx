@@ -478,6 +478,31 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
         />
       </div>
 
+      {/* Leaving edit mode used to take the bar with it, so an unpublished
+          draft became invisible: the designer's viewer showed the edited
+          design while the client's share link still showed the published
+          one, with nothing to say so. */}
+      {!editing && dirty && (
+        <div className="flex flex-wrap items-center gap-3 border-t border-gold/40 bg-gold/[0.09] px-4 py-2.5">
+          <span className="h-[7px] w-[7px] rounded-full bg-gold" />
+          <span className="text-sm text-ink">
+            {changedPlantCount > 0
+              ? `${changedPlantCount} plant${changedPlantCount === 1 ? "" : "s"} changed, not published`
+              : "Unpublished draft"}
+          </span>
+          <span className="text-sm text-muted">
+            Your client still sees the last published revision.
+          </span>
+          <span className="flex-1" />
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="rounded-lg border border-rule-strong bg-card px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card-hover"
+          >
+            Resume editing
+          </button>
+        </div>
+      )}
       {editing && error && (
         <div className="flex items-start gap-3 border-t border-clay/40 bg-clay/[0.08] px-4 py-3">
           <span className="mt-0.5 text-sm font-semibold text-clay">
