@@ -8,7 +8,7 @@
 // delete stay visible as a ghost until it's published, and makes the draft
 // one derived value rather than a pile of in-place mutations.
 
-import { useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LivingBlueprint, type LivingBlueprintProps } from "@/lib/viewer/LivingBlueprint";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +16,7 @@ import {
   PLANTS,
   applyEdits,
   currentSize,
+  plantForKey,
   plantForModel,
   plantsSubtotal,
   thumbnailURL,
@@ -78,6 +79,40 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     () => plantsSubtotal(staged, viewer.priceOverrides ?? {}),
     [staged, viewer.priceOverrides]
   );
+
+  // Every staged edit, described in the designer's terms. Built off `base`
+  // so a swapped plant still says what it USED to be — which is the whole
+  // point of being able to undo it.
+  const changes = useMemo(() => {
+    const byId = new Map((base.placements ?? []).map((p) => [p.id, p]));
+    return edits.map((e) => {
+      const was = byId.get(e.id);
+      const wasPlant = was ? plantForModel(was.plantModelName) : null;
+      const title = wasPlant?.name ?? "Plant";
+      if (e.kind === "swap") {
+        return {
+          key: `${e.id}:swap`,
+          id: e.id,
+          kind: e.kind,
+          title,
+          detail: `→ ${plantForKey(e.plantKey)?.name ?? "another plant"}`,
+        };
+      }
+      if (e.kind === "resize") {
+        return { key: `${e.id}:resize`, id: e.id, kind: e.kind, title, detail: `→ ${e.size}` };
+      }
+      return { key: `${e.id}:delete`, id: e.id, kind: e.kind, title, detail: "removed" };
+    });
+  }, [edits, base]);
+
+  const last = changes.at(-1) ?? null;
+  const undoLabel = last
+    ? last.kind === "delete"
+      ? "Undo remove"
+      : last.kind === "swap"
+        ? "Undo replace"
+        : "Undo size change"
+    : null;
 
   const selected = useMemo(
     () => shown.placements?.find((p) => p.id === selectedId) ?? null,
@@ -179,7 +214,16 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     [base, saveDraft]
   );
 
-  const undoFor = useCallback(
+  const undoLast = useCallback(() => {
+    setEdits((prev) => {
+      if (prev.length === 0) return prev;
+      const list = prev.slice(0, -1);
+      saveDraft(applyEdits(base, list));
+      return list;
+    });
+  }, [base, saveDraft]);
+
+  const undoOne = useCallback(
     (id: string, kind: DesignEdit["kind"]) => {
       setEdits((prev) => {
         const list = prev.filter((e) => !(e.id === id && e.kind === kind));
@@ -189,6 +233,23 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
     },
     [base, saveDraft]
   );
+
+  // ⌘Z / Ctrl+Z. No redo, matching the deliberate call made for the
+  // headset's own undo: a session-scoped stack and nothing to walk forward
+  // into.
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+        const el = e.target as HTMLElement | null;
+        if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName)) return;
+        e.preventDefault();
+        undoLast();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, undoLast]);
 
   function discard() {
     setEdits([]);
@@ -246,6 +307,15 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
             <EditorPanel
               selected={selected}
               staged={deletedIds.has(selectedId ?? "")}
+              changes={changes}
+              selectedId={selectedId}
+              undoLabel={undoLabel}
+              onUndoLast={undoLast}
+              onUndoOne={undoOne}
+              onSelectChange={(id) => {
+                setSelectedId(id);
+                setPicking(false);
+              }}
               dirty={dirty && saveState !== "saved"}
               saveState={saveState}
               onSave={saveNow}
@@ -271,7 +341,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
               }}
               onUndelete={() => {
                 if (!selectedId) return;
-                undoFor(selectedId, "delete");
+                undoOne(selectedId, "delete");
               }}
             />
           }
@@ -348,9 +418,23 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
 
 /* ── The panel that replaces the rail ─────────────────────────────────── */
 
+type ChangeRow = {
+  key: string;
+  id: string;
+  kind: DesignEdit["kind"];
+  title: string;
+  detail: string;
+};
+
 function EditorPanel({
   selected,
   staged,
+  changes,
+  selectedId,
+  undoLabel,
+  onUndoLast,
+  onUndoOne,
+  onSelectChange,
   dirty,
   saveState,
   onSave,
@@ -365,6 +449,12 @@ function EditorPanel({
 }: {
   selected: PlacedPlantJSON | null;
   staged: boolean;
+  changes: ChangeRow[];
+  selectedId: string | null;
+  undoLabel: string | null;
+  onUndoLast: () => void;
+  onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
+  onSelectChange: (id: string) => void;
   dirty: boolean;
   saveState: "idle" | "saving" | "saved";
   onSave: () => void;
@@ -379,11 +469,19 @@ function EditorPanel({
 }) {
   if (!selected) {
     return (
-      <div className="flex flex-1 items-center justify-center p-6 text-center">
-        <p className="max-w-[16rem] text-sm text-muted">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <p className="px-4 py-5 text-center text-sm text-muted">
           Click a plant on the plan to replace it, change its size, or remove
           it.
         </p>
+        <ChangeList
+          changes={changes}
+          selectedId={selectedId}
+          undoLabel={undoLabel}
+          onUndoLast={onUndoLast}
+          onUndoOne={onUndoOne}
+          onSelect={onSelectChange}
+        />
       </div>
     );
   }
@@ -498,7 +596,7 @@ function EditorPanel({
               type="button"
               onClick={onSave}
               disabled={!dirty || saveState === "saving"}
-              className="mt-1 rounded-lg border-t border-rule bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:border-rule disabled:bg-paper-deep disabled:text-faint"
+              className="mt-1 rounded-lg bg-accent px-3 py-2 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:bg-paper-deep disabled:text-faint"
             >
               {saveState === "saving"
                 ? "Saving…"
@@ -509,6 +607,92 @@ function EditorPanel({
           </div>
         </>
       )}
+      <ChangeList
+        changes={changes}
+        selectedId={selectedId}
+        undoLabel={undoLabel}
+        onUndoLast={onUndoLast}
+        onUndoOne={onUndoOne}
+        onSelect={onSelectChange}
+      />
+    </div>
+  );
+}
+
+/* ── What you've changed, and how to take any of it back ──────────────── */
+
+function ChangeList({
+  changes,
+  selectedId,
+  undoLabel,
+  onUndoLast,
+  onUndoOne,
+  onSelect,
+}: {
+  changes: ChangeRow[];
+  selectedId: string | null;
+  undoLabel: string | null;
+  onUndoLast: () => void;
+  onUndoOne: (id: string, kind: DesignEdit["kind"]) => void;
+  onSelect: (id: string) => void;
+}) {
+  if (changes.length === 0) return null;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col border-t border-rule">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+        <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
+          Changes
+        </span>
+        {undoLabel && (
+          <button
+            type="button"
+            onClick={onUndoLast}
+            // Named rather than a bare arrow: knowing it's the remove you're
+            // about to take back is the difference between using it and not.
+            title="⌘Z"
+            className="text-xs font-semibold text-accent transition hover:text-accent-bright"
+          >
+            ↩ {undoLabel}
+          </button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {changes.map((c) => (
+          <div
+            key={c.key}
+            className={`flex items-center gap-2 border-t border-rule/60 px-4 py-2 ${
+              c.id === selectedId ? "bg-gold/10" : ""
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(c.id)}
+              className="min-w-0 flex-1 text-left"
+            >
+              <span className="block truncate text-[13px] text-ink">
+                {c.title}
+              </span>
+              <span
+                className={`block truncate text-xs ${
+                  c.kind === "delete" ? "text-clay" : "text-muted"
+                }`}
+              >
+                {c.detail}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onUndoOne(c.id, c.kind)}
+              aria-label={`Undo ${c.detail}`}
+              title="Undo this change"
+              className="shrink-0 px-1 text-xs text-faint transition hover:text-ink"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
