@@ -65,7 +65,7 @@ export const FIXTURE_PROJECT_META = {
 };
 
 // Stands in for an org that has filled in its branding, so the letterhead
-// can be judged before migration-015 makes those columns real.
+// can be judged before migration-016 makes those columns real.
 export const FIXTURE_ORG = {
   name: "Verde Landscaping Inc.",
   logo: null,

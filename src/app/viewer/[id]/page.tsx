@@ -124,7 +124,7 @@ export default async function ViewerPage({
   }
 
   // Editing is org work: the designer who owns the project, or an owner.
-  // Read tolerantly — a pre-015 database has no project_versions table, and
+  // Read tolerantly — a pre-016 database has no project_versions table, and
   // the viewer must still open.
   const membership = await getMembership(supabase, user.id);
   const canEdit =

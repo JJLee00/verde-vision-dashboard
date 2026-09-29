@@ -238,7 +238,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
           setSaveState("idle");
           setError(
             insertError.code === "42P01"
-              ? "Run migration-015 — changes can't be saved yet."
+              ? "Run migration-016 — changes can't be saved yet."
               : "Couldn't save the draft."
           );
           return false;
@@ -275,7 +275,7 @@ export function DesignEditor({ projectId, canEdit, draftDesign, ...viewer }: Pro
    * Records the change ONLY once the write has landed.
    *
    * It used to record first and write after, so a database without
-   * migration-015 produced a change list, a cleared "unsaved" flag and a
+   * migration-016 produced a change list, a cleared "unsaved" flag and a
    * button reading "Saved" while nothing had been written at all. A save
    * that lies is worse than one that fails.
    */

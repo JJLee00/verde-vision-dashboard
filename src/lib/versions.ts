@@ -188,7 +188,7 @@ export type VersionRow = {
 
 /**
  * Appends a version. Returns null — never throws — when the table isn't
- * there yet, so a database that hasn't run migration-015 keeps syncing
+ * there yet, so a database that hasn't run migration-016 keeps syncing
  * exactly as it does today rather than failing a designer's upload in the
  * field. That tolerance is the same one every migration-gated read on the
  * dashboard uses.
@@ -242,7 +242,7 @@ export async function createVersion(
   return null;
 }
 
-/** The newest published version, or null (including on a pre-015 database). */
+/** The newest published version, or null (including on a pre-016 database). */
 export async function currentPublishedVersion(
   db: DbClient,
   projectId: string

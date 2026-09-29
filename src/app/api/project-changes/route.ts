@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
 
   const current = await currentPublishedVersion(supabase, projectId);
   if (!current) {
-    // Either the project has never synced a design, or migration-015 hasn't
+    // Either the project has never synced a design, or migration-016 hasn't
     // been run. Both mean the same thing to the app: nothing to apply.
     return NextResponse.json({
       revision: 0,

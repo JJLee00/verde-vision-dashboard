@@ -24,7 +24,7 @@ import { EstimateBuilder, type SavedItem } from "./estimate-builder";
 // rows get typed, and it deliberately lives on its own route rather than in a
 // card on the project page: a 40-row bid needs the width.
 //
-// Everything here is migration-015-gated and degrades the same way the
+// Everything here is migration-016-gated and degrades the same way the
 // project page's migration-009 fields do — the screen renders, explains
 // itself, and stays read-only until the SQL has been run.
 
@@ -40,7 +40,7 @@ type PageData = {
   savedItems: SavedItem[];
   canEdit: boolean;
   isOwner: boolean;
-  // False until migration-015 has been run: no estimate_items table, no
+  // False until migration-016 has been run: no estimate_items table, no
   // estimate settings columns.
   schemaReady: boolean;
   readOnly: boolean; // dev fixture
@@ -76,9 +76,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
   if (!user) redirect("/login");
 
   // The base row predates everything; the settings columns and the rows
-  // themselves arrive with migration-015, so they get their own selects and
+  // themselves arrive with migration-016, so they get their own selects and
   // are read tolerantly. Saved Items is the org price book (migration 003,
-  // org-scoped by 007, widened past 'plant'/'labor' by 015).
+  // org-scoped by 007, widened past 'plant'/'labor' by 016).
   const [baseRes, settingsRes, itemsRes, savedRes, membership] =
     await Promise.all([
       supabase
@@ -127,7 +127,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     items: sortItems((itemsRes.data ?? []).map(fromRow)),
     settings,
     terms: settingsRes.data?.estimate_terms ?? "",
-    // Pre-015 the price book still answers, just without the new categories.
+    // Pre-016 the price book still answers, just without the new categories.
     savedItems: (savedRes.data ?? []).map((r) => ({
       id: r.id as string,
       name: r.name as string,
@@ -183,12 +183,12 @@ export default async function EstimatePage({
       {!data.schemaReady && (
         <div className="mt-6 rounded-[14px] border border-gold/40 bg-gold/[0.07] p-5">
           <h2 className="font-serif text-lg text-ink">
-            Waiting on migration 015
+            Waiting on migration 016
           </h2>
           <p className="mt-1.5 text-sm text-muted">
             The estimate tables aren&apos;t in this database yet. Run{" "}
             <code className="rounded bg-ink/[0.07] px-1.5 py-0.5 font-mono text-[0.78rem]">
-              supabase/migration-015-estimate-builder.sql
+              supabase/migration-016-estimate-builder.sql
             </code>{" "}
             in the Supabase SQL editor and reload — the screen below is live the
             moment it lands.

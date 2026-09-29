@@ -70,7 +70,7 @@ export async function publishRevision(
       ok: false,
       error:
         versionError?.code === "42P01"
-          ? "Run migration-015 before publishing revisions."
+          ? "Run migration-016 before publishing revisions."
           : (versionError?.message ?? "Could not publish"),
     };
   }

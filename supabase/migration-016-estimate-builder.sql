@@ -1,5 +1,5 @@
--- Migration 015: estimate builder, project versions, company branding
--- Run in the Supabase SQL editor AFTER migration-014.
+-- Migration 016: estimate builder, project versions, company branding
+-- Run in the Supabase SQL editor AFTER migration-014 (and after 015-billing, which took the 015 slot).
 --
 -- One migration instead of three, deliberately: every file in this folder is
 -- run by hand in the SQL editor, so each extra migration is another round
@@ -359,3 +359,24 @@ create policy "Owners can delete org assets"
 -- row between two others is one UPDATE to the midpoint rather than
 -- renumbering the whole bid. When the gap between two neighbours closes to
 -- zero the client renumbers that project's rows by 10s and carries on.
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Applied-migration log
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- Every migration from here on ends with its own row, so the database can
+-- answer "what has actually been run" without anyone remembering. The table
+-- is created here rather than assumed: it was made by hand in prod, and a
+-- fresh or staging database would otherwise fail on this insert.
+--
+-- Prod already ran this file and Jason logged 016 by hand, so the insert
+-- below is a no-op there — it exists for every database created after.
+
+create table if not exists public.migrations_applied (
+  name        text primary key,
+  applied_at  timestamptz not null default now()
+);
+
+insert into public.migrations_applied (name)
+values ('016-estimate-builder')
+on conflict do nothing;

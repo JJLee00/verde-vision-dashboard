@@ -252,12 +252,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Record this sync as a version, so the design has a history instead of
-  // being overwritten in place (migration-015). `projects.project_json`
+  // being overwritten in place (migration-016). `projects.project_json`
   // above still holds the current published design and every existing
   // reader keeps working unchanged.
   //
   // Deliberately after the update and deliberately silent on failure: on a
-  // database that hasn't run migration-015 there is no project_versions
+  // database that hasn't run migration-016 there is no project_versions
   // table, and a designer standing in a yard must not have their sync
   // rejected over a history row. createVersion() returns null there.
   let syncedRevision: number | null = null;
@@ -296,7 +296,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // `revision` is null on a database that hasn't run migration-015; the app
+  // `revision` is null on a database that hasn't run migration-016; the app
   // treats that as "no version history" and simply doesn't ask for changes.
   return NextResponse.json({
     ok: true,

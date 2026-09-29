@@ -100,7 +100,7 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
   if (!user) return { error: "Not signed in", status: 401 };
 
   // Same migration-gated split as the estimate page: the base row is old,
-  // the record fields are 009, the estimate settings and rows are 015.
+  // the record fields are 009, the estimate settings and rows are 016.
   const [baseRes, recRes, settingsRes, itemsRes, membership] = await Promise.all([
     supabase.from("projects").select("id, name, project_date").eq("id", id).single(),
     supabase.from("projects").select("address, contact_email").eq("id", id).single(),
@@ -121,7 +121,7 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
   if (baseRes.error || !baseRes.data) return { error: "Project not found", status: 404 };
   if (itemsRes.error) {
     return {
-      error: "Estimate tables are not in this database yet — run migration-015.",
+      error: "Estimate tables are not in this database yet — run migration-016.",
       status: 409,
     };
   }
@@ -146,7 +146,7 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
-// Tolerant on purpose: before migration-015 the branding columns don't
+// Tolerant on purpose: before migration-016 the branding columns don't
 // exist, and a proposal that prints under a bare company name is far better
 // than one that 500s.
 async function loadOrgBrand(

@@ -50,7 +50,7 @@ export default async function CompanyPage() {
     );
   }
 
-  // The branding columns arrive with migration-015; the name predates it.
+  // The branding columns arrive with migration-016; the name predates it.
   // Split selects so the page still renders before that migration runs.
   const [nameRes, brandRes] = await Promise.all([
     supabase
@@ -95,12 +95,12 @@ export default async function CompanyPage() {
       {!schemaReady && (
         <div className="mt-6 max-w-2xl rounded-[14px] border border-gold/40 bg-gold/[0.07] p-5">
           <h2 className="font-serif text-lg text-ink">
-            Waiting on migration 015
+            Waiting on migration 016
           </h2>
           <p className="mt-1.5 text-sm text-muted">
             The branding columns aren&apos;t in this database yet. Run{" "}
             <code className="rounded bg-ink/[0.07] px-1.5 py-0.5 font-mono text-[0.78rem]">
-              supabase/migration-015-estimate-builder.sql
+              supabase/migration-016-estimate-builder.sql
             </code>{" "}
             and reload — everything below is live the moment it lands.
           </p>
