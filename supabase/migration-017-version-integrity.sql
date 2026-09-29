@@ -55,6 +55,19 @@ language plpgsql
 set search_path = public
 as $$
 begin
+  -- author_id is `on delete set null`, and Postgres applies that as an UPDATE
+  -- on this table. Without this escape a published version would make its
+  -- author undeletable ("immutable") and a draft would fail on the identity
+  -- check — deleting an auth user who ever authored a version would error.
+  --
+  -- Narrow on purpose: it only lets through the exact shape the FK produces,
+  -- author_id going non-null → null with every other column byte-identical.
+  -- Anything else riding along fails the comparison and hits the rules below.
+  if new.author_id is null and old.author_id is not null
+     and (to_jsonb(new) - 'author_id') = (to_jsonb(old) - 'author_id') then
+    return new;
+  end if;
+
   if old.status = 'published' then
     raise exception
       'project_versions: a published revision is immutable (id %)', old.id
