@@ -4,6 +4,7 @@ import {
   createVersion,
   currentPublishedVersion,
   diffPlants,
+  sameDesign,
   summarize,
 } from "@/lib/versions";
 import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
@@ -361,23 +362,33 @@ export async function POST(request: NextRequest) {
   let syncedRevision: number | null = null;
   if (projectJson) {
     const previous = await currentPublishedVersion(supabase, project.id);
-    const version = await createVersion(supabase, {
-      projectId: project.id,
-      source: "headset",
-      json: projectJson as ProjectFileJSON,
-      // Headset syncs publish immediately. The designer was standing in the
-      // yard when they made the change; there is nothing to review.
-      status: "published",
-      summary: summarize(
-        diffPlants(previous?.project_json ?? null, projectJson as ProjectFileJSON)
-      ),
-    });
-    if (version) {
-      await supabase
-        .from("projects")
-        .update({ current_version_id: version.id })
-        .eq("id", project.id);
-      syncedRevision = version.revision;
+
+    if (previous && sameDesign(previous.project_json, projectJson as ProjectFileJSON)) {
+      // Nothing changed. Since the app started syncing when a designer LEAVES
+      // a project, this is the common case — opened, looked at, walked away —
+      // and a version row carries the whole design, so appending one here
+      // would fill the history with copies that say nothing. The project's
+      // stored design is still refreshed above; only the history is spared.
+      syncedRevision = previous.revision;
+    } else {
+      const version = await createVersion(supabase, {
+        projectId: project.id,
+        source: "headset",
+        json: projectJson as ProjectFileJSON,
+        // Headset syncs publish immediately. The designer was standing in the
+        // yard when they made the change; there is nothing to review.
+        status: "published",
+        summary: summarize(
+          diffPlants(previous?.project_json ?? null, projectJson as ProjectFileJSON)
+        ),
+      });
+      if (version) {
+        await supabase
+          .from("projects")
+          .update({ current_version_id: version.id })
+          .eq("id", project.id);
+        syncedRevision = version.revision;
+      }
     }
 
     // The estimate's plant rows follow the design, exactly as they do when
@@ -386,6 +397,14 @@ export async function POST(request: NextRequest) {
     // design and an estimate of zero rows — the derivation existed and simply
     // never ran on this side. Manual rows, hardscape rows and prices a
     // designer typed over are all left alone; see the function.
+    // Read BEFORE the rebuild: it writes estimate_amount itself, so asking
+    // afterwards would only ever hand back the number being guarded against.
+    const { data: priorTotal } = await supabase
+      .from("projects")
+      .select("estimate_amount")
+      .eq("id", project.id)
+      .maybeSingle();
+
     const plantRows = await rebuildPlantRows(
       supabase,
       project.id,
@@ -399,11 +418,18 @@ export async function POST(request: NextRequest) {
     // doesn't know yet (gen-catalog hasn't been re-run since the app added
     // them) produces no rows at all, and writing the derived zero would blank
     // a real bid. There, keep the total the headset sent.
-    if (plantRows === 0 && estimateAmount != null) {
-      await supabase
-        .from("projects")
-        .update({ estimate_amount: estimateAmount })
-        .eq("id", project.id);
+    if (plantRows === 0) {
+      // Fall back to the total the app sent, or failing that the one already
+      // on the project. A leave-sync sends no estimate at all, so without the
+      // second half a design whose plants this catalog doesn't know yet would
+      // quietly zero a real bid every time the designer walked away from it.
+      const fallback = estimateAmount ?? priorTotal?.estimate_amount ?? null;
+      if (fallback != null) {
+        await supabase
+          .from("projects")
+          .update({ estimate_amount: fallback })
+          .eq("id", project.id);
+      }
     }
   }
 

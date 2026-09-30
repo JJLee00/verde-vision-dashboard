@@ -138,6 +138,40 @@ export function diffPlants(
   return { removed, updated, added };
 }
 
+/**
+ * Is this the same design that is already published?
+ *
+ * Needed because the headset now syncs when a designer LEAVES a project, not
+ * only when they export. Opening a project, looking at it and walking away is
+ * the common case, and without this each one would append a full copy of the
+ * design to the history. A version row holds the whole ProjectFile, so that is
+ * megabytes a week of rows that say nothing.
+ *
+ * Compared on canonical form rather than JSON.stringify: the stored copy comes
+ * back out of jsonb with its keys in Postgres's order, not the order Swift
+ * encoded them, so a plain string compare would call every sync a change —
+ * exactly the bug this is meant to prevent.
+ */
+export function sameDesign(
+  a: ProjectFileJSON | null | undefined,
+  b: ProjectFileJSON | null | undefined
+): boolean {
+  if (!a || !b) return false;
+  return canonical(a) === canonical(b);
+}
+
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  return `{${Object.keys(obj)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`)
+    .join(",")}}`;
+}
+
 export function isEmptyChangeSet(changes: ChangeSet): boolean {
   return (
     changes.removed.length === 0 &&
