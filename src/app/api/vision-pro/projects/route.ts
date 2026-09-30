@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, project_date, status, project_json_updated_at, deleted_at")
+    .select("id, name, project_date, status, address, project_json_updated_at, deleted_at")
     .eq("client_id", account.id)
     .order("created_at", { ascending: false });
 
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     if (/deleted_at/.test(error.message)) {
       const { data: legacy, error: legacyError } = await supabase
         .from("projects")
-        .select("id, name, project_date, status, project_json_updated_at")
+        .select("id, name, project_date, status, address, project_json_updated_at")
         .eq("client_id", account.id)
         .order("created_at", { ascending: false });
       if (legacyError) {
@@ -79,6 +79,7 @@ export async function GET(request: NextRequest) {
           name: p.name,
           project_date: p.project_date,
           status: p.status,
+          address: p.address,
           has_design: Boolean(p.project_json_updated_at),
           deleted: false,
         })),
@@ -93,6 +94,10 @@ export async function GET(request: NextRequest) {
       name: p.name,
       project_date: p.project_date,
       status: p.status,
+      // Typed at a desk, used in the yard. This is what lets Auto Blueprint
+      // fetch a lot outline on site without anyone spelling out a street
+      // address on a virtual keyboard in someone's driveway.
+      address: p.address,
       // Whether a design has ever been synced. A project created at a desk
       // has none, and the headset treats it as a yard still to be walked.
       has_design: Boolean(p.project_json_updated_at),
