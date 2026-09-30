@@ -58,6 +58,9 @@ export async function POST(request: NextRequest) {
   const estimatePdf = form.get("estimate");
   const plantsRaw = form.get("plants")?.toString() || null;
   const projectJsonPart = form.get("project_json");
+  // The revision the app's design is based on. Absent from older builds,
+  // which keep the previous last-writer-wins behaviour.
+  const baseRevisionRaw = form.get("base_revision")?.toString() || null;
   const anchorParts: Record<string, FormDataEntryValue | null> = {
     origin: form.get("anchor_origin"),
     first: form.get("anchor_first"),
@@ -75,6 +78,17 @@ export async function POST(request: NextRequest) {
   if (estimateRaw && Number.isNaN(estimateAmount)) {
     return NextResponse.json(
       { error: "estimate_amount must be a number" },
+      { status: 400 }
+    );
+  }
+
+  const baseRevision = baseRevisionRaw != null ? Number(baseRevisionRaw) : null;
+  if (
+    baseRevisionRaw != null &&
+    (!Number.isInteger(baseRevision) || baseRevision! < 0)
+  ) {
+    return NextResponse.json(
+      { error: "base_revision must be a revision number" },
       { status: 400 }
     );
   }
@@ -187,6 +201,37 @@ export async function POST(request: NextRequest) {
       );
     }
     project = data;
+  }
+
+  // Refuse to publish a design over a newer one.
+  //
+  // The app applies office edits when a project opens, so a sync normally
+  // carries them. The case this exists for is a headset that opened with no
+  // signal: the pull failed silently — by design, a dead network must not
+  // cost a designer their session — and the design it is now pushing has
+  // never seen what the office did. Accepting it would republish the old
+  // plants as the newest revision and the office work would be gone, with no
+  // error anywhere. That is the §0 data-loss bug one layer further in.
+  //
+  // Deliberately before the writes and the file uploads, so a rejected sync
+  // changes nothing at all. Only a design push can clobber, so a sync with no
+  // project_json (a project being created, an estimate total on its own) is
+  // never blocked. A build that sends no base_revision keeps the previous
+  // behaviour rather than being locked out mid-rollout.
+  if (projectJson && baseRevision != null) {
+    const current = await currentPublishedVersion(supabase, project.id);
+    if (current && current.revision > baseRevision) {
+      return NextResponse.json(
+        {
+          error:
+            "This design is based on an older revision. Pull the changes and sync again.",
+          revision: current.revision,
+          base_revision: baseRevision,
+          source: current.source,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const updates: Record<string, unknown> = {};
