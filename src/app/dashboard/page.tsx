@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMembership, getOrgMembers, memberName } from "@/lib/org";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
-import { NewProjectButton } from "./new-project-button";
+import { NewProjectButton } from "./project-details-dialog";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
@@ -583,18 +583,7 @@ export default async function DashboardPage({
           <div className="sm:w-44">
             <StatusFilter />
           </div>
-          <NewProjectButton
-            designers={
-              membership?.role === "owner"
-                ? [
-                    { id: user.id, label: "Me" },
-                    ...members
-                      .filter((m) => m.user_id !== user.id)
-                      .map((m) => ({ id: m.user_id, label: memberName(m) })),
-                  ]
-                : [{ id: user.id, label: "Me" }]
-            }
-          />
+          <NewProjectButton />
         </div>
       </div>
 

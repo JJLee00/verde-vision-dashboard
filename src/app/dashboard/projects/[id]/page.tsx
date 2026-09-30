@@ -7,7 +7,8 @@ import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
-import { StatusSelect, DetailsForm, NotesEditor } from "./editors";
+import { StatusSelect, NotesEditor } from "./editors";
+import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
 import { CoverUpload } from "./cover-upload";
@@ -52,6 +53,7 @@ type PageData = {
   // Public share-link tokens (migration 008; null until it has run).
   shareToken: string | null;
   crewToken: string | null;
+  customerName: string | null;
   address: string | null;
   contactEmail: string | null;
   notes: string | null;
@@ -93,6 +95,7 @@ function buildFixtureData(): PageData {
     jsonUpdatedAt: new Date().toISOString(),
     shareToken: "00000000-0000-0000-0000-000000000000",
     crewToken: "00000000-0000-0000-0000-000000000001",
+    customerName: "Dani Hartley",
     address: "27210 N Rio Verde Dr, Rio Verde, AZ",
     contactEmail: "hoffmans@example.com",
     notes: "Sample project — fields are read-only in fixture mode.",
@@ -123,8 +126,16 @@ async function loadPageData(id: string): Promise<PageData | null> {
   // in their own select() so the page still renders before those
   // migrations run. (The video listing moved to the second wave: its
   // folder is keyed by the project's designer, which needs the base row.)
-  const [baseRes, jsonRes, recRes, anchorRes, deletedRes, priceRes, membership] =
-    await Promise.all([
+  const [
+    baseRes,
+    jsonRes,
+    recRes,
+    anchorRes,
+    deletedRes,
+    customerRes,
+    priceRes,
+    membership,
+  ] = await Promise.all([
     supabase
       .from("projects")
       .select(
@@ -146,6 +157,8 @@ async function loadPageData(id: string): Promise<PageData | null> {
     // Its own select, like anchor_paths above: a database that hasn't run
     // migration-018 has no such column, and the project page must still open.
     supabase.from("projects").select("deleted_at").eq("id", id).single(),
+    // Its own select for the same reason: migration-019 may not have run.
+    supabase.from("projects").select("customer_name").eq("id", id).single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
     getMembership(supabase, user.id),
   ]);
@@ -298,6 +311,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
     jsonUpdatedAt,
     shareToken,
     crewToken,
+    customerName:
+      (customerRes.data as { customer_name?: string | null } | null)
+        ?.customer_name ?? null,
     address,
     contactEmail,
     notes,
@@ -394,29 +410,68 @@ export default async function ProjectPage({
           )}
           <div className="min-w-0">
             <h1 className="truncate font-serif text-4xl text-ink">{data.name}</h1>
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+
+            {/* Who and where, as part of the title rather than a form in the
+                sidebar. These are what the project IS; they were being typed
+                into a card below the fold, which is where settings live, not
+                identity. Edit details opens the same dialog the project was
+                created with. */}
+            {(data.customerName || data.address || data.contactEmail) && (
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.95rem] text-body">
+                {data.customerName && <span>{data.customerName}</span>}
+                {data.address && (
+                  <span className={data.customerName ? "text-muted" : ""}>
+                    {data.customerName && "· "}
+                    {data.address}
+                  </span>
+                )}
+                {data.contactEmail && (
+                  <a
+                    href={`mailto:${data.contactEmail}`}
+                    className="text-muted underline decoration-rule-strong underline-offset-4 transition hover:text-accent"
+                  >
+                    {(data.customerName || data.address) && "· "}
+                    {data.contactEmail}
+                  </a>
+                )}
+              </p>
+            )}
+
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-faint">
               {data.createdAt && (
                 <span>Created {longDate.format(new Date(data.createdAt))}</span>
               )}
-              {data.projectDate && (
-                <span className="text-faint">
-                  · Project date{" "}
-                  {longDate.format(new Date(`${data.projectDate}T00:00:00`))}
-                </span>
-              )}
               {data.jsonUpdatedAt && (
-                <span className="text-faint">
+                <span>
                   · Synced from headset{" "}
                   {syncStamp.format(new Date(data.jsonUpdatedAt))}
                 </span>
               )}
-              {data.designerName && (
-                <span className="text-faint">· Designer: {data.designerName}</span>
-              )}
+              {data.designerName && <span>· Designer: {data.designerName}</span>}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          {!disabled && (
+            <EditProjectButton
+              projectId={data.id}
+              initial={{
+                name: data.name,
+                customerName: data.customerName ?? "",
+                address: data.address ?? "",
+                contactEmail: data.contactEmail ?? "",
+              }}
+            />
+          )}
+          {/* Followed the cover photo up here when the Details card went:
+              it was only ever that card's action, and the photo it sets is
+              the one shown beside this title. */}
+          <CoverUpload
+            projectId={data.id}
+            userId={data.mediaOwnerId}
+            hasCover={Boolean(data.coverUrl)}
+            disabled={disabled}
+          />
           {data.projectJson && data.shareToken && data.crewToken && (
             <ShareLinkButtons
               clientToken={data.shareToken}
@@ -591,25 +646,6 @@ export default async function ProjectPage({
                 client link.
               </p>
             )}
-          </SectionCard>
-
-          <SectionCard
-            title="Details"
-            action={
-              <CoverUpload
-                projectId={data.id}
-                userId={data.mediaOwnerId}
-                hasCover={Boolean(data.coverUrl)}
-                disabled={disabled}
-              />
-            }
-          >
-            <DetailsForm
-              projectId={data.id}
-              initialAddress={data.address}
-              initialContactEmail={data.contactEmail}
-              disabled={disabled}
-            />
           </SectionCard>
 
           <SectionCard title="Notes">
