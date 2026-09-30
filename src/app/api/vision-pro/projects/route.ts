@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, project_date, status, address, project_json_updated_at, deleted_at")
+    .select("id, name, project_date, status, address, anchor_paths, project_json_updated_at, deleted_at")
     .eq("client_id", account.id)
     .order("created_at", { ascending: false });
 
@@ -88,6 +88,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // One signing call for every project's photos rather than one per project.
+  // Best effort: a project with no photos, or a database without
+  // migration-010, simply contributes nothing.
+  const anchorPhotos: Record<string, Record<string, string>> = {};
+  const pathOwner = new Map<string, { id: string; step: string }>();
+  for (const project of data ?? []) {
+    const paths = (project as { anchor_paths?: Record<string, string> | null })
+      .anchor_paths;
+    if (!paths) continue;
+    for (const [step, path] of Object.entries(paths)) {
+      if (typeof path === "string") pathOwner.set(path, { id: project.id, step });
+    }
+  }
+  if (pathOwner.size > 0) {
+    const { data: signed } = await supabase.storage
+      .from("project-media")
+      .createSignedUrls([...pathOwner.keys()], 60 * 60);
+    for (const item of signed ?? []) {
+      if (!item.path || !item.signedUrl) continue;
+      const owner = pathOwner.get(item.path);
+      if (!owner) continue;
+      (anchorPhotos[owner.id] ??= {})[owner.step] = item.signedUrl;
+    }
+  }
+
   return NextResponse.json({
     projects: (data ?? []).map((p) => ({
       id: p.id,
@@ -98,6 +123,11 @@ export async function GET(request: NextRequest) {
       // fetch a lot outline on site without anyone spelling out a street
       // address on a virtual keyboard in someone's driveway.
       address: p.address,
+      // Signed URLs for any marker reference photos, so a photo added at a
+      // desk reaches the yard — which is the only place it is any use. The
+      // headset cannot take these itself (visionOS main camera access is an
+      // enterprise entitlement), so the office is often where they arrive.
+      anchor_photos: anchorPhotos[p.id] ?? {},
       // Whether a design has ever been synced. A project created at a desk
       // has none, and the headset treats it as a yard still to be walked.
       has_design: Boolean(p.project_json_updated_at),

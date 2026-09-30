@@ -8,6 +8,13 @@ import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 import { StatusSelect, NotesEditor } from "./editors";
+import { SiteMarkers } from "./site-markers";
+import {
+  buildSiteMarkers,
+  registrationsFrom,
+  type AnchorStep,
+  type SiteMarker,
+} from "@/lib/markers";
 import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
@@ -57,7 +64,7 @@ type PageData = {
   contactEmail: string | null;
   notes: string | null;
   videos: VideoItem[];
-  anchors: { step: string; label: string; url: string }[];
+  markers: SiteMarker[];
   modeSeconds: Record<string, number> | null;
   // The designer whose folder holds this project's media ({client_id}/
   // {project_id}/…) — owner uploads land there too, one canonical spot.
@@ -69,12 +76,6 @@ type PageData = {
   readOnly: boolean; // dev fixture
   deleted: boolean; // soft-deleted (migration 018); false before it has run
   rail: { rows: RailRow[]; subtotal: number | null };
-};
-
-const ANCHOR_LABELS: Record<string, string> = {
-  origin: "Origin",
-  first: "First anchor",
-  second: "Second anchor",
 };
 
 // Mode-time buckets in display order. "clientView" is the presenting
@@ -98,7 +99,7 @@ function buildFixtureData(): PageData {
     contactEmail: "hoffmans@example.com",
     notes: "Sample project — fields are read-only in fixture mode.",
     videos: [],
-    anchors: [],
+    markers: buildSiteMarkers([], {}),
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
     mediaOwnerId: "fixture",
     designerName: null,
@@ -272,13 +273,15 @@ async function loadPageData(id: string): Promise<PageData | null> {
   for (const item of anchorUrlRes.data ?? []) {
     if (item.path && item.signedUrl) anchorUrlByPath.set(item.path, item.signedUrl);
   }
-  const anchors = anchorEntries
-    .map((a) => ({
-      step: a.step,
-      label: ANCHOR_LABELS[a.step] ?? a.step,
-      url: anchorUrlByPath.get(a.path) ?? "",
-    }))
-    .filter((a) => a.url);
+  // One row per alignment point, whether or not a plate or a photo exists —
+  // "Point 2 has no plate" is the thing worth knowing, and a list that only
+  // shows what is present can never say it.
+  const photoUrlByStep: Partial<Record<AnchorStep, string>> = {};
+  for (const entry of anchorEntries) {
+    const url = anchorUrlByPath.get(entry.path);
+    if (url) photoUrlByStep[entry.step as AnchorStep] = url;
+  }
+  const markers = buildSiteMarkers(registrationsFrom(projectJson), photoUrlByStep);
 
   // Rail prices: designer's Prices-tab overrides, same as the viewer.
   // Fetched in the first parallel wave above.
@@ -311,7 +314,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     contactEmail,
     notes,
     videos,
-    anchors,
+    markers,
     modeSeconds:
       (projectJson?.modeSeconds as Record<string, number> | null) ?? null,
     mediaOwnerId: base.client_id,
@@ -554,58 +557,18 @@ export default async function ProjectPage({
             </SectionCard>
           </div>
 
-          <SectionCard
-            title="Plant material"
-            action={
-              data.projectJson ? (
-                <Link
-                  href={`/viewer/${data.id}`}
-                  className="text-xs font-semibold text-accent transition hover:text-accent-bright"
-                >
-                  Open in viewer →
-                </Link>
-              ) : undefined
-            }
-          >
-            {data.rail.rows.length === 0 ? (
-              <p className="text-sm text-muted">
-                Plant material appears after the first headset sync.
-              </p>
-            ) : (
-              <div>
-                {data.rail.rows.map((row) => (
-                  <div
-                    key={row.model}
-                    className="flex items-center gap-3 border-b border-rule py-2 last:border-b-0"
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-accent/50 font-mono text-[9px] font-semibold text-accent">
-                      {row.meta.code}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-body">
-                      {row.meta.name}
-                      <span className="text-muted">
-                        {" "}
-                        ×{row.qty}
-                        {row.unitLabel && ` · ${row.unitLabel}`}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-mono text-sm tabular-nums text-body">
-                      {row.lineTotal != null ? currency.format(row.lineTotal) : "—"}
-                    </span>
-                  </div>
-                ))}
-                {data.rail.subtotal != null && (
-                  <div className="flex items-baseline justify-between pt-3">
-                    <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-                      Materials subtotal
-                    </span>
-                    <span className="font-mono text-sm font-semibold tabular-nums text-ink">
-                      {currency.format(data.rail.subtotal)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+          <SectionCard title="Site markers">
+            <SiteMarkers
+              projectId={data.id}
+              mediaOwnerId={data.mediaOwnerId}
+              markers={data.markers}
+              disabled={disabled}
+            />
+            <p className="mt-4 text-[11px] text-faint">
+              The plates the headset finds to re-align this project on a
+              return visit. Photos are for finding them again — the app can
+              only offer a picker, so adding them here is often easier.
+            </p>
           </SectionCard>
         </div>
 
@@ -630,30 +593,6 @@ export default async function ProjectPage({
               disabled={disabled}
             />
           </SectionCard>
-
-          {data.anchors.length > 0 && (
-            <SectionCard title="Alignment anchors">
-              <div className="flex flex-col gap-3">
-                {data.anchors.map((a) => (
-                  <div key={a.step}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={a.url}
-                      alt={`${a.label} reference photo`}
-                      className="w-full rounded-[10px] border border-edge object-cover"
-                    />
-                    <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">
-                      {a.label}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-3 text-[11px] text-faint">
-                Reference shots from setup — line these up to re-align the
-                project on a return visit.
-              </p>
-            </SectionCard>
-          )}
 
           <SectionCard title="Walkthrough videos">
             <VideoManager
