@@ -605,12 +605,13 @@ export default async function DashboardPage({
                     project.client_id === user.id ||
                     membership?.role === "owner";
                   return (
-                    // A FIXED aspect ratio, so a card is the same height
-                    // whether or not it has a photo. It used to be a
-                    // min-height with the image at h-full, which meant the
-                    // browser had the image's own proportions to go on and
-                    // adding one visibly resized the card.
-                    <div className="group relative aspect-[4/3] shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05] md:w-80 lg:w-96">
+                    // Back to the slot's original proportions. The photo is
+                    // ABSOLUTE inside it, which is what stops adding one
+                    // resizing the card: an in-flow image brings its own
+                    // proportions to the layout, an absolute one has no say
+                    // in its parent's size at all. A fixed aspect ratio also
+                    // fixed that, but at the cost of much taller cards.
+                    <div className="group relative h-full min-h-52 shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05] md:w-80 lg:w-96">
                       {url ? (
                         <Link
                           href={`/dashboard/projects/${project.id}`}
@@ -621,7 +622,7 @@ export default async function DashboardPage({
                           <img
                             src={url}
                             alt=""
-                            className="h-full w-full object-cover"
+                            className="absolute inset-0 h-full w-full object-cover"
                           />
                         </Link>
                       ) : canEditCover ? null : (

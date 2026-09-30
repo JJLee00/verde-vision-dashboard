@@ -78,9 +78,6 @@ export function CoverUpload({
         />
 
         {hasCover ? (
-          // A photo is already there, so this replaces it — and says so.
-          // Sat quietly on the image rather than hidden until hover: a
-          // control nobody can find is the same as not having one.
           <button
             type="button"
             disabled={disabled || busy}
@@ -90,34 +87,28 @@ export function CoverUpload({
             {busy ? "Uploading…" : "Replace photo"}
           </button>
         ) : (
-          // Not a badge in the middle of an empty box — that reads as a
-          // failed load. An inset dashed mount, the way a blank plate in a
-          // plan set looks: the frame says something belongs here, and the
-          // one line of text says what.
           <button
             type="button"
             disabled={disabled || busy}
             onClick={() => inputRef.current?.click()}
-            className="group/mount absolute inset-3 flex items-center justify-center rounded-[8px] border border-dashed border-rule-strong transition hover:border-accent/50 hover:bg-accent-soft/20 disabled:opacity-50"
+            className="group/slot absolute inset-0 flex flex-col items-center justify-center gap-2.5 transition hover:bg-ink/[0.03] disabled:opacity-50"
           >
-            <span className="flex items-center gap-2 text-muted transition group-hover/mount:text-accent">
-              <svg
-                aria-hidden
-                className="h-[18px] w-[18px]"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="5" width="18" height="15" rx="2" />
-                <circle cx="9" cy="10" r="1.6" />
-                <path d="m5 19 5.2-5.2a1.5 1.5 0 0 1 2.1 0L17 18.5m-2.5-2.5 1.8-1.8a1.5 1.5 0 0 1 2.1 0L21 16.5" />
-              </svg>
-              <span className="text-sm font-semibold">
-                {busy ? "Uploading…" : "Add photo"}
-              </span>
+            <svg
+              aria-hidden
+              className="h-8 w-8 text-faint transition group-hover/slot:text-accent"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="5" width="18" height="15" rx="2" />
+              <circle cx="9" cy="10" r="1.6" />
+              <path d="m5 19 5.2-5.2a1.5 1.5 0 0 1 2.1 0L17 18.5m-2.5-2.5 1.8-1.8a1.5 1.5 0 0 1 2.1 0L21 16.5" />
+            </svg>
+            <span className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint transition group-hover/slot:text-accent">
+              {busy ? "Uploading…" : "Add cover photo"}
             </span>
           </button>
         )}
