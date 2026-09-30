@@ -49,6 +49,12 @@ const currency = new Intl.NumberFormat("en-US", {
 const SELECT_COLUMNS =
   "id, sort_order, description, category, quantity, unit, unit_price, total, taxable, note, source, ar_key, price_overridden";
 
+// What a brand-new manual line is called before the designer names it. The
+// editor was written for a row that starts empty — the input still carries a
+// "Describe the work…" placeholder — but estimate_items forbids an empty
+// description, so the row is born named and the name is selected for typing.
+const NEW_LINE_DESCRIPTION = "New line";
+
 const cell =
   "w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm text-body outline-none transition placeholder:text-faint hover:border-rule focus:border-accent focus:bg-card-hover focus:ring-2 focus:ring-accent-soft disabled:cursor-default disabled:hover:border-transparent";
 
@@ -147,7 +153,11 @@ export function EstimateBuilder({
       .insert({
         project_id: projectId,
         sort_order: nextSortOrder(items),
-        description: seed?.description ?? "",
+        // Not "" — estimate_items requires length(trim(description)) > 0,
+        // so a blank new line is rejected outright by the database and the
+        // button silently did nothing. The row is created named instead, and
+        // the input selects this text on focus so typing replaces it.
+        description: seed?.description ?? NEW_LINE_DESCRIPTION,
         category: seed?.category ?? "other",
         quantity: seed?.quantity ?? 1,
         unit: seed?.unit ?? "each",
@@ -159,7 +169,9 @@ export function EstimateBuilder({
       .single();
     setBusy(false);
     if (err || !data) {
-      setError("Could not add a line.");
+      // Carry the database's own words. The generic string hid a constraint
+      // violation for as long as this button has existed.
+      setError(`Could not add a line.${err?.message ? ` ${err.message}` : ""}`);
       return;
     }
     const row = fromRow(data);
@@ -382,6 +394,11 @@ export function EstimateBuilder({
                     if (el && pendingFocus.current === item.id) {
                       pendingFocus.current = null;
                       el.focus();
+                      // A new row arrives carrying NEW_LINE_DESCRIPTION
+                      // rather than "", so select it: the designer types
+                      // straight over it exactly as they would an empty
+                      // field, instead of clearing it first.
+                      if (el.value === NEW_LINE_DESCRIPTION) el.select();
                     }
                   }}
                   onPatch={(changes) => void patch(item, changes)}
