@@ -6,6 +6,7 @@ import {
   diffPlants,
   summarize,
 } from "@/lib/versions";
+import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 
 /**
@@ -280,6 +281,32 @@ export async function POST(request: NextRequest) {
         .update({ current_version_id: version.id })
         .eq("id", project.id);
       syncedRevision = version.revision;
+    }
+
+    // The estimate's plant rows follow the design, exactly as they do when
+    // the office publishes a revision. Until Sep 29 2026 this ran only on the
+    // publish path, so a project synced from the headset arrived with a full
+    // design and an estimate of zero rows — the derivation existed and simply
+    // never ran on this side. Manual rows, hardscape rows and prices a
+    // designer typed over are all left alone; see the function.
+    const plantRows = await rebuildPlantRows(
+      supabase,
+      project.id,
+      projectJson as ProjectFileJSON
+    );
+
+    // rebuildPlantRows also recomputed `estimate_amount` from every row on
+    // the project — plants, manual lines and tax — which is the number the
+    // proposal actually prints, so the card and the estimate page now agree.
+    // The one case where that is wrong: a design whose plants this catalog
+    // doesn't know yet (gen-catalog hasn't been re-run since the app added
+    // them) produces no rows at all, and writing the derived zero would blank
+    // a real bid. There, keep the total the headset sent.
+    if (plantRows === 0 && estimateAmount != null) {
+      await supabase
+        .from("projects")
+        .update({ estimate_amount: estimateAmount })
+        .eq("id", project.id);
     }
   }
 
