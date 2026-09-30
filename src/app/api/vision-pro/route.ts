@@ -407,3 +407,55 @@ export async function POST(request: NextRequest) {
     revision: syncedRevision,
   });
 }
+
+/**
+ * Deleting a project from the headset.
+ *
+ * DELETE /api/vision-pro?project_id=…
+ * Header: `x-api-key: <VISION_PRO_API_KEY>`
+ *
+ * Soft, like the dashboard's own delete: a project row owns the client's
+ * blueprint PDFs, their estimate and its line items, the anchor photos and
+ * the whole version history. Tidying up a headset's project list must not
+ * destroy a signed bid, so the row is marked and hidden and an owner can put
+ * it back from the project page.
+ *
+ * Idempotent — deleting an already-deleted project succeeds. The app calls
+ * this after it has already removed the local file, so a retry must never
+ * become an error the designer has to think about.
+ */
+export async function DELETE(request: NextRequest) {
+  const apiKey = request.headers.get("x-api-key");
+  if (!apiKey || apiKey !== process.env.VISION_PRO_API_KEY) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const projectId = request.nextUrl.searchParams.get("project_id");
+  if (!projectId) {
+    return NextResponse.json({ error: "project_id is required" }, { status: 400 });
+  }
+
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", projectId);
+
+  if (error) {
+    return NextResponse.json(
+      {
+        error: /deleted_at/.test(error.message)
+          ? "Run migration-018 before deleting projects."
+          : error.message,
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}
