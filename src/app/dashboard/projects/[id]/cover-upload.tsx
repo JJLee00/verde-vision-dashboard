@@ -78,13 +78,34 @@ export function CoverUpload({
         />
 
         {hasCover ? (
+          // Out of the way until the pointer is on the card. The label
+          // lives in the tooltip and the accessible name, so the photo is
+          // not carrying a line of interface text on top of it.
           <button
             type="button"
             disabled={disabled || busy}
             onClick={() => inputRef.current?.click()}
-            className="absolute bottom-3 right-3 rounded-full border border-paper/40 bg-ink/45 px-3 py-1.5 text-xs font-semibold text-paper opacity-80 backdrop-blur-sm transition hover:bg-ink/70 hover:opacity-100 focus-visible:opacity-100 disabled:opacity-50"
+            aria-label="Replace cover photo"
+            title="Replace cover photo"
+            className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border border-paper/40 bg-ink/45 text-paper opacity-0 backdrop-blur-sm transition hover:bg-ink/70 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
           >
-            {busy ? "Uploading…" : "Replace photo"}
+            {busy ? (
+              <span className="text-[0.65rem] font-semibold">…</span>
+            ) : (
+              <svg
+                aria-hidden
+                className="h-[18px] w-[18px]"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2L9 5h6l1.5 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5z" />
+                <circle cx="12" cy="13" r="3.2" />
+              </svg>
+            )}
           </button>
         ) : (
           <button
