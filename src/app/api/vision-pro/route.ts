@@ -277,11 +277,32 @@ export async function POST(request: NextRequest) {
   }
 
   // Upload the blueprint PDF to the private bucket.
+  //
+  // ONE path per project, overwritten. These used to be timestamped —
+  // {now}-blueprint.pdf — with blueprint_path pointing at the newest and
+  // nothing ever deleting the rest, so a design exported eight times left a
+  // client's folder holding eight PDFs, seven of them wrong and all of them
+  // billed for. That is what always happens when a derived document is
+  // stored as though it were data.
+  //
+  // Safe because nothing links to these paths directly: every reader mints a
+  // fresh signed URL (createSignedUrls) when the page renders, so there is no
+  // stale link to break. cacheControl is kept short anyway — upsert
+  // invalidates the CDN, but a minute of staleness is a cheaper failure than
+  // an hour of a client reading last week's bid.
+  //
+  // scripts/prune-blueprint-orphans.mjs clears the ones already there.
+  const PDF_UPLOAD = {
+    contentType: "application/pdf",
+    upsert: true,
+    cacheControl: "60",
+  };
+
   if (blueprint instanceof File && blueprint.size > 0) {
-    const path = `${project.client_id}/${project.id}/${Date.now()}-blueprint.pdf`;
+    const path = `${project.client_id}/${project.id}/blueprint.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("blueprints")
-      .upload(path, blueprint, { contentType: "application/pdf" });
+      .upload(path, blueprint, PDF_UPLOAD);
     if (uploadError) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
@@ -291,10 +312,10 @@ export async function POST(request: NextRequest) {
   // The itemized estimate PDF lives in the same bucket + folder as the
   // blueprint, so the existing client read policy covers it.
   if (estimatePdf instanceof File && estimatePdf.size > 0) {
-    const path = `${project.client_id}/${project.id}/${Date.now()}-estimate.pdf`;
+    const path = `${project.client_id}/${project.id}/estimate.pdf`;
     const { error: uploadError } = await supabase.storage
       .from("blueprints")
-      .upload(path, estimatePdf, { contentType: "application/pdf" });
+      .upload(path, estimatePdf, PDF_UPLOAD);
     if (uploadError) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
