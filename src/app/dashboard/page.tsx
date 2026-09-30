@@ -610,8 +610,10 @@ export default async function DashboardPage({
                     // resizing the card: an in-flow image brings its own
                     // proportions to the layout, an absolute one has no say
                     // in its parent's size at all. A fixed aspect ratio also
-                    // fixed that, but at the cost of much taller cards.
-                    <div className="group relative h-full min-h-52 shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05] md:w-80 lg:w-96">
+                    // fixed that, but at the cost of much taller cards — the
+                    // floor here is a flat 240px, which is the height 4:3
+                    // gave at md and well short of the 288 it reached at lg.
+                    <div className="group relative h-full min-h-60 shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05] md:w-80 lg:w-96">
                       {url ? (
                         <Link
                           href={`/dashboard/projects/${project.id}`}
