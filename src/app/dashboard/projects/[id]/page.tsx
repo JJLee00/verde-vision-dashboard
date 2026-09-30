@@ -502,16 +502,18 @@ export default async function ProjectPage({
                   <span className="font-mono text-2xl font-semibold tabular-nums text-ink">
                     {currency.format(data.estimateAmount)}
                   </span>
-                  {data.estimateUrl && (
-                    <a
-                      href={data.estimateUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
-                    >
-                      View PDF
-                    </a>
-                  )}
+                  {/* The estimate page, not the PDF the headset used to
+                      upload. That copy priced plants off the catalog and knew
+                      nothing about manual lines, tax or the deposit, so a
+                      project could offer two proposals with different totals
+                      and no way to tell which was current. The live one is
+                      rendered from the rows, under the firm's letterhead. */}
+                  <Link
+                    href={`/dashboard/projects/${data.id}/estimate`}
+                    className="text-sm font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                  >
+                    Open estimate
+                  </Link>
                 </div>
               ) : (
                 <p className="text-sm text-muted">

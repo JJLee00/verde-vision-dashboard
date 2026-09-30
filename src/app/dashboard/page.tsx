@@ -345,19 +345,6 @@ export default async function DashboardPage({
     }
   }
 
-  // Estimate PDFs (migration 006) are fetched separately and tolerantly so
-  // the dashboard still renders before that migration has been run.
-  const { data: estimateRows } = await supabase
-    .from("projects")
-    .select("id, estimate_path");
-  const estimatePathById = new Map<string, string>(
-    (estimateRows ?? [])
-      .filter((r): r is { id: string; estimate_path: string } =>
-        Boolean(r.estimate_path)
-      )
-      .map((r) => [r.id, r.estimate_path])
-  );
-
   // Same tolerance for the 3D plan column (migration 008): the viewer
   // button only lights up once the headset has synced a project JSON.
   const { data: planRows } = await supabase
@@ -397,14 +384,12 @@ export default async function DashboardPage({
     }
   }
 
-  // Signed URLs let clients open files from the private buckets. Estimates
-  // share the blueprints bucket (same {client_id}/{project_id}/ folder).
-  const filePaths = [
-    ...(projects ?? [])
-      .map((p) => p.blueprint_path)
-      .filter((p): p is string => Boolean(p)),
-    ...estimatePathById.values(),
-  ];
+  // Signed URLs let clients open files from the private buckets. Only
+  // blueprints now: the estimate is a link to its own page, rendered from the
+  // rows, so there is no stored file to sign for it.
+  const filePaths = (projects ?? [])
+    .map((p) => p.blueprint_path)
+    .filter((p): p is string => Boolean(p));
 
   const signedUrls = new Map<string, string>();
   if (filePaths.length > 0) {
@@ -632,10 +617,6 @@ export default async function DashboardPage({
           const blueprintUrl = project.blueprint_path
             ? signedUrls.get(`blueprints:${project.blueprint_path}`)
             : undefined;
-          const estimatePath = estimatePathById.get(project.id);
-          const estimateUrl = estimatePath
-            ? signedUrls.get(`blueprints:${estimatePath}`)
-            : undefined;
 
           return (
             <section
@@ -711,22 +692,20 @@ export default async function DashboardPage({
 
                   <dl className="mt-auto grid grid-cols-2 gap-x-6 gap-y-5 border-t border-rule pt-5 lg:grid-cols-3">
                     <StatCell label="Estimate">
+                      {/* Links to the estimate itself rather than to the PDF
+                          the headset used to upload — that file is a frozen
+                          copy priced without the manual lines or the tax, and
+                          two proposals with different totals is worse than one
+                          click further away. Always a link now, so there is no
+                          longer a dead-looking total when no PDF was made. */}
                       {project.estimate_amount != null ? (
-                        estimateUrl ? (
-                          <a
-                            href={estimateUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="View estimate PDF"
-                            className="font-mono text-sm font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
-                          >
-                            {currency.format(project.estimate_amount)}
-                          </a>
-                        ) : (
-                          <span className="font-mono text-sm font-semibold text-accent-dim">
-                            {currency.format(project.estimate_amount)}
-                          </span>
-                        )
+                        <Link
+                          href={`/dashboard/projects/${project.id}/estimate`}
+                          title="Open the estimate"
+                          className="font-mono text-sm font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+                        >
+                          {currency.format(project.estimate_amount)}
+                        </Link>
                       ) : (
                         "—"
                       )}
