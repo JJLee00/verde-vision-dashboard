@@ -164,9 +164,13 @@ function MarkerColumn({
 
       {/* Locked is the headset having seen this plate and written its
           position into the project's permanent frame — not that a photo of
-          it exists. Grey rather than red when it hasn't happened: a project
-          nobody has been out to yet is in the correct state, not a broken
-          one, and the card cannot tell that apart from one that is overdue. */}
+          it exists. "On site" earns its words: the photo directly above can
+          be added from a desk and the lock cannot, which is the one thing
+          about this card somebody is likely to get wrong.
+
+          Grey rather than red when it hasn't happened: a project nobody has
+          been out to yet is in the correct state, not a broken one, and the
+          card cannot tell that apart from one that is overdue. */}
       <p
         className={`mt-0.5 flex items-center gap-1.5 text-sm ${
           marker.locked ? "text-accent" : "text-faint"
@@ -178,7 +182,7 @@ function MarkerColumn({
             marker.locked ? "bg-accent" : "bg-rule-strong"
           }`}
         />
-        {marker.locked ? "Locked" : "Not locked yet"}
+        {marker.locked ? "Locked" : "Not locked on site yet"}
         {marker.locked && marker.lockedDate && (
           <span className="text-faint">
             ·{" "}
