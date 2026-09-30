@@ -152,28 +152,6 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
-function NoPhotoSlot() {
-  return (
-    <div className="flex h-full min-h-52 flex-col items-center justify-center gap-2.5 rounded-[10px] border border-rule bg-ink/[0.05]">
-      <svg
-        className="h-8 w-8 text-faint"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="3" y="5" width="18" height="15" rx="2" />
-        <circle cx="9" cy="10" r="1.6" />
-        <path d="m5 19 5.2-5.2a1.5 1.5 0 0 1 2.1 0L17 18.5m-2.5-2.5 1.8-1.8a1.5 1.5 0 0 1 2.1 0L21 16.5" />
-      </svg>
-      <span className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-        No photo yet
-      </span>
-    </div>
-  );
-}
 
 function StatCell({
   label,
@@ -620,40 +598,51 @@ export default async function DashboardPage({
                     itself for no reason. The control is a sibling of the
                     Link, not a child: a button inside a link is a coin toss
                     over which one a click lands on. */}
-                <div className="relative shrink-0 md:w-80 lg:w-96">
-                  <Link
-                    href={`/dashboard/projects/${project.id}`}
-                    className="block h-full"
-                    aria-label={`Open ${project.name}`}
-                  >
-                    {(() => {
-                      const path = coverPathById.get(project.id);
-                      const url = path ? coverUrls.get(path) : undefined;
-                      return url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={url}
-                          alt=""
-                          className="h-full min-h-52 w-full rounded-[10px] border border-rule object-cover"
+                {(() => {
+                  const path = coverPathById.get(project.id);
+                  const url = path ? coverUrls.get(path) : undefined;
+                  const canEditCover =
+                    project.client_id === user.id ||
+                    membership?.role === "owner";
+                  return (
+                    // A FIXED aspect ratio, so a card is the same height
+                    // whether or not it has a photo. It used to be a
+                    // min-height with the image at h-full, which meant the
+                    // browser had the image's own proportions to go on and
+                    // adding one visibly resized the card.
+                    <div className="group relative aspect-[4/3] shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05] md:w-80 lg:w-96">
+                      {url ? (
+                        <Link
+                          href={`/dashboard/projects/${project.id}`}
+                          className="block h-full w-full"
+                          aria-label={`Open ${project.name}`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        </Link>
+                      ) : canEditCover ? null : (
+                        <Link
+                          href={`/dashboard/projects/${project.id}`}
+                          className="block h-full w-full"
+                          aria-label={`Open ${project.name}`}
                         />
-                      ) : (
-                        <NoPhotoSlot />
-                      );
-                    })()}
-                  </Link>
-                  {(project.client_id === user.id ||
-                    membership?.role === "owner") && (
-                    <div className="absolute bottom-3 right-3">
-                      <CoverUpload
-                        projectId={project.id}
-                        userId={project.client_id}
-                        hasCover={Boolean(coverPathById.get(project.id))}
-                        disabled={false}
-                        variant="overlay"
-                      />
+                      )}
+                      {canEditCover && (
+                        <CoverUpload
+                          projectId={project.id}
+                          userId={project.client_id}
+                          hasCover={Boolean(url)}
+                          disabled={false}
+                          variant="plus"
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start justify-between gap-4">
