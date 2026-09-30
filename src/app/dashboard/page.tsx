@@ -126,8 +126,11 @@ function lastUpdated(project: Project) {
   return new Date(Math.max(...dates.map((d) => new Date(d).getTime())));
 }
 
-// Project workflow: pending (awaiting approval) → approved → installed.
+// Project workflow: draft (being designed) → pending (awaiting approval) →
+// approved → installed. Draft is deliberately quiet: it is not in the
+// pipeline, it is not awaiting anything, and most projects sit in it.
 const STATUS_STYLES: Record<string, string> = {
+  draft: "border-rule-strong bg-paper-deep text-muted",
   pending: "border-gold/40 bg-gold/10 text-gold",
   approved: "border-accent/40 bg-accent-soft text-accent-dim",
   installed: "border-clay/40 bg-clay/10 text-clay",

@@ -25,7 +25,7 @@ import type { ProjectFileJSON } from "@/lib/viewer/types";
  *                     drives the living-blueprint 3D viewer. Replaced
  *                     wholesale on every sync.
  */
-const VALID_STATUSES = ["pending", "approved", "installed", "declined"];
+const VALID_STATUSES = ["draft", "pending", "approved", "installed", "declined"];
 export async function POST(request: NextRequest) {
   const apiKey = request.headers.get("x-api-key");
   if (!apiKey || apiKey !== process.env.VISION_PRO_API_KEY) {
@@ -201,6 +201,32 @@ export async function POST(request: NextRequest) {
       );
     }
     project = data;
+
+    // A project that has just been created is a draft, not a bid waiting on
+    // the client. Since the app started announcing projects at creation
+    // rather than at first export, the default 'pending' would file every
+    // yard a designer so much as starts under "awaiting approval".
+    //
+    // Written as its own ignorable update rather than folded into the insert
+    // above: on a database that has not run migration-018 the status check
+    // rejects 'draft', and a project must still be creatable there. Same
+    // guard the anchor_paths write uses for migration-010.
+    //
+    // Nothing promotes this from here. Moving a project to 'pending' is a
+    // dashboard action, taken when the proposal actually reaches the client
+    // — and migration 013's rule still holds: headset syncs never send
+    // status, or a sync would resurrect a deal the client already declined.
+    if (!status) {
+      const { error: draftError } = await supabase
+        .from("projects")
+        .update({ status: "draft" })
+        .eq("id", project.id);
+      if (draftError && !/check constraint/i.test(draftError.message)) {
+        console.warn(
+          `[vision-pro] could not mark ${project.id} draft: ${draftError.message}`
+        );
+      }
+    }
   }
 
   // Refuse to publish a design over a newer one.

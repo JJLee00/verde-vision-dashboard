@@ -5,6 +5,7 @@ import { useTransition } from "react";
 
 const OPTIONS = [
   { value: "", label: "All projects" },
+  { value: "draft", label: "Draft" },
   { value: "pending", label: "Pending" },
   { value: "approved", label: "Approved" },
   { value: "installed", label: "Installed" },
