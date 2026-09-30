@@ -88,13 +88,35 @@ export function CoverUpload({
             // for the card's link. With no photo it IS the slot.
             hasCover
               ? "absolute right-2.5 top-2.5 flex h-9 w-9 items-center justify-center rounded-full border border-edge bg-paper/90 text-lg text-body opacity-0 shadow-[0_8px_20px_-12px_rgba(28,42,33,0.5)] backdrop-blur-sm transition hover:bg-paper focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
-              : "absolute inset-0 flex items-center justify-center text-3xl font-light text-faint transition hover:bg-ink/[0.03] hover:text-accent disabled:opacity-50"
+              : "absolute inset-0 flex items-center justify-center transition hover:bg-ink/[0.03] disabled:opacity-50"
           }
         >
           {busy ? (
-            <span className="text-xs font-semibold tracking-wide">…</span>
-          ) : (
+            <span className="text-sm font-semibold text-muted">Uploading…</span>
+          ) : hasCover ? (
             <span aria-hidden className="leading-none">+</span>
+          ) : (
+            <span className="flex flex-col items-center gap-2.5">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-rule bg-paper/60 transition group-hover:border-accent/40 group-hover:bg-paper">
+                <svg
+                  aria-hidden
+                  className="h-5 w-5 text-faint transition group-hover:text-accent"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="5" width="18" height="15" rx="2" />
+                  <circle cx="9" cy="10" r="1.6" />
+                  <path d="m5 19 5.2-5.2a1.5 1.5 0 0 1 2.1 0L17 18.5m-2.5-2.5 1.8-1.8a1.5 1.5 0 0 1 2.1 0L21 16.5" />
+                </svg>
+              </span>
+              <span className="text-[0.8rem] font-semibold text-muted transition group-hover:text-accent">
+                Add photo
+              </span>
+            </span>
           )}
         </button>
         {error && (
