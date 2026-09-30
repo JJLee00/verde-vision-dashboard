@@ -3,11 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import {
-  REQUIRED_PLATES,
-  realignable,
-  type SiteMarker,
-} from "@/lib/markers";
+import type { SiteMarker } from "@/lib/markers";
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 
@@ -32,50 +28,22 @@ export function SiteMarkers({
   markers: SiteMarker[];
   disabled: boolean;
 }) {
-  const registered = markers.filter((m) => m.plateID).length;
-  const ready = realignable(markers);
-
   return (
-    <div>
-      <p
-        className={`rounded-lg border px-3.5 py-2.5 text-sm ${
-          ready
-            ? "border-accent/30 bg-accent-soft/40 text-accent-dim"
-            : "border-gold/40 bg-gold/10 text-gold"
-        }`}
-      >
-        {ready ? (
-          <>
-            <span className="font-semibold">Ready to re-align.</span> All{" "}
-            {REQUIRED_PLATES} plates are registered.
-          </>
-        ) : (
-          <>
-            <span className="font-semibold">
-              {registered} of {REQUIRED_PLATES} plates registered.
-            </span>{" "}
-            The headset needs all three to re-align this project — two can
-            produce a frame that looks right and is silently skewed.
-          </>
-        )}
-      </p>
-
-      <div className="mt-4 flex flex-col gap-4">
-        {markers.map((marker) => (
-          <MarkerRow
-            key={marker.step}
-            projectId={projectId}
-            mediaOwnerId={mediaOwnerId}
-            marker={marker}
-            disabled={disabled}
-          />
-        ))}
-      </div>
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+      {markers.map((marker) => (
+        <MarkerColumn
+          key={marker.step}
+          projectId={projectId}
+          mediaOwnerId={mediaOwnerId}
+          marker={marker}
+          disabled={disabled}
+        />
+      ))}
     </div>
   );
 }
 
-function MarkerRow({
+function MarkerColumn({
   projectId,
   mediaOwnerId,
   marker,
@@ -134,13 +102,13 @@ function MarkerRow({
   }
 
   return (
-    <div className="flex gap-4">
-      <div className="group relative h-24 w-32 shrink-0 overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05]">
+    <div>
+      <div className="group relative aspect-[4/3] w-full overflow-hidden rounded-[10px] border border-rule bg-ink/[0.05]">
         {marker.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={marker.photoUrl}
-            alt={`${marker.pointLabel} reference photo`}
+            alt={`${marker.plateLabel} reference photo`}
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : null}
@@ -149,27 +117,29 @@ function MarkerRow({
             type="button"
             disabled={busy}
             onClick={() => inputRef.current?.click()}
-            aria-label={`${marker.photoUrl ? "Replace" : "Add"} photo for ${marker.pointLabel}`}
+            aria-label={`${marker.photoUrl ? "Replace" : "Add"} photo for ${marker.plateLabel}`}
             title={`${marker.photoUrl ? "Replace" : "Add"} photo`}
             className={
               marker.photoUrl
-                ? "absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full border border-paper/40 bg-ink/45 text-paper opacity-0 backdrop-blur-sm transition hover:bg-ink/70 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
-                : "absolute inset-0 flex flex-col items-center justify-center gap-1.5 transition hover:bg-ink/[0.03] disabled:opacity-50"
+                ? "absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-paper/40 bg-ink/45 text-paper opacity-0 backdrop-blur-sm transition hover:bg-ink/70 focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-50"
+                : "absolute inset-0 flex flex-col items-center justify-center gap-2 transition hover:bg-ink/[0.03] disabled:opacity-50"
             }
           >
             {busy ? (
-              <span className="text-[0.6rem] font-semibold text-muted">…</span>
+              <span className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-muted">
+                Uploading…
+              </span>
             ) : (
               <>
                 <CameraIcon
                   className={
                     marker.photoUrl
-                      ? "h-[15px] w-[15px]"
-                      : "h-6 w-6 text-faint transition group-hover:text-accent"
+                      ? "h-4 w-4"
+                      : "h-7 w-7 text-faint transition group-hover:text-accent"
                   }
                 />
                 {!marker.photoUrl && (
-                  <span className="text-[0.6rem] font-semibold uppercase tracking-[0.14em] text-faint transition group-hover:text-accent">
+                  <span className="text-[0.62rem] font-semibold uppercase tracking-[0.14em] text-faint transition group-hover:text-accent">
                     Add photo
                   </span>
                 )}
@@ -190,34 +160,40 @@ function MarkerRow({
         />
       </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="flex items-baseline gap-2">
-          <span className="font-serif text-lg text-ink">
-            {marker.plateID ? `Plate ${marker.plateID}` : "No plate"}
-          </span>
-          <span className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-            {marker.pointLabel}
-          </span>
-        </p>
-        {marker.note && (
-          <p className="mt-1 text-sm text-body">{marker.note}</p>
-        )}
-        {marker.registeredDate ? (
-          <p className="mt-1 text-xs text-faint">
-            Registered{" "}
-            {new Date(marker.registeredDate).toLocaleDateString("en-US", {
-              year: "numeric",
+      <p className="mt-2.5 font-serif text-lg text-ink">{marker.plateLabel}</p>
+
+      {/* Locked is the headset having seen this plate and written its
+          position into the project's permanent frame — not that a photo of
+          it exists. Grey rather than red when it hasn't happened: a project
+          nobody has been out to yet is in the correct state, not a broken
+          one, and the card cannot tell that apart from one that is overdue. */}
+      <p
+        className={`mt-0.5 flex items-center gap-1.5 text-sm ${
+          marker.locked ? "text-accent" : "text-faint"
+        }`}
+      >
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+            marker.locked ? "bg-accent" : "bg-rule-strong"
+          }`}
+        />
+        {marker.locked ? "Locked" : "Not locked yet"}
+        {marker.locked && marker.lockedDate && (
+          <span className="text-faint">
+            ·{" "}
+            {new Date(marker.lockedDate).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
             })}
-          </p>
-        ) : (
-          <p className="mt-1 text-xs text-faint">
-            Not registered in the headset yet.
-          </p>
+          </span>
         )}
-        {error && <p className="mt-1 text-xs text-clay">{error}</p>}
-      </div>
+      </p>
+
+      {marker.note && (
+        <p className="mt-1 text-sm text-muted">{marker.note}</p>
+      )}
+      {error && <p className="mt-1 text-xs text-clay">{error}</p>}
     </div>
   );
 }

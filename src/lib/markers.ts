@@ -28,26 +28,33 @@ export type MarkerRegistration = {
 export const ANCHOR_STEPS = ["origin", "first", "second"] as const;
 export type AnchorStep = (typeof ANCHOR_STEPS)[number];
 
-/** What a designer calls each point out loud. */
-export const POINT_LABELS = ["Point 1", "Point 2", "Point 3"] as const;
-
 /**
- * All three, always. Two plates can produce a rigid frame, and that is the
- * problem: a fit over two points absorbs every error except the distance
- * between them, so a plate knocked 30cm sideways still reports a ~2mm
- * residual while the frame has yawed more than a degree. Three plates give
- * the fit something to disagree with.
+ * The plates a site is issued, in point order.
+ *
+ * Fixed, not derived: MarkerPolicy.siteMarkerIDs is ["A", "B", "C"] and point
+ * 1 is plate A by convention. The app can still recognise D–F and has artwork
+ * for them, but no site is issued one — and the points carry these letters
+ * even on a site running no plates at all, which is why the label does not
+ * depend on anything having been registered.
  */
-export const REQUIRED_PLATES = 3;
+export const PLATE_LABELS = ["Plate A", "Plate B", "Plate C"] as const;
 
 export type SiteMarker = {
   step: AnchorStep;
   pointIndex: number;
-  pointLabel: string;
-  /** The plate carrying this point, if one has been registered. */
-  plateID: string | null;
+  /** "Plate A" — fixed by position, see PLATE_LABELS. */
+  plateLabel: string;
+  /**
+   * Whether the headset has locked onto this plate for this project.
+   *
+   * Locking is the headset seeing the physical plate through image tracking
+   * and writing its position into the project's permanent frame — which is
+   * what makes it findable on a return visit. A PHOTO is not this: a photo
+   * helps a person find the plate, a lock is the headset having measured it.
+   */
+  locked: boolean;
   note: string | null;
-  registeredDate: string | null;
+  lockedDate: string | null;
   /** Signed URL for the reference photo, if there is one. */
   photoUrl: string | null;
 };
@@ -61,18 +68,13 @@ export function buildSiteMarkers(
     return {
       step,
       pointIndex,
-      pointLabel: POINT_LABELS[pointIndex],
-      plateID: reg?.markerID ?? null,
+      plateLabel: PLATE_LABELS[pointIndex],
+      locked: reg != null,
       note: reg?.note ?? null,
-      registeredDate: reg?.registeredDate ?? null,
+      lockedDate: reg?.registeredDate ?? null,
       photoUrl: photoUrlByStep[step] ?? null,
     };
   });
-}
-
-/** Can this project be re-aligned from its plates on a return visit? */
-export function realignable(markers: SiteMarker[]): boolean {
-  return markers.filter((m) => m.plateID).length >= REQUIRED_PLATES;
 }
 
 /** Pulls the registrations out of a synced project_json, defensively. */

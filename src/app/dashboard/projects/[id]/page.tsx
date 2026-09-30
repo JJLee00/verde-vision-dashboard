@@ -565,9 +565,10 @@ export default async function ProjectPage({
               disabled={disabled}
             />
             <p className="mt-4 text-[11px] text-faint">
-              The plates the headset finds to re-align this project on a
-              return visit. Photos are for finding them again — the app can
-              only offer a picker, so adding them here is often easier.
+              The plates the headset locks onto to re-align this project on a
+              return visit. Photos are for finding them again on site — the
+              headset has no camera of its own, so adding them here is often
+              easier than in the app.
             </p>
           </SectionCard>
         </div>
