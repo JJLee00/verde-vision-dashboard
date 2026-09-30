@@ -11,7 +11,6 @@ import { StatusSelect, NotesEditor } from "./editors";
 import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
-import { CoverUpload } from "./cover-upload";
 import { VideoManager, type VideoItem } from "./video-manager";
 
 // The project page: everything the dashboard knows about one project.
@@ -57,7 +56,6 @@ type PageData = {
   address: string | null;
   contactEmail: string | null;
   notes: string | null;
-  coverUrl: string | null;
   videos: VideoItem[];
   anchors: { step: string; label: string; url: string }[];
   modeSeconds: Record<string, number> | null;
@@ -99,7 +97,6 @@ function buildFixtureData(): PageData {
     address: "27210 N Rio Verde Dr, Rio Verde, AZ",
     contactEmail: "hoffmans@example.com",
     notes: "Sample project — fields are read-only in fixture mode.",
-    coverUrl: null,
     videos: [],
     anchors: [],
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
@@ -198,13 +195,11 @@ async function loadPageData(id: string): Promise<PageData | null> {
   let address: string | null = null;
   let contactEmail: string | null = null;
   let notes: string | null = null;
-  let coverPath: string | null = null;
   let editable = false;
   if (recRes.data) {
     address = recRes.data.address;
     contactEmail = recRes.data.contact_email;
     notes = recRes.data.notes;
-    coverPath = recRes.data.cover_path;
     editable = true;
   }
 
@@ -222,13 +217,12 @@ async function loadPageData(id: string): Promise<PageData | null> {
         .filter((step) => anchorPathMap[step])
         .map((step) => ({ step, path: anchorPathMap[step] }))
     : [];
-  const [docUrlRes, coverUrlRes, videoUrlRes, anchorUrlRes] = await Promise.all([
+  // No cover photo here: it is set and shown on the project CARD, so
+  // signing a URL for it on every project page render bought nothing.
+  const [docUrlRes, videoUrlRes, anchorUrlRes] = await Promise.all([
     docPaths.length > 0
       ? supabase.storage.from("blueprints").createSignedUrls(docPaths, 60 * 60)
       : Promise.resolve({ data: [] }),
-    coverPath
-      ? supabase.storage.from("project-media").createSignedUrl(coverPath, 60 * 60)
-      : Promise.resolve({ data: null }),
     // List then sign in one chained step so this wave stays flat.
     (async () => {
       const listing = await supabase.storage
@@ -260,7 +254,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
     if (item.path && item.signedUrl) docUrls.set(item.path, item.signedUrl);
   }
 
-  const coverUrl = coverUrlRes.data?.signedUrl ?? null;
 
   const videos: VideoItem[] = [];
   for (const item of videoUrlRes.data ?? []) {
@@ -317,7 +310,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
     address,
     contactEmail,
     notes,
-    coverUrl,
     videos,
     anchors,
     modeSeconds:
@@ -400,14 +392,6 @@ export default async function ProjectPage({
       {/* header */}
       <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-5">
-          {data.coverUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={data.coverUrl}
-              alt=""
-              className="h-20 w-28 shrink-0 rounded-[10px] border border-edge object-cover"
-            />
-          )}
           <div className="min-w-0">
             <h1 className="truncate font-serif text-4xl text-ink">{data.name}</h1>
 
@@ -463,15 +447,6 @@ export default async function ProjectPage({
               }}
             />
           )}
-          {/* Followed the cover photo up here when the Details card went:
-              it was only ever that card's action, and the photo it sets is
-              the one shown beside this title. */}
-          <CoverUpload
-            projectId={data.id}
-            userId={data.mediaOwnerId}
-            hasCover={Boolean(data.coverUrl)}
-            disabled={disabled}
-          />
           {data.projectJson && data.shareToken && data.crewToken && (
             <ShareLinkButtons
               clientToken={data.shareToken}

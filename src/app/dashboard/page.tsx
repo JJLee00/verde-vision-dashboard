@@ -6,6 +6,7 @@ import { getMembership, getOrgMembers, memberName } from "@/lib/org";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
 import { NewProjectButton } from "./project-details-dialog";
+import { CoverUpload } from "./projects/[id]/cover-upload";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
@@ -613,26 +614,46 @@ export default async function DashboardPage({
               className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] transition duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] motion-reduce:transition-none motion-reduce:hover:translate-y-0 md:p-6"
             >
               <div className="flex flex-col gap-6 md:flex-row">
-                <Link
-                  href={`/dashboard/projects/${project.id}`}
-                  className="block shrink-0 md:w-80 lg:w-96"
-                  aria-label={`Open ${project.name}`}
-                >
-                  {(() => {
-                    const path = coverPathById.get(project.id);
-                    const url = path ? coverUrls.get(path) : undefined;
-                    return url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={url}
-                        alt=""
-                        className="h-full min-h-52 w-full rounded-[10px] border border-rule object-cover"
+                {/* The cover photo is set here, on the card, rather than on
+                    the project page — this is the only place it is ever
+                    looked at, and a project's own page had a thumbnail of
+                    itself for no reason. The control is a sibling of the
+                    Link, not a child: a button inside a link is a coin toss
+                    over which one a click lands on. */}
+                <div className="relative shrink-0 md:w-80 lg:w-96">
+                  <Link
+                    href={`/dashboard/projects/${project.id}`}
+                    className="block h-full"
+                    aria-label={`Open ${project.name}`}
+                  >
+                    {(() => {
+                      const path = coverPathById.get(project.id);
+                      const url = path ? coverUrls.get(path) : undefined;
+                      return url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={url}
+                          alt=""
+                          className="h-full min-h-52 w-full rounded-[10px] border border-rule object-cover"
+                        />
+                      ) : (
+                        <NoPhotoSlot />
+                      );
+                    })()}
+                  </Link>
+                  {(project.client_id === user.id ||
+                    membership?.role === "owner") && (
+                    <div className="absolute bottom-3 right-3">
+                      <CoverUpload
+                        projectId={project.id}
+                        userId={project.client_id}
+                        hasCover={Boolean(coverPathById.get(project.id))}
+                        disabled={false}
+                        variant="overlay"
                       />
-                    ) : (
-                      <NoPhotoSlot />
-                    );
-                  })()}
-                </Link>
+                    </div>
+                  )}
+                </div>
 
                 <div className="flex min-w-0 flex-1 flex-col">
                   <div className="flex items-start justify-between gap-4">

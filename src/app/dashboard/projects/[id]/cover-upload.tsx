@@ -15,11 +15,14 @@ export function CoverUpload({
   userId,
   hasCover,
   disabled,
+  variant = "link",
 }: {
   projectId: string;
   userId: string;
   hasCover: boolean;
   disabled: boolean;
+  /** "overlay" sits on top of the photo it replaces, on a project card. */
+  variant?: "link" | "overlay";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -54,8 +57,13 @@ export function CoverUpload({
     }
   }
 
+  const buttonClass =
+    variant === "overlay"
+      ? "rounded-lg border border-edge bg-paper/90 px-2.5 py-1.5 text-xs font-semibold text-body shadow-[0_8px_20px_-12px_rgba(28,42,33,0.5)] backdrop-blur-sm transition hover:bg-paper disabled:opacity-50"
+      : "text-xs font-semibold text-accent transition hover:text-accent-bright disabled:opacity-50";
+
   return (
-    <div className="text-right">
+    <div className={variant === "overlay" ? "" : "text-right"}>
       <input
         ref={inputRef}
         type="file"
@@ -71,9 +79,17 @@ export function CoverUpload({
         type="button"
         disabled={disabled || busy}
         onClick={() => inputRef.current?.click()}
-        className="text-xs font-semibold text-accent transition hover:text-accent-bright disabled:opacity-50"
+        className={buttonClass}
       >
-        {busy ? "Uploading…" : hasCover ? "Replace cover photo" : "Add cover photo"}
+        {busy
+          ? "Uploading…"
+          : hasCover
+            ? variant === "overlay"
+              ? "Replace photo"
+              : "Replace cover photo"
+            : variant === "overlay"
+              ? "Add photo"
+              : "Add cover photo"}
       </button>
       {error && <p className="mt-1 text-xs text-clay">{error}</p>}
     </div>
