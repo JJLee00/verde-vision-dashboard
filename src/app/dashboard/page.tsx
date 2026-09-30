@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMembership, getOrgMembers, memberName } from "@/lib/org";
 import { SearchBar } from "./search-bar";
 import { StatusFilter } from "./status-filter";
+import { NewProjectButton } from "./new-project-button";
 import { PeriodFilter } from "./period-filter";
 import { DesignerFilter } from "./designer-filter";
 import { ShareLinkButtons } from "./share-buttons";
@@ -224,11 +225,15 @@ export default async function DashboardPage({
   const groupedMode = membership?.role === "owner" && members.length > 1;
   const designerFilter = groupedMode && designer ? designer : null;
 
+  // Deleted projects are hidden here and in every stat below. The row and
+  // everything it owns still exist (migration 018) so an owner can restore
+  // it from the project page; it simply stops being part of the business.
   let query = supabase
     .from("projects")
     .select(
       "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, client_id, plant_estimates(id, file_name, file_path, row_count, created_at)"
     )
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .order("created_at", {
       referencedTable: "plant_estimates",
@@ -252,7 +257,8 @@ export default async function DashboardPage({
   // only narrow the list below).
   let summaryQuery = supabase
     .from("projects")
-    .select("id, name, status, estimate_amount, created_at");
+    .select("id, name, status, estimate_amount, created_at")
+    .is("deleted_at", null);
   if (cutoff) {
     summaryQuery = summaryQuery.gte("created_at", cutoff);
   }
@@ -262,7 +268,8 @@ export default async function DashboardPage({
 
   let timeQuery = supabase
     .from("projects")
-    .select("modeSeconds:project_json->modeSeconds");
+    .select("modeSeconds:project_json->modeSeconds")
+    .is("deleted_at", null);
   if (cutoff) {
     timeQuery = timeQuery.gte("created_at", cutoff);
   }
@@ -285,7 +292,8 @@ export default async function DashboardPage({
           .from("projects")
           .select(
             "client_id, status, estimate_amount, modeSeconds:project_json->modeSeconds"
-          );
+          )
+          .is("deleted_at", null);
         if (cutoff) tq = tq.gte("created_at", cutoff);
         return tq.returns<TeamProject[]>();
       })()
@@ -590,6 +598,18 @@ export default async function DashboardPage({
           <div className="sm:w-44">
             <StatusFilter />
           </div>
+          <NewProjectButton
+            designers={
+              membership?.role === "owner"
+                ? [
+                    { id: user.id, label: "Me" },
+                    ...members
+                      .filter((m) => m.user_id !== user.id)
+                      .map((m) => ({ id: m.user_id, label: memberName(m) })),
+                  ]
+                : [{ id: user.id, label: "Me" }]
+            }
+          />
         </div>
       </div>
 

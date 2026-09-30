@@ -160,6 +160,11 @@ export async function POST(request: NextRequest) {
       .from("projects")
       .select("id, client_id")
       .eq("id", projectId)
+      // Deleted on the dashboard: this sync is from a headset that has not
+      // caught up yet. Answering 404 keeps it deleted — accepting the push
+      // would file fresh work against a project nobody can see. Its own
+      // select so a database without migration-018 still syncs.
+      .is("deleted_at", null)
       .single();
     if (error || !data) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });

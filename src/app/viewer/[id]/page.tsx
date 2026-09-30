@@ -53,6 +53,11 @@ export default async function ViewerPage({
       .from("projects")
       .select("id, name, estimate_amount, blueprint_path, estimate_path, client_id")
       .eq("id", id)
+      // A deleted project is not editable. Without this the viewer stays
+      // reachable by direct link and could publish revisions to a project
+      // that no longer appears anywhere — restoring it would then hand back
+      // a design nobody meant to keep working on.
+      .is("deleted_at", null)
       .single(),
     supabase
       .from("projects")

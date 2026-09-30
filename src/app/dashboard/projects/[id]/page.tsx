@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership, getOrgMembers } from "@/lib/org";
+import { DeleteProject } from "./delete-project";
 import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
@@ -66,6 +67,7 @@ type PageData = {
   editable: boolean; // false until migration-009 has been run
   canEdit: boolean; // owns the project, or is the org owner (migration 011)
   readOnly: boolean; // dev fixture
+  deleted: boolean; // soft-deleted (migration 018); false before it has run
   rail: { rows: RailRow[]; subtotal: number | null };
 };
 
@@ -103,6 +105,7 @@ function buildFixtureData(): PageData {
     editable: false,
     canEdit: false,
     readOnly: true,
+    deleted: false,
     rail: buildRail(buildScene(FIXTURE_PROJECT), {}),
   };
 }
@@ -120,7 +123,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
   // in their own select() so the page still renders before those
   // migrations run. (The video listing moved to the second wave: its
   // folder is keyed by the project's designer, which needs the base row.)
-  const [baseRes, jsonRes, recRes, anchorRes, priceRes, membership] =
+  const [baseRes, jsonRes, recRes, anchorRes, deletedRes, priceRes, membership] =
     await Promise.all([
     supabase
       .from("projects")
@@ -140,6 +143,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
       .eq("id", id)
       .single(),
     supabase.from("projects").select("anchor_paths").eq("id", id).single(),
+    // Its own select, like anchor_paths above: a database that hasn't run
+    // migration-018 has no such column, and the project page must still open.
+    supabase.from("projects").select("deleted_at").eq("id", id).single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
     getMembership(supabase, user.id),
   ]);
@@ -305,6 +311,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
     editable,
     canEdit: canEditProject,
     readOnly: false,
+    deleted: Boolean(
+      (deletedRes.data as { deleted_at?: string | null } | null)?.deleted_at
+    ),
     rail: projectJson
       ? buildRail(buildScene(projectJson), priceOverrides)
       : { rows: [], subtotal: null },
@@ -643,6 +652,14 @@ export default async function ProjectPage({
           </SectionCard>
         </div>
       </div>
+
+      {!data.readOnly && data.canEdit && (
+        <DeleteProject
+          projectId={data.id}
+          projectName={data.name}
+          deleted={data.deleted}
+        />
+      )}
     </div>
   );
 }

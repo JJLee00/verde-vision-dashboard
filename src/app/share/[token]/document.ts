@@ -24,6 +24,8 @@ export async function redirectToDocument(
     .from("projects")
     .select("blueprint_path, estimate_path, share_token")
     .or(`share_token.eq.${token},crew_token.eq.${token}`)
+    // Matches the share page: a deleted project hands out no documents.
+    .is("deleted_at", null)
     .maybeSingle();
 
   // The estimate is all pricing, so it's client-link only — the crew

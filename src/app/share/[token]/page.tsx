@@ -33,6 +33,10 @@ export default async function SharePage({
       "id, client_id, name, estimate_amount, project_json, share_token, crew_token, blueprint_path, estimate_path"
     )
     .or(`share_token.eq.${token},crew_token.eq.${token}`)
+    // A deleted project's link stops working. The row survives so an owner
+    // can restore it, but a client or an install crew following an old link
+    // must not still be looking at a job that was taken down.
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (!project?.project_json) notFound();
