@@ -8,7 +8,7 @@
 // delete stay visible as a ghost until it's published, and makes the draft
 // one derived value rather than a pile of in-place mutations.
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LivingBlueprint, type LivingBlueprintProps } from "@/lib/viewer/LivingBlueprint";
 import { createClient } from "@/lib/supabase/client";
@@ -43,7 +43,7 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   // affordance — after a reload those plants are simply gone from the draft,
   // and Discard is what brings them back.
   // Always the published design. Edits live in this component until they
-  // are published or discarded — there is nothing persisted to resume.
+  // are published or discarded.
   const base = viewer.project;
 
   const [editing, setEditing] = useState(false);
@@ -52,16 +52,17 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   // The Changes list records what has been SAVED, not what is being fiddled
   // with. Autosave deliberately doesn't touch this — only pressing Save
   // changes commits an edit to the record.
+  const [savedEdits, setSavedEdits] = useState<DesignEdit[]>([]);
   const [picking, setPicking] = useState(false);
-  // Each of these does something the designer can't casually take back —
-  // one throws work away, one changes what the client sees, and "leave"
-  // asks before walking away from edits that exist only in this tab.
+  // Both of these do something the designer can't casually take back —
+  // one throws work away, the other changes what the client sees.
   const [confirming, setConfirming] = useState<
-    "publish" | "discard" | "leave" | null
+    "publish" | "discard" | "exit" | null
   >(null);
   const [error, setError] = useState<string | null>(null);
-  // Where the Dashboard link was heading when the guard stopped it.
+  // Drafts autosave, but silently — which read as "there's no way to save".
   // The state is now visible and there's a button that flushes it now.
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const [publishing, startPublish] = useTransition();
   const router = useRouter();
 
@@ -100,7 +101,7 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   // produces no row at all, for the same reason.
   const changes = useMemo<ChangeRow[]>(() => {
     const before = new Map((base.placements ?? []).map((p) => [p.id, p]));
-    const saved = applyEdits(base, edits);
+    const saved = applyEdits(base, savedEdits);
     const after = new Map((saved.placements ?? []).map((p) => [p.id, p]));
 
     const describe = (p: PlacedPlantJSON) => {
@@ -111,7 +112,7 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
     };
 
     const touched: string[] = [];
-    for (const e of edits) if (!touched.includes(e.id)) touched.push(e.id);
+    for (const e of savedEdits) if (!touched.includes(e.id)) touched.push(e.id);
 
     return touched.flatMap((id): ChangeRow[] => {
       const was = before.get(id);
@@ -135,9 +136,10 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
         },
       ];
     });
-  }, [edits, base]);
+  }, [savedEdits, base]);
 
-  // Undo walks the edit stack.
+  // Undo still walks the live stack — otherwise an unsaved mistake would
+  // have no way back at all.
   const last = edits.at(-1) ?? null;
   const undoLabel = last
     ? last.kind === "delete"
@@ -147,6 +149,20 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
         : "Undo size change"
     : null;
 
+
+  // What's recorded, as a design — the thing "unsaved" is measured against.
+  const savedDesign = useMemo(
+    () => applyEdits(base, savedEdits),
+    [base, savedEdits]
+  );
+
+  // There is something to save only when the design actually DIFFERS.
+  // Counting edit entries said yes to a size changed and changed straight
+  // back, leaving Save lit with nothing behind it.
+  const hasUnsaved = useMemo(
+    () => designsDiffer(staged, savedDesign),
+    [staged, savedDesign]
+  );
 
   // Counted in PLANTS, not operations, so the bar agrees with the change
   // list: swapping a plant and then picking a different size for it is one
@@ -177,6 +193,44 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   );
 
   /** Returns whether the draft actually reached the database. */
+  /**
+   * Save commits the plant you are working on to the change list. It is
+   * entirely local — nothing is written until Publish.
+   *
+   * Drafts used to live in the database, which meant a project could sit
+   * with unpublished work that nothing outside this editor could see, and a
+   * price elsewhere that quietly disagreed with it. Save earns its place
+   * without them: it is what turns "I am trying a size" into "this plant is
+   * changed", so a sitting's worth of changes can be reviewed together and
+   * published once.
+   */
+  const persist = useCallback(async (): Promise<boolean> => {
+    setSaveState("saved");
+    return true;
+  }, []);
+
+  /**
+   * Records the change ONLY once the write has landed.
+   *
+   * It used to record first and write after, so a database without
+   * migration-016 produced a change list, a cleared "unsaved" flag and a
+   * button reading "Saved" while nothing had been written at all. A save
+   * that lies is worse than one that fails.
+   */
+  const saveNow = useCallback(() => {
+    const snapshot = edits;
+    void persist().then((ok) => {
+      if (!ok) return;
+      setSavedEdits(snapshot);
+      // Saving finishes with that plant, so the panel goes back to the list —
+      // which puts the row you just recorded in front of you. A greyed-out
+      // button was weak confirmation; the record itself is the strong one.
+      // Same shape as Publish, which also leaves the context it commits.
+      setSelectedId(null);
+      setPicking(false);
+    });
+  }, [edits, persist]);
+
   const edit = useCallback(
     (next: DesignEdit) => {
       setError(null);
@@ -196,31 +250,82 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
     []
   );
 
+  /**
+   * Leaving a plant without saving reverts it.
+   *
+   * The panel is a form: pick a size, press Save to commit. A change that
+   * survives walking away makes Save a button that changes nothing you can
+   * see. Edits still apply to the plan the moment they're made — you have
+   * to see a size to judge it — they just don't outlive the selection
+   * unless they're saved.
+   */
+  const leaveSelected = useCallback(() => {
+    const leaving = selectedId;
+    if (!leaving) return;
+    setEdits((prev) => {
+      const keptFromOthers = prev.filter((e) => e.id !== leaving);
+      const savedForThis = savedEdits.filter((e) => e.id === leaving);
+      if (keptFromOthers.length + savedForThis.length === prev.length) {
+        return prev;
+      }
+      return [...keptFromOthers, ...savedForThis];
+    });
+  }, [selectedId, savedEdits]);
+
   const undoLast = useCallback(() => {
-    setEdits((prev) => prev.slice(0, -1));
-  }, []);
+    setEdits((prev) => {
+      if (prev.length === 0) return prev;
+      const dropped = prev[prev.length - 1];
+      // If the undone edit had already been recorded, it leaves the saved
+      // set too, and the draft follows — a row you can't get back to isn't
+      // a record, it's a lie.
+      setSavedEdits((saved) => {
+        const next = saved.filter(
+          (e) => !(e.id === dropped.id && e.kind === dropped.kind)
+        );
+        if (next.length !== saved.length) void persist();
+        return next;
+      });
+      return prev.slice(0, -1);
+    });
+  }, [persist]);
 
   /** Drops one operation. "Undo remove" must not also revert a swap that
    *  was made before it. */
-  const undoEdit = useCallback((id: string, kind: DesignEdit["kind"]) => {
-    setEdits((prev) => prev.filter((e) => !(e.id === id && e.kind === kind)));
-  }, []);
+  const undoEdit = useCallback(
+    (id: string, kind: DesignEdit["kind"]) => {
+      setSavedEdits((saved) => {
+        const next = saved.filter((e) => !(e.id === id && e.kind === kind));
+        if (next.length !== saved.length) void persist();
+        return next;
+      });
+      setEdits((prev) => prev.filter((e) => !(e.id === id && e.kind === kind)));
+    },
+    [persist]
+  );
 
   /** Reverts a plant entirely — what the change list's ✕ means, since a row
    *  is the plant's whole change. */
-  const undoPlant = useCallback((id: string) => {
-    setEdits((prev) => prev.filter((e) => e.id !== id));
-  }, []);
+  const undoPlant = useCallback(
+    (id: string) => {
+      setSavedEdits((saved) => {
+        const next = saved.filter((e) => e.id !== id);
+        if (next.length !== saved.length) void persist();
+        return next;
+      });
+      setEdits((prev) => prev.filter((e) => e.id !== id));
+    },
+    [persist]
+  );
 
-  // Edits live only in this tab until they are published, so a reload or a
-  // closed tab loses them — and the browser is the only thing that can ask
-  // about that.
+  // A reload or a closed tab loses unsaved edits the same way leaving edit
+  // mode does, and the browser is the only thing that can ask there.
   useEffect(() => {
-    if (changedPlantCount === 0) return;
+    if (!hasUnsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [changedPlantCount]);
+  }, [hasUnsaved]);
 
   // ⌘Z / Ctrl+Z. No redo, matching the deliberate call made for the
   // headset's own undo: a session-scoped stack and nothing to walk forward
@@ -242,12 +347,9 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   function discard() {
     setConfirming(null);
     setEdits([]);
+    setSavedEdits([]);
     setSelectedId(null);
     setPicking(false);
-    // Legacy cleanup, not part of the flow: nothing writes drafts any more,
-    // but rows made before Sep 30 2026 are still out there and a discard is
-    // a reasonable moment to sweep one up. Safe to delete this once no
-    // project has a draft row left.
     void createClient()
       .from("project_versions")
       .delete()
@@ -287,6 +389,7 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
         return;
       }
       setEdits([]);
+      setSavedEdits([]);
       setSelectedId(null);
       setEditing(false);
       // Land on the project record rather than sitting in the editor with
@@ -301,43 +404,26 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   // or discard, so the bar goes back to its hint.
   const dirty = changedPlantCount > 0;
 
-  const [leaveTo, setLeaveTo] = useState<string | null>(null);
-
-  /**
-   * Stops a navigation away from unpublished work.
-   *
-   * Returns true when it has taken over, so the link does not also follow.
-   * Edits are held in this component and nowhere else now, so leaving is
-   * the moment they would vanish — which is exactly when to ask.
-   */
-  const guardLeave = useCallback(
-    (href: string) => {
-      if (changedPlantCount === 0) return false;
-      setLeaveTo(href);
-      setConfirming("leave");
-      return true;
-    },
-    [changedPlantCount]
-  );
-
   return (
     <div className="flex h-dvh flex-col">
       <div className="min-h-0 flex-1">
         <LivingBlueprint
           {...viewer}
           project={staged}
-          onBeforeLeave={
-            viewer.backHref ? () => guardLeave(viewer.backHref!) : null
-          }
           editing={editing}
           selectedId={selectedId}
           onSelectInstance={(id) => {
+            if (id !== selectedId) leaveSelected();
             setSelectedId(id);
             setPicking(false);
           }}
           onToggleEditing={
             canEdit
               ? () => {
+                  if (editing && hasUnsaved) {
+                    setConfirming("exit");
+                    return;
+                  }
                   setEditing((e) => !e);
                   setSelectedId(null);
                   setPicking(false);
@@ -351,15 +437,21 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
               changes={changes}
               selectedId={selectedId}
               undoLabel={undoLabel}
+              unsavedCount={hasUnsaved ? 1 : 0}
               onUndoPlant={undoPlant}
               onSelectChange={(id) => {
+                if (id !== selectedId) leaveSelected();
                 setSelectedId(id);
                 setPicking(false);
               }}
+              dirty={hasUnsaved}
+              saveState={saveState}
+              onSave={saveNow}
               picking={picking}
               onPick={() => setPicking(true)}
               onCancelPick={() => setPicking(false)}
               onBack={() => {
+                leaveSelected();
                 setSelectedId(null);
                 setPicking(false);
               }}
@@ -426,29 +518,29 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
           </button>
         </div>
       )}
-      {confirming === "leave" && (
+      {confirming === "exit" && (
         <Confirm
-          title="Publish your changes before leaving?"
-          body={
-            changedPlantCount > 0
-              ? `${changedPlantCount} changed plant${changedPlantCount === 1 ? "" : "s"} ${changedPlantCount === 1 ? "has" : "have"} not been published. Changes live only in this tab — leaving without publishing discards them.`
-              : "These changes have not been published. They live only in this tab, so leaving discards them."
-          }
-          confirmLabel="Discard and leave"
-          altLabel="Publish and leave"
+          destructive
+          title="Leave without saving?"
+          body="Changes you haven't saved are only in this browser — leaving drops them. Saving keeps them in the draft until you publish."
+          confirmLabel="Leave without saving"
+          altLabel="Save and leave"
+          onAlt={() => {
+            saveNow();
+            setConfirming(null);
+            setEditing(false);
+            setSelectedId(null);
+            setPicking(false);
+          }}
           onConfirm={() => {
             setConfirming(null);
-            setEdits([]);
-            if (leaveTo) router.push(leaveTo);
+            // Drop the unsaved edits back to what was recorded.
+            setEdits(savedEdits);
+            setEditing(false);
+            setSelectedId(null);
+            setPicking(false);
           }}
-          onAlt={() => {
-            setConfirming(null);
-            publish();
-          }}
-          onCancel={() => {
-            setConfirming(null);
-            setLeaveTo(null);
-          }}
+          onCancel={() => setConfirming(null)}
         />
       )}
       {confirming === "publish" && (
@@ -482,12 +574,23 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
         <div className="flex flex-wrap items-center gap-3 border-t border-rule bg-card px-4 py-2.5">
           {dirty ? (
             <>
-              <span className="h-[7px] w-[7px] rounded-full bg-gold" />
+              <span
+                className={`h-[7px] w-[7px] rounded-full ${
+                  saveState === "saved" ? "bg-accent" : "bg-gold"
+                }`}
+              />
               <span className="text-sm text-ink">
-                {changedPlantCount} plant{changedPlantCount === 1 ? "" : "s"}{" "}
-                changed
+                {changedPlantCount > 0
+                  ? `${changedPlantCount} plant${changedPlantCount === 1 ? "" : "s"} changed`
+                  : "Draft in progress"}
               </span>
-              <span className="text-xs text-faint">Not published yet</span>
+              <span className="text-xs text-faint">
+                {saveState === "saving"
+                  ? "Saving…"
+                  : saveState === "saved"
+                    ? "Draft saved"
+                    : "Not saved yet"}
+              </span>
               {after !== before && (
                 <span className="text-sm text-muted">
                   Plants{" "}
@@ -512,7 +615,8 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
               <button
                 type="button"
                 onClick={() => {
-                    setConfirming("discard");
+                  leaveSelected();
+                  setConfirming("discard");
                 }}
                 disabled={publishing}
                 className="text-sm text-muted transition hover:text-clay disabled:opacity-50"
@@ -525,7 +629,8 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
               <button
                 type="button"
                 onClick={() => {
-                    setConfirming("publish");
+                  leaveSelected();
+                  setConfirming("publish");
                 }}
                 disabled={publishing}
                 className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-[#f5eeda] transition hover:bg-accent-bright disabled:opacity-60"
@@ -539,6 +644,25 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   );
 }
 
+/**
+ * Do two designs differ in any way an editor can change?
+ *
+ * Model and container only: scale follows from the container, and position
+ * isn't editable here yet.
+ */
+function designsDiffer(a: ProjectFileJSON, b: ProjectFileJSON): boolean {
+  const left = a.placements ?? [];
+  const right = b.placements ?? [];
+  if (left.length !== right.length) return true;
+  const byId = new Map(right.map((p) => [p.id, p]));
+  for (const p of left) {
+    const q = byId.get(p.id);
+    if (!q) return true;
+    if (q.plantModelName !== p.plantModelName) return true;
+    if ((q.containerType ?? null) !== (p.containerType ?? null)) return true;
+  }
+  return false;
+}
 
 /* ── Confirmation ─────────────────────────────────────────────────────── */
 
@@ -650,8 +774,12 @@ function EditorPanel({
   changes,
   selectedId,
   undoLabel,
+  unsavedCount,
   onUndoPlant,
   onSelectChange,
+  dirty,
+  saveState,
+  onSave,
   picking,
   onPick,
   onCancelPick,
@@ -666,8 +794,12 @@ function EditorPanel({
   changes: ChangeRow[];
   selectedId: string | null;
   undoLabel: string | null;
+  unsavedCount: number;
   onUndoPlant: (id: string) => void;
   onSelectChange: (id: string) => void;
+  dirty: boolean;
+  saveState: "idle" | "saving" | "saved";
+  onSave: () => void;
   picking: boolean;
   onPick: () => void;
   onCancelPick: () => void;
@@ -688,6 +820,7 @@ function EditorPanel({
           changes={changes}
           selectedId={selectedId}
           undoLabel={undoLabel}
+          unsavedCount={unsavedCount}
           onUndoPlant={onUndoPlant}
           onSelect={onSelectChange}
         />
@@ -815,12 +948,36 @@ function EditorPanel({
             {staged ? "Undo remove" : "Remove from design"}
           </button>
         </div>
+
+        {/* The commit sits apart from the two plant actions. Saves the whole
+            draft, not just this plant — but this is where the designer's
+            hands already are. Present in every state: a removal you can't
+            save from is a dead end. */}
+        <div className="mt-3 border-t border-rule pt-3">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={!dirty || saveState === "saving"}
+            className={`${ACTION} w-full ${
+              dirty && saveState !== "saving"
+                ? "border border-transparent bg-accent text-[#f5eeda] hover:bg-accent-bright"
+                : "border border-rule bg-transparent text-faint"
+            }`}
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "saved" && !dirty
+                ? "Saved"
+                : "Save changes"}
+          </button>
+        </div>
       </div>
 
       <ChangeList
         changes={changes}
         selectedId={selectedId}
         undoLabel={undoLabel}
+        unsavedCount={unsavedCount}
         onUndoPlant={onUndoPlant}
         onSelect={onSelectChange}
       />
@@ -834,6 +991,7 @@ function ChangeList({
   changes,
   selectedId,
   undoLabel,
+  unsavedCount,
   onUndoPlant,
   onSelect,
 }: {
@@ -841,10 +999,13 @@ function ChangeList({
   selectedId: string | null;
   /** Non-null when there's something ⌘Z would take back. */
   undoLabel: string | null;
+  unsavedCount: number;
   onUndoPlant: (id: string) => void;
   onSelect: (id: string) => void;
 }) {
-  if (changes.length === 0) return null;
+  // Still render for unsaved work — otherwise Undo would vanish exactly
+  // when a mistake has just been made and nothing recorded yet.
+  if (changes.length === 0 && unsavedCount === 0) return null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col border-t border-rule">
@@ -856,6 +1017,11 @@ function ChangeList({
           <span className="font-mono text-[0.68rem] text-faint">⌘Z to undo</span>
         )}
       </div>
+      {unsavedCount > 0 && (
+        <p className="border-t border-rule/60 px-4 py-2 text-xs text-muted">
+          Unsaved changes — press Save changes to record them here.
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {changes.map((c) => {
           // Gold is the selection colour on the plan, so the row of the
