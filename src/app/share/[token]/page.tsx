@@ -2,9 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadWebOrgBrand } from "@/lib/org-brand-web";
-import { buildScene } from "@/lib/viewer/scene";
+import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
-import { PlanThumbnail } from "./plan-thumbnail";
 
 /**
  * What a homeowner opens.
@@ -18,7 +17,9 @@ import { PlanThumbnail } from "./plan-thumbnail";
  * everything on offer without scrolling for it. Identity first (name, who it
  * is for, when), then the ways in. The design tile carries an actual drawing
  * of the plan: a card that says "walk through the design" and shows nothing
- * is asking somebody to take it on faith.
+ * is asking somebody to take it on faith. It is the REAL renderer in embed
+ * mode — the same component and the same `embed` prop the dashboard's own
+ * project page uses — rather than a still that could drift from it.
  *
  * On a phone it becomes one column in the same order, because that is where
  * a texted link gets opened.
@@ -43,7 +44,7 @@ export default async function ShareLandingPage({
   const { data: project } = await supabase
     .from("projects")
     .select(
-      "id, client_id, org_id, name, customer_name, project_json, blueprint_path, cover_path, created_at"
+      "id, client_id, org_id, name, customer_name, address, project_json, blueprint_path, cover_path, created_at"
     )
     .or(`share_token.eq.${token},crew_token.eq.${token}`)
     .is("deleted_at", null)
@@ -83,8 +84,6 @@ export default async function ShareLandingPage({
       }).format(new Date(project.created_at))
     : null;
 
-  const scene = buildScene(project.project_json as ProjectFileJSON);
-
   return (
     <main className="min-h-dvh bg-paper">
       {/* Letterhead — small and quiet. It says whose firm this is without
@@ -111,10 +110,16 @@ export default async function ShareLandingPage({
           <h1 className="font-serif text-[2rem] leading-tight text-ink sm:text-[2.4rem]">
             {project.name}
           </h1>
-          {(project.customer_name || prepared) && (
+          {/* Name, address, date. Deliberately NOT the contact email: it is
+              the client's own, so showing it back to them adds nothing, and a
+              link they forward would carry their address to whoever they
+              forward it to. Nor the headset sync stamp — that is ours. */}
+          {(project.customer_name || project.address || prepared) && (
             <p className="text-sm text-muted">
               {project.customer_name && <>Prepared for {project.customer_name}</>}
-              {project.customer_name && prepared && " · "}
+              {project.customer_name && project.address && " · "}
+              {project.address}
+              {(project.customer_name || project.address) && prepared && " · "}
               {prepared}
             </p>
           )}
@@ -125,19 +130,20 @@ export default async function ShareLandingPage({
               match. It is what sells the job; the rest supports it. */}
           <Link
             href={`/share/${token}/design`}
-            className="group relative flex min-h-[20rem] flex-col overflow-hidden rounded-[14px] border border-edge bg-card p-5 transition hover:border-accent/40 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] lg:col-span-2 lg:row-span-3 lg:min-h-[32rem] lg:p-7"
+            aria-label="Open the design"
+            className="group relative block h-[20rem] overflow-hidden rounded-[14px] border border-edge bg-[#ebe0cb] transition hover:border-accent/40 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] lg:col-span-2 lg:row-span-3 lg:h-full lg:min-h-[32rem]"
           >
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
+            <LivingBlueprint
+              project={project.project_json as ProjectFileJSON}
+              projectName={project.name}
+              showPrices={false}
+              embed
+            />
+            <span className="pointer-events-none absolute left-4 top-3.5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-ink/50">
               Your design
-            </p>
-            <p className="mt-1.5 font-serif text-2xl text-ink lg:text-3xl">
-              Walk through the plan in 3D
-            </p>
-            <div className="relative mt-4 min-h-0 flex-1">
-              <PlanThumbnail scene={scene} />
-            </div>
-            <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-accent transition group-hover:gap-2.5">
-              Open the design
+            </span>
+            <span className="absolute bottom-4 left-4 inline-flex items-center gap-1.5 rounded-lg border border-rule-strong bg-card/85 px-3.5 py-2 text-sm font-semibold text-ink backdrop-blur transition group-hover:gap-2.5 group-hover:bg-card">
+              Walk through it in 3D
               <span aria-hidden>→</span>
             </span>
           </Link>
