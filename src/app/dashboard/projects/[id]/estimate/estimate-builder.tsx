@@ -16,12 +16,12 @@
 
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { plantForKey } from "@/lib/design-edit";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
   UNITS,
   computeTotals,
-  groupByCategory,
   lineTotal,
   midpointSortOrder,
   nextSortOrder,
@@ -81,6 +81,14 @@ export function EstimateBuilder({
   const [wash, setWash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Offered AFTER a price edit on a design row, never during. A dialog on
+  // every edit would turn typing a bid into a fight — you touch several
+  // rows in a row — so this is a quiet bar that dismisses itself.
+  const [priceOffer, setPriceOffer] = useState<{
+    itemId: string;
+    plantName: string;
+    price: number;
+  } | null>(null);
   const [notesOpen, setNotesOpen] = useState<Set<string>>(new Set());
   // Named after adding a row so the new description input takes focus the
   // moment it mounts — the difference between "add a line" and actually
@@ -89,7 +97,6 @@ export function EstimateBuilder({
   const pendingFocus = useRef<string | null>(null);
 
   const totals = computeTotals(items, settings);
-  const groups = groupByCategory(items);
 
   function flash(key: string) {
     setWash(key);
@@ -126,6 +133,17 @@ export function EstimateBuilder({
       if (merged.source === "ar" && !merged.priceOverridden) {
         payload.price_overridden = true;
         merged.priceOverridden = true;
+      }
+      // Only owners can write the price book, so only they are offered it.
+      if (merged.source === "ar" && isOwner) {
+        const plant = plantForKey(merged.arKey?.split(":")[1] ?? "");
+        if (plant && merged.unitPrice > 0) {
+          setPriceOffer({
+            itemId: merged.id,
+            plantName: plant.name,
+            price: merged.unitPrice,
+          });
+        }
       }
     }
     if ("taxable" in changes) payload.taxable = merged.taxable;
@@ -287,6 +305,41 @@ export function EstimateBuilder({
   }
 
   // Owners keep the price book (migration 007), so only they can add to it.
+  /**
+   * Push a price typed on an estimate up into the price book.
+   *
+   * Keyed on the CATALOG name, because that is what rebuildPlantRows looks
+   * up — `overrides[plant.name.toLowerCase()]` — not the row's description,
+   * which carries a size prefix. And it updates in place rather than
+   * inserting: a second row for the same plant would make which price wins
+   * a matter of row order.
+   */
+  async function savePlantPrice(plantName: string, price: number) {
+    setError(null);
+    const supabase = createClient();
+    const { data: existing } = await supabase
+      .from("price_items")
+      .select("id")
+      .eq("category", "plant")
+      .eq("name", plantName)
+      .maybeSingle();
+
+    const { error: err } = existing
+      ? await supabase
+          .from("price_items")
+          .update({ price })
+          .eq("id", existing.id)
+      : await supabase.from("price_items").insert({
+          name: plantName,
+          category: "plant",
+          price,
+          unit: "each",
+        });
+
+    setPriceOffer(null);
+    if (err) setError("Could not update the price book.");
+  }
+
   async function saveToPriceBook(item: EstimateItem) {
     setError(null);
     const { error: err } = await createClient().from("price_items").insert({
@@ -419,25 +472,51 @@ export function EstimateBuilder({
             </tbody>
           </table>
         </div>
+
+        {priceOffer && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-5 py-3">
+            <p className="text-sm text-body">
+              Save{" "}
+              <span className="font-mono font-semibold">
+                {currency.format(priceOffer.price)}
+              </span>{" "}
+              as your price for{" "}
+              <span className="font-semibold">{priceOffer.plantName}</span>?
+              <span className="text-muted"> It will apply to new estimates.</span>
+            </p>
+            <span className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPriceOffer(null)}
+                className="rounded-lg border border-edge px-3 py-1.5 text-[13px] font-semibold text-body transition hover:bg-paper-deep"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void savePlantPrice(priceOffer.plantName, priceOffer.price)
+                }
+                className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
+              >
+                Save to price book
+              </button>
+            </span>
+          </div>
+        )}
       </section>
 
+      {/* The "What the client sees" and Terms cards are gone — two panels of
+          explanation for two controls. The controls themselves moved into
+          Totals, which is where every other decision about the printed
+          proposal already lives. */}
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <div className="space-y-6">
-          <ClientDetail
-            detail={settings.detail}
-            groups={groups}
-            subtotal={totals.subtotal}
-            readOnly={readOnly}
-            onChange={(d) => void saveSetting("estimate_detail", d)}
-          />
-          <TermsOverride
-            initial={initialTerms}
-            readOnly={readOnly}
-            washing={wash === "estimate_terms"}
-            onSave={(v) => void saveTerms(v)}
-          />
-        </div>
+        <div />
         <Totals
+          detail={settings.detail}
+          onDetailChange={(d) => void saveSetting("estimate_detail", d)}
+          terms={initialTerms}
+          onTermsSave={(v) => void saveTerms(v)}
           projectId={projectId}
           settings={settings}
           totals={totals}
@@ -631,7 +710,18 @@ function Row({
             min="0"
             step="0.01"
             value={qty}
-            disabled={readOnly}
+            // Locked on a design row. rebuildPlantRows sets `quantity`
+            // unconditionally on every resync — only the PRICE is protected,
+            // by price_overridden — so an edit here was accepted and then
+            // silently thrown away the next time the headset synced or the
+            // office published. The design owns the count; change it in the
+            // headset or the 3D viewer, which is what rebuilds these rows.
+            disabled={readOnly || fromDesign}
+            title={
+              fromDesign
+                ? "Set by the design — change it in the headset or the 3D viewer"
+                : undefined
+            }
             onChange={(e) => edit({ quantity: e.target.value })}
             onBlur={() =>
               commitNumber(
@@ -841,99 +931,6 @@ function SavedItemsPicker({
   );
 }
 
-/* ── What the client sees ─────────────────────────────────────────────── */
-
-function ClientDetail({
-  detail,
-  groups,
-  subtotal,
-  readOnly,
-  onChange,
-}: {
-  detail: "itemized" | "grouped";
-  groups: ReturnType<typeof groupByCategory>;
-  subtotal: number;
-  readOnly: boolean;
-  onChange: (d: "itemized" | "grouped") => void;
-}) {
-  const seg = (on: boolean) =>
-    `rounded-lg px-3 py-1.5 text-[13px] font-semibold transition ${
-      on
-        ? "bg-accent text-paper"
-        : "text-muted hover:text-ink disabled:hover:text-muted"
-    }`;
-
-  return (
-    <section className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-serif text-xl text-ink">What the client sees</h2>
-        <div
-          role="group"
-          aria-label="Client PDF detail"
-          className="flex gap-1 rounded-xl border border-rule bg-paper-deep p-1"
-        >
-          <button
-            type="button"
-            disabled={readOnly}
-            aria-pressed={detail === "itemized"}
-            onClick={() => onChange("itemized")}
-            className={seg(detail === "itemized")}
-          >
-            Itemized
-          </button>
-          <button
-            type="button"
-            disabled={readOnly}
-            aria-pressed={detail === "grouped"}
-            onClick={() => onChange("grouped")}
-            className={seg(detail === "grouped")}
-          >
-            Lump sums
-          </button>
-        </div>
-      </div>
-
-      {detail === "itemized" ? (
-        <p className="mt-3 max-w-lg text-sm text-muted">
-          The proposal lists every line above with its quantity and unit price.
-          Maximum transparency — and the client can price-shop line by line.
-        </p>
-      ) : (
-        <>
-          <p className="mt-3 max-w-lg text-sm text-muted">
-            The proposal shows these totals only. Quantities and unit prices
-            stay internal.
-          </p>
-          <ul className="mt-4 divide-y divide-rule/70">
-            {groups.map((g) => (
-              <li
-                key={g.category}
-                className="flex items-baseline justify-between py-2"
-              >
-                <span className="text-sm text-body">
-                  {g.label}
-                  <span className="ml-2 text-xs text-faint">
-                    {g.lineCount} {g.lineCount === 1 ? "line" : "lines"}
-                  </span>
-                </span>
-                <span className="font-mono text-sm font-semibold tabular-nums text-ink">
-                  {currency.format(g.total)}
-                </span>
-              </li>
-            ))}
-            {groups.length === 0 && (
-              <li className="py-2 text-sm text-muted">Nothing to show yet.</li>
-            )}
-          </ul>
-          <p className="mt-3 text-xs text-faint">
-            Rolls up to {currency.format(subtotal)} — the same subtotal as the
-            itemized version, by construction.
-          </p>
-        </>
-      )}
-    </section>
-  );
-}
 
 /* ── Totals ───────────────────────────────────────────────────────────── */
 
@@ -945,6 +942,10 @@ function Totals({
   washing,
   onRate,
   onDeposit,
+  detail,
+  onDetailChange,
+  terms,
+  onTermsSave,
 }: {
   projectId: string;
   settings: EstimateSettings;
@@ -953,7 +954,15 @@ function Totals({
   washing: string | null;
   onRate: (v: number) => void;
   onDeposit: (v: number) => void;
+  // Moved in from the two cards that used to sit beside this one: both are
+  // decisions about the printed proposal, and this is where the proposal is
+  // generated.
+  detail: EstimateSettings["detail"];
+  onDetailChange: (d: EstimateSettings["detail"]) => void;
+  terms: string | null;
+  onTermsSave: (value: string) => void;
 }) {
+  const [termsOpen, setTermsOpen] = useState(false);
   // Same draft-resync-during-render pattern as the rows: the percentage
   // fields are text while they're being typed and follow the saved settings
   // whenever those change (a save landing, or a failed save rolling back).
@@ -1072,11 +1081,50 @@ function Totals({
         </div>
       </dl>
 
+      {/* How the proposal prints, next to the button that prints it. */}
+      <div className="mt-5 border-t border-rule pt-4">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
+          The client sees
+        </p>
+        <div
+          role="group"
+          aria-label="Client PDF detail"
+          className="mt-2 flex gap-1 rounded-xl border border-rule bg-paper-deep p-1"
+        >
+          {(
+            [
+              ["itemized", "Itemized"],
+              ["grouped", "Lump sums"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              disabled={readOnly}
+              aria-pressed={detail === value}
+              onClick={() => onDetailChange(value)}
+              className={`flex-1 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition ${
+                detail === value
+                  ? "bg-accent text-paper"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[0.68rem] leading-relaxed text-faint">
+          {detail === "itemized"
+            ? "Every line with its quantity and unit price."
+            : "Category totals only — quantities and unit prices stay internal."}
+        </p>
+      </div>
+
       <a
         href={`/dashboard/projects/${projectId}/estimate/pdf`}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-5 block w-full rounded-lg bg-accent px-4 py-2.5 text-center text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
+        className="mt-4 block w-full rounded-lg bg-accent px-4 py-2.5 text-center text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
       >
         Generate Proposal
       </a>
@@ -1086,80 +1134,31 @@ function Totals({
       >
         Download PDF
       </a>
+      {/* Kept as a link rather than deleted with its card: overriding terms
+          for one job was built deliberately, it is just not something that
+          earns a panel of its own. */}
+      <button
+        type="button"
+        disabled={readOnly}
+        onClick={() => setTermsOpen((v) => !v)}
+        className="mt-3 block w-full text-center text-xs font-semibold text-muted transition hover:text-accent disabled:opacity-50"
+      >
+        {termsOpen ? "Use company terms" : "Override terms for this estimate"}
+      </button>
+      {termsOpen && (
+        <textarea
+          defaultValue={terms ?? ""}
+          onBlur={(e) => onTermsSave(e.target.value)}
+          rows={5}
+          placeholder="Terms for this estimate only…"
+          className="mt-2 w-full rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        />
+      )}
+
       <p className="mt-3 text-center text-[0.68rem] leading-relaxed text-faint">
-        Prints in the mode selected on the left, under your company&apos;s
-        letterhead.
+        Prints under your company&apos;s letterhead.
       </p>
     </section>
   );
 }
 
-/* ── Terms for this one estimate ──────────────────────────────────────── */
-
-function TermsOverride({
-  initial,
-  readOnly,
-  washing,
-  onSave,
-}: {
-  initial: string;
-  readOnly: boolean;
-  washing: boolean;
-  onSave: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(initial.trim() !== "");
-  const [text, setText] = useState(initial);
-
-  return (
-    <section className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="font-serif text-xl text-ink">Terms</h2>
-        <button
-          type="button"
-          disabled={readOnly}
-          onClick={() => {
-            if (open && text.trim() !== "") {
-              // Closing the panel clears the override rather than hiding a
-              // paragraph that would still print.
-              setText("");
-              onSave("");
-            }
-            setOpen((o) => !o);
-          }}
-          className="text-xs font-semibold text-accent transition hover:text-accent-bright disabled:opacity-40"
-        >
-          {open ? "Use company terms" : "Override for this estimate"}
-        </button>
-      </div>
-
-      {open ? (
-        <>
-          <textarea
-            value={text}
-            disabled={readOnly}
-            rows={5}
-            placeholder="Terms for this job only…"
-            onChange={(e) => setText(e.target.value)}
-            onBlur={() => {
-              if (text.trim() === initial.trim()) return;
-              onSave(text);
-            }}
-            aria-label="Terms for this estimate"
-            className={`mt-3 w-full resize-y rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm leading-relaxed text-body outline-none transition placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60 ${
-              washing ? "save-wash" : ""
-            }`}
-          />
-          <p className="mt-2 text-[0.68rem] text-faint">
-            Replaces your company terms on this proposal only.
-          </p>
-        </>
-      ) : (
-        <p className="mt-2 max-w-lg text-sm text-muted">
-          This proposal prints your company&apos;s standard terms, set once on
-          the Company page. Override them here when one job needs different
-          wording.
-        </p>
-      )}
-    </section>
-  );
-}
