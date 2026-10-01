@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadWebOrgBrand } from "@/lib/org-brand-web";
+import { MAX_VIDEOS } from "@/lib/media";
 import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 
@@ -73,9 +74,12 @@ export default async function ShareLandingPage({
   ]);
 
   const coverUrl = coverRes.data?.signedUrl ?? null;
+  // Capped here too. A project uploaded before the limit existed can hold
+  // more than three, and the client page is where the promise is kept.
   const videos = (videoRes.data ?? [])
     .map((v) => v.signedUrl)
-    .filter((u): u is string => Boolean(u));
+    .filter((u): u is string => Boolean(u))
+    .slice(0, MAX_VIDEOS);
 
   const prepared = project.created_at
     ? new Intl.DateTimeFormat("en-US", {

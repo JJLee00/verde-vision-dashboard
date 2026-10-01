@@ -7,10 +7,11 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { MAX_VIDEOS, MAX_VIDEO_BYTES } from "@/lib/media";
 
 export type VideoItem = { path: string; name: string; url: string };
 
-const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+// Limits live in lib/media.ts — the client page enforces the same count.
 
 export function VideoManager({
   projectId,
@@ -28,9 +29,15 @@ export function VideoManager({
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  const atLimit = videos.length >= MAX_VIDEOS;
+
   async function upload(file: File) {
+    if (atLimit) {
+      setError(`${MAX_VIDEOS} videos is the limit — remove one first.`);
+      return;
+    }
     if (file.size > MAX_VIDEO_BYTES) {
-      setError("Video is over 300 MB — trim or compress it first.");
+      setError("Video is over 100 MB — trim or compress it first.");
       return;
     }
     setBusy(true);
@@ -70,7 +77,7 @@ export function VideoManager({
       {videos.length === 0 && (
         <p className="text-sm text-muted">
           Record a walkthrough on the headset (passthrough included), then
-          upload it here to share with the homeowner later.
+          upload it here. Up to {MAX_VIDEOS}, 100 MB each.
         </p>
       )}
       {videos.map((v) => (
@@ -106,13 +113,20 @@ export function VideoManager({
           e.target.value = "";
         }}
       />
+      {/* Disabled rather than hidden at the limit: a button that vanishes
+          leaves someone wondering where it went, and the label says why. */}
       <button
         type="button"
-        disabled={disabled || busy}
+        disabled={disabled || busy || atLimit}
         onClick={() => inputRef.current?.click()}
+        title={atLimit ? `${MAX_VIDEOS} is the limit — remove one first` : undefined}
         className="rounded-lg border border-rule-strong px-3.5 py-2 text-sm font-semibold text-ink transition hover:bg-card-hover disabled:opacity-50"
       >
-        {busy ? "Uploading…" : "Upload video"}
+        {busy
+          ? "Uploading…"
+          : atLimit
+            ? "Limit reached"
+            : `Upload video (${videos.length}/${MAX_VIDEOS})`}
       </button>
       {error && <p className="text-xs text-clay">{error}</p>}
     </div>
