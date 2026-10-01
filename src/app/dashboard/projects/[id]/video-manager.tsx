@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { MAX_VIDEOS, MAX_VIDEO_BYTES } from "@/lib/media";
+import { CarouselArrow } from "@/components/carousel-arrow";
 
 export type VideoItem = { path: string; name: string; url: string };
 
@@ -26,6 +27,10 @@ export function VideoManager({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  // Clamped on render rather than reset on change: removing the last video
+  // in the list would otherwise leave the index past the end.
+  const [rawIndex, setIndex] = useState(0);
+  const index = Math.min(rawIndex, Math.max(videos.length - 1, 0));
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
@@ -72,28 +77,59 @@ export function VideoManager({
     router.refresh();
   }
 
+  const many = videos.length > 1;
+  const current = videos[index];
+  const go = (delta: number) =>
+    setIndex((i) => {
+      const from = Math.min(i, videos.length - 1);
+      return (from + delta + videos.length) % videos.length;
+    });
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {videos.length === 0 && (
         <p className="text-sm text-muted">
           Record a walkthrough on the headset (passthrough included), then
           upload it here. Up to {MAX_VIDEOS}, 100 MB each.
         </p>
       )}
-      {videos.map((v) => (
-        <div key={v.path}>
-          <video
-            src={v.url}
-            controls
-            preload="metadata"
-            className="w-full rounded-[10px] border border-edge bg-ink/5"
-          />
+
+      {/* One at a time, matching the client page. Stacked players made this
+          card grow with every upload, which pushed everything below it down
+          the page for no gain — nobody watches three at once. */}
+      {current && (
+        <div>
+          <div className="relative">
+            <video
+              // Keyed so switching swaps the element instead of re-pointing a
+              // playing one, which leaves the old frame up until the new
+              // source loads.
+              key={current.path}
+              src={current.url}
+              controls
+              preload="metadata"
+              className="w-full rounded-[10px] border border-edge bg-ink/5"
+            />
+            {many && (
+              <>
+                <CarouselArrow side="left" label="Previous video" onClick={() => go(-1)} />
+                <CarouselArrow side="right" label="Next video" onClick={() => go(1)} />
+              </>
+            )}
+          </div>
           <div className="mt-1 flex items-center justify-between gap-3">
-            <span className="truncate text-[11px] text-faint">{v.name}</span>
+            <span className="truncate text-[11px] text-faint">
+              {many && (
+                <span className="mr-2 font-semibold">
+                  {index + 1} of {videos.length}
+                </span>
+              )}
+              {current.name}
+            </span>
             {!disabled && (
               <button
                 type="button"
-                onClick={() => remove(v.path)}
+                onClick={() => remove(current.path)}
                 className="shrink-0 text-[11px] font-semibold text-clay transition hover:opacity-75"
               >
                 Remove
@@ -101,7 +137,8 @@ export function VideoManager({
             )}
           </div>
         </div>
-      ))}
+      )}
+
       <input
         ref={inputRef}
         type="file"

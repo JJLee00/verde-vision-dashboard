@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CarouselArrow } from "@/components/carousel-arrow";
 
 /**
  * One video at a time, with arrows.
@@ -46,35 +47,11 @@ export function VideoCarousel({ videos }: { videos: string[] }) {
         />
         {many && (
           <>
-            <Arrow side="left" onClick={() => go(-1)} />
-            <Arrow side="right" onClick={() => go(1)} />
+            <CarouselArrow side="left" label="Previous video" onClick={() => go(-1)} />
+            <CarouselArrow side="right" label="Next video" onClick={() => go(1)} />
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function Arrow({
-  side,
-  onClick,
-}: {
-  side: "left" | "right";
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={side === "left" ? "Previous video" : "Next video"}
-      // Clear of the bottom so it never sits over the scrubber.
-      className={`absolute top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-paper/40 bg-ink/50 text-paper backdrop-blur-sm transition hover:bg-ink/75 ${
-        side === "left" ? "left-2" : "right-2"
-      }`}
-    >
-      <span aria-hidden className="text-lg leading-none">
-        {side === "left" ? "‹" : "›"}
-      </span>
-    </button>
   );
 }
