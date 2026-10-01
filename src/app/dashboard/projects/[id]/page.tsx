@@ -453,7 +453,6 @@ export default async function ProjectPage({
           {data.projectJson && data.shareToken && data.crewToken && (
             <ShareLinkButtons
               clientToken={data.shareToken}
-              crewToken={data.crewToken}
             />
           )}
           <StatusSelect
@@ -602,6 +601,14 @@ export default async function ProjectPage({
               videos={data.videos}
               disabled={disabled}
             />
+            {/* Stated here rather than behind a per-video toggle: the
+                designer decides what to upload, and a clear sentence at the
+                point of uploading is worth more than a checkbox they have to
+                find. */}
+            <p className="mt-3 text-[11px] text-faint">
+              Anything here appears on the client link. Keep rough takes off
+              the project.
+            </p>
           </SectionCard>
         </div>
       </div>

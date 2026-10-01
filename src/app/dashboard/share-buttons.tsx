@@ -2,66 +2,56 @@
 
 import { useState } from "react";
 
-// Copy-to-clipboard buttons for a project's public share links (see
-// /share/[token]): the client link shows pricing, the crew link is the
-// same viewer with prices hidden. Rendered on the project card (compact)
-// and the project page header (full) — sharing is a management action,
-// so it lives with the project record, not inside the viewer.
+/**
+ * Copy-to-clipboard for a project's public link (see /share/[token]).
+ *
+ * ONE link now. There used to be two — a client link with pricing and a crew
+ * link without — and pricing was the only difference between them. The
+ * viewer no longer shows any, so the distinction had nothing left to carry.
+ * The crew token still resolves, so links already sent keep working; the
+ * dashboard simply stops offering a second one to copy.
+ *
+ * Rendered on the project card (compact) and the project page header (full).
+ * Sharing is a management action, so it lives with the project record rather
+ * than inside the viewer.
+ */
 export function ShareLinkButtons({
   clientToken,
-  crewToken,
   compact = false,
 }: {
   clientToken: string;
-  crewToken: string;
   compact?: boolean;
 }) {
-  const [copied, setCopied] = useState<"client" | "crew" | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const copy = async (kind: "client" | "crew") => {
-    const token = kind === "client" ? clientToken : crewToken;
-    await navigator.clipboard.writeText(`${location.origin}/share/${token}`);
-    setCopied(kind);
-    setTimeout(() => setCopied(null), 2000);
+  const copy = async () => {
+    await navigator.clipboard.writeText(
+      `${location.origin}/share/${clientToken}`
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (compact) {
-    const link =
-      "font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright";
     return (
-      <span className="flex items-center gap-2.5">
-        <button type="button" onClick={() => copy("client")} className={link}>
-          {copied === "client" ? "Copied ✓" : "Client link"}
-        </button>
-        <button
-          type="button"
-          onClick={() => copy("crew")}
-          title="Same viewer without pricing — for install crews"
-          className={link}
-        >
-          {copied === "crew" ? "Copied ✓" : "Crew"}
-        </button>
-      </span>
+      <button
+        type="button"
+        onClick={copy}
+        className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
+      >
+        {copied ? "Copied ✓" : "Client link"}
+      </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <button
-        type="button"
-        onClick={() => copy("client")}
-        className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
-      >
-        {copied === "client" ? "Copied ✓" : "Copy client link"}
-      </button>
-      <button
-        type="button"
-        onClick={() => copy("crew")}
-        title="Same viewer without pricing — for install crews"
-        className="rounded-lg border border-rule-strong px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card"
-      >
-        {copied === "crew" ? "Copied ✓" : "Crew link"}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={copy}
+      title="A page with the design, the plan and any walkthrough videos"
+      className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright"
+    >
+      {copied ? "Copied ✓" : "Copy client link"}
+    </button>
   );
 }

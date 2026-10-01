@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// Shared handler for the public document routes under /share/[token].
+// The blueprint behind a share link. (This took a `kind` until Sep 30,
+// when the estimate stopped being served here — the only correct proposal
+// is the one the dashboard renders from the estimate rows, and that is a
+// document the designer sends rather than a button on a client page.)
 // Each route validates the token exactly like the share page, then mints
 // a short-lived signed URL and redirects — so the links a homeowner keeps
 // (or forwards) never go stale, and the storage bucket stays private.
@@ -11,10 +14,7 @@ const UUID_RE =
 
 const SIGNED_URL_TTL_SECONDS = 60;
 
-export async function redirectToDocument(
-  token: string,
-  kind: "blueprint" | "estimate"
-) {
+export async function redirectToDocument(token: string) {
   if (!UUID_RE.test(token)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -22,21 +22,14 @@ export async function redirectToDocument(
   const supabase = createAdminClient();
   const { data: project } = await supabase
     .from("projects")
-    .select("blueprint_path, estimate_path, share_token")
+    .select("blueprint_path")
     .or(`share_token.eq.${token},crew_token.eq.${token}`)
     // Matches the share page: a deleted project hands out no documents.
     .is("deleted_at", null)
     .maybeSingle();
 
-  // The estimate is all pricing, so it's client-link only — the crew
-  // token exists specifically to hide prices from install crews.
-  const crewToken = project != null && project.share_token !== token;
-  const path =
-    kind === "blueprint"
-      ? project?.blueprint_path
-      : crewToken
-        ? null
-        : project?.estimate_path;
+  const path = project?.blueprint_path;
+
   if (!path) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

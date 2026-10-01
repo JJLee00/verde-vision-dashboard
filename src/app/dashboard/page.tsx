@@ -744,7 +744,6 @@ export default async function DashboardPage({
                         return tokens ? (
                           <ShareLinkButtons
                             clientToken={tokens.client}
-                            crewToken={tokens.crew}
                             compact
                           />
                         ) : (
