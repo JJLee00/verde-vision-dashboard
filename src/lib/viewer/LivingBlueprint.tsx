@@ -51,6 +51,12 @@ export type LivingBlueprintProps = {
   priceOverrides?: Record<string, number>;
   showPrices: boolean;
   backHref?: string | null;
+  /**
+   * Called instead of following backHref when the editor has unpublished
+   * changes. Those live only in this tab, so leaving loses them — and the
+   * one place that knows is the editor, not this component.
+   */
+  onBeforeLeave?: (() => boolean) | null;
   // Hrefs for the project's PDF documents (2D blueprint, itemized
   // estimate). Null/absent entries render no button.
   documents?: { blueprint: string | null; estimate: string | null } | null;
@@ -81,6 +87,7 @@ export function LivingBlueprint({
   priceOverrides = {},
   showPrices,
   backHref,
+  onBeforeLeave,
   documents,
   embed = false,
   editing = false,
@@ -953,6 +960,11 @@ export function LivingBlueprint({
         {backHref && (
           <Link
             href={backHref}
+            onClick={(e) => {
+              // The guard returns true when it has taken over — it puts up
+              // its own prompt, so this navigation must not also happen.
+              if (onBeforeLeave?.()) e.preventDefault();
+            }}
             className="flex items-center gap-1.5 text-sm text-muted transition hover:text-ink"
           >
             <span aria-hidden>←</span> Dashboard

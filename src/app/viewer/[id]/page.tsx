@@ -27,7 +27,6 @@ export default async function ViewerPage({
       <DesignEditor
         projectId="fixture"
         canEdit
-        draftDesign={null}
         project={FIXTURE_PROJECT}
         projectName={FIXTURE_PROJECT.projectName}
         estimateAmount={8460}
@@ -135,22 +134,11 @@ export default async function ViewerPage({
   const canEdit =
     project.client_id === user.id || membership?.role === "owner";
 
-  let draftDesign: ProjectFileJSON | null = null;
-  if (canEdit) {
-    const { data: draft } = await supabase
-      .from("project_versions")
-      .select("project_json")
-      .eq("project_id", id)
-      .eq("status", "draft")
-      .maybeSingle();
-    draftDesign = (draft?.project_json as ProjectFileJSON | null) ?? null;
-  }
 
   return (
     <DesignEditor
       projectId={id}
       canEdit={canEdit}
-      draftDesign={draftDesign}
       project={projectJson}
       projectName={project.name}
       estimateAmount={project.estimate_amount}
