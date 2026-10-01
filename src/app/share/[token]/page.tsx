@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadWebOrgBrand } from "@/lib/org-brand-web";
 import { MAX_VIDEOS } from "@/lib/media";
+import { VideoCarousel } from "./video-carousel";
 import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 
@@ -90,52 +91,83 @@ export default async function ShareLandingPage({
 
   return (
     <main className="min-h-dvh bg-paper">
-      {/* Letterhead — small and quiet. It says whose firm this is without
-          turning into a banner competing with the work below it. */}
+      {/* The full letterhead, at the top, because that is where the estimate
+          PDF puts it and these should read as the same document family. The
+          contact details used to sit in a footer as a closing call to action;
+          on a page that fits one screen the top is never far away. */}
       <header className="border-b border-rule">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6 lg:px-12">
-          {brand.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={brand.logoUrl}
-              alt=""
-              className="h-8 w-auto max-w-[150px] object-contain"
-            />
-          ) : null}
-          <span className="font-serif text-lg text-ink">{brand.name}</span>
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 sm:px-6 lg:px-12">
+          <div className="flex items-center gap-3">
+            {brand.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={brand.logoUrl}
+                alt=""
+                className="h-8 w-auto max-w-[150px] object-contain"
+              />
+            ) : null}
+            <span className="font-serif text-lg text-ink">{brand.name}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+            {brand.phone && (
+              <a href={`tel:${brand.phone}`} className="hover:text-accent">
+                {brand.phone}
+              </a>
+            )}
+            {brand.email && (
+              <a href={`mailto:${brand.email}`} className="hover:text-accent">
+                {brand.email}
+              </a>
+            )}
+            {brand.website && (
+              <a
+                href={brand.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-accent"
+              >
+                {brand.website.replace(/^https?:\/\//, "")}
+              </a>
+            )}
+            {brand.licenseNumber && (
+              <span className="text-faint">License {brand.licenseNumber}</span>
+            )}
+          </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-12">
-        {/* Identity first. The cover photo used to sit above this and pushed
-            the project's own name below the fold, which is backwards — you
-            should know whose yard this is before you look at it. */}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-          <h1 className="font-serif text-[2rem] leading-tight text-ink sm:text-[2.4rem]">
-            {project.name}
-          </h1>
-          {/* Name, address, date. Deliberately NOT the contact email: it is
-              the client's own, so showing it back to them adds nothing, and a
-              link they forward would carry their address to whoever they
-              forward it to. Nor the headset sync stamp — that is ours. */}
-          {(project.customer_name || project.address || prepared) && (
-            <p className="text-sm text-muted">
-              {project.customer_name && <>Prepared for {project.customer_name}</>}
-              {project.customer_name && project.address && " · "}
-              {project.address}
-              {(project.customer_name || project.address) && prepared && " · "}
-              {prepared}
-            </p>
-          )}
-        </div>
+        {/* Identity first, and the details directly UNDER the name. Right
+            aligning them put a title and its own subtitle at opposite ends of
+            a 1280px row, which is why they read as unrelated. */}
+        <h1 className="font-serif text-[2rem] leading-tight text-ink sm:text-[2.4rem]">
+          {project.name}
+        </h1>
+        {/* Deliberately NOT the contact email: it is the client's own, so
+            showing it back adds nothing, and a link they forward would carry
+            their address with it. Nor the headset sync stamp — that is ours. */}
+        {(project.customer_name || project.address || prepared) && (
+          <p className="mt-1 text-sm text-muted">
+            {project.customer_name && <>Prepared for {project.customer_name}</>}
+            {project.customer_name && project.address && " · "}
+            {project.address}
+            {(project.customer_name || project.address) && prepared && " · "}
+            {prepared}
+          </p>
+        )}
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        {/* The RIGHT column sets the height and the design matches it, so the
+            three tiles square up instead of the design towering over them.
+            Its rows are explicitly equal; `min-h` is only a floor for the
+            case where a project has neither a photo nor a video and the
+            right column would otherwise collapse the design with it. */}
+        <div className="mt-5 grid gap-4 lg:auto-rows-fr lg:grid-cols-3">
           {/* The design, given two thirds of the width and the drawing to
               match. It is what sells the job; the rest supports it. */}
           <Link
             href={`/share/${token}/design`}
             aria-label="Open the design"
-            className="group relative block h-[20rem] overflow-hidden rounded-[14px] border border-edge bg-[#ebe0cb] transition hover:border-accent/40 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] lg:col-span-2 lg:row-span-3 lg:h-full lg:min-h-[32rem]"
+            className="group relative block h-[20rem] overflow-hidden rounded-[14px] border border-edge bg-[#ebe0cb] transition hover:border-accent/40 hover:shadow-[0_28px_55px_-28px_rgba(28,42,33,0.5)] lg:col-span-2 lg:row-span-2 lg:h-auto lg:min-h-[26rem]"
           >
             <LivingBlueprint
               project={project.project_json as ProjectFileJSON}
@@ -157,7 +189,7 @@ export default async function ShareLandingPage({
             <img
               src={coverUrl}
               alt=""
-              className="aspect-[4/3] w-full rounded-[14px] border border-rule object-cover lg:aspect-auto lg:h-full lg:min-h-0"
+              className="aspect-[4/3] w-full rounded-[14px] border border-rule object-cover lg:aspect-auto lg:h-full lg:min-h-0 lg:self-stretch"
             />
           )}
 
@@ -186,54 +218,11 @@ export default async function ShareLandingPage({
           )}
 
           {videos.length > 0 && (
-            <div className="rounded-[14px] border border-edge bg-card p-4">
-              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
-                Walkthrough
-              </p>
-              <div className="mt-2.5 flex flex-col gap-2.5">
-                {videos.map((url) => (
-                  <video
-                    key={url}
-                    src={url}
-                    controls
-                    preload="metadata"
-                    playsInline
-                    className="w-full rounded-[10px] border border-rule bg-ink/[0.05]"
-                  />
-                ))}
-              </div>
+            <div className="min-h-[14rem] rounded-[14px] border border-edge bg-card p-4 lg:min-h-0">
+              <VideoCarousel videos={videos} />
             </div>
           )}
         </div>
-
-        {(brand.phone || brand.email || brand.website) && (
-          <footer className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-rule pt-5 text-sm text-muted">
-            <span className="font-serif text-base text-ink">{brand.name}</span>
-            {brand.phone && (
-              <a href={`tel:${brand.phone}`} className="hover:text-accent">
-                {brand.phone}
-              </a>
-            )}
-            {brand.email && (
-              <a href={`mailto:${brand.email}`} className="hover:text-accent">
-                {brand.email}
-              </a>
-            )}
-            {brand.website && (
-              <a
-                href={brand.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-accent"
-              >
-                {brand.website.replace(/^https?:\/\//, "")}
-              </a>
-            )}
-            {brand.licenseNumber && (
-              <span className="text-faint">License {brand.licenseNumber}</span>
-            )}
-          </footer>
-        )}
       </div>
     </main>
   );
