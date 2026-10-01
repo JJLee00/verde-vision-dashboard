@@ -50,6 +50,28 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // The price book belongs to the ORG, not to whoever typed it in.
+  //
+  // Migration 007 is explicit: "the price tables' user_id become creator
+  // ATTRIBUTION; org_id is the owning/visibility scope", and only OWNERS can
+  // write the book. Filtering on user_id — which this did until Sep 30 —
+  // therefore returned every row to the owner and NOTHING to anyone else, so
+  // a designer's headset silently fell back to catalog defaults and quoted
+  // the wrong numbers. RLS would have got this right; the service role never
+  // sees it, so the scope has to be written out here.
+  const { data: membership } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const orgId = membership?.org_id ?? null;
+  if (!orgId) {
+    return NextResponse.json(
+      { error: `No organization for ${email}` },
+      { status: 404 }
+    );
+  }
+
   const [
     { data: items, error: itemsError },
     { data: sheets },
@@ -59,20 +81,20 @@ export async function GET(request: NextRequest) {
     supabase
       .from("price_items")
       .select("name, category, price, unit")
-      .eq("user_id", user.id)
+      .eq("org_id", orgId)
       .order("name"),
     supabase
       .from("price_sheets")
       .select("file_name, file_path, row_count")
-      .eq("user_id", user.id)
+      .eq("org_id", orgId)
       .order("created_at", { ascending: false }),
     // Tolerate missing tables (migration 005 not run yet) — these two
     // queries just come back null and the grid fields are empty.
-    supabase.from("labor_rates").select("size, rate").eq("user_id", user.id),
+    supabase.from("labor_rates").select("size, rate").eq("org_id", orgId),
     supabase
       .from("plant_prices")
       .select("plant_key, size, price")
-      .eq("user_id", user.id),
+      .eq("org_id", orgId),
   ]);
 
   if (itemsError) {

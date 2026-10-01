@@ -36,10 +36,39 @@ export async function rebuildPlantRows(
   projectId: string,
   design: ProjectFileJSON
 ): Promise<number> {
-  const { data: priceRows } = await supabase
-    .from("price_items")
-    .select("name, price")
-    .eq("category", "plant");
+  // The org is read from the PROJECT rather than taken as an argument: it is
+  // the one answer that cannot be wrong, and both callers already have the
+  // project id.
+  //
+  // Scoping the price lookup explicitly matters because this function is
+  // handed two different clients. From the viewer's publish action it gets a
+  // cookie-bound one and RLS scopes the read; from the Vision Pro ingest
+  // route it gets the SERVICE ROLE, where RLS is never consulted — so until
+  // Sep 30 a headset sync built its override map from every organization's
+  // plant prices, last row winning by lowercased name. Another firm's price
+  // for the same plant could land on this one's bid.
+  //
+  // Same trap migration 017 part 3 was written about. A function that was
+  // safe under RLS stops being safe the moment it is called with a client
+  // that bypasses it, and nothing about its signature says so.
+  const { data: project } = await supabase
+    .from("projects")
+    .select("org_id")
+    .eq("id", projectId)
+    .maybeSingle();
+  const orgId = (project as { org_id?: string | null } | null)?.org_id ?? null;
+
+  // No org on the project means no overrides — catalog prices. Falling back
+  // to an unfiltered read would be the exact leak this is closing, and a bid
+  // at list price is a recoverable kind of wrong; one carrying a competitor's
+  // numbers is not.
+  const { data: priceRows } = orgId
+    ? await supabase
+        .from("price_items")
+        .select("name, price")
+        .eq("category", "plant")
+        .eq("org_id", orgId)
+    : { data: [] };
   const overrides: Record<string, number> = {};
   for (const row of priceRows ?? []) {
     overrides[String(row.name).toLowerCase()] = Number(row.price);
