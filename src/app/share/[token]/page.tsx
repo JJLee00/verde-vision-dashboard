@@ -82,55 +82,60 @@ export default async function ShareLandingPage({
     .filter((u): u is string => Boolean(u))
     .slice(0, MAX_VIDEOS);
 
-  const prepared = project.created_at
+  // Same order and separator the PDF letterhead uses.
+  const contact = [brand.address, brand.phone, brand.email, brand.website]
+    .map((v) => v?.trim())
+    .filter((v): v is string => Boolean(v));
+
+  // A full date, like the PDF's, rather than a month — it reads as a document
+  // rather than a page that happens to know roughly when it was made.
+  const documentDate = project.created_at
     ? new Intl.DateTimeFormat("en-US", {
         month: "long",
+        day: "numeric",
         year: "numeric",
       }).format(new Date(project.created_at))
     : null;
 
   return (
     <main className="min-h-dvh bg-paper">
-      {/* The full letterhead, at the top, because that is where the estimate
-          PDF puts it and these should read as the same document family. The
-          contact details used to sit in a footer as a closing call to action;
-          on a page that fits one screen the top is never far away. */}
+      {/* The estimate PDF's letterhead, in HTML. Deliberately the same
+          composition rather than merely a similar one: logo, then the company
+          in SANS BOLD (the PDF uses sans here, not the serif), then contact
+          joined by middots, licence on its own line — and the document's name
+          right-aligned in serif accent with its date beneath. A client who
+          gets both should not be able to tell they were made by different
+          machinery. */}
       <header className="border-b border-rule">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-4 sm:px-6 lg:px-12">
-          <div className="flex items-center gap-3">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-start justify-between gap-x-8 gap-y-4 px-4 py-6 sm:px-6 lg:px-12">
+          <div className="min-w-0">
             {brand.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={brand.logoUrl}
                 alt=""
-                className="h-8 w-auto max-w-[150px] object-contain"
+                className="mb-3 h-11 w-auto max-w-[132px] object-contain"
               />
             ) : null}
-            <span className="font-serif text-lg text-ink">{brand.name}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
-            {brand.phone && (
-              <a href={`tel:${brand.phone}`} className="hover:text-accent">
-                {brand.phone}
-              </a>
-            )}
-            {brand.email && (
-              <a href={`mailto:${brand.email}`} className="hover:text-accent">
-                {brand.email}
-              </a>
-            )}
-            {brand.website && (
-              <a
-                href={brand.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-accent"
-              >
-                {brand.website.replace(/^https?:\/\//, "")}
-              </a>
+            <p className="text-base font-bold text-ink">{brand.name}</p>
+            {contact.length > 0 && (
+              <p className="mt-1 text-xs text-muted">
+                {contact.join("  ·  ")}
+              </p>
             )}
             {brand.licenseNumber && (
-              <span className="text-faint">License {brand.licenseNumber}</span>
+              <p className="text-xs text-muted">
+                License {brand.licenseNumber}
+              </p>
+            )}
+          </div>
+
+          <div className="text-right">
+            <p className="font-serif text-[1.75rem] leading-none text-accent sm:text-[2rem]">
+              Design
+            </p>
+            {documentDate && (
+              <p className="mt-1.5 text-xs text-muted">{documentDate}</p>
             )}
           </div>
         </div>
@@ -146,13 +151,11 @@ export default async function ShareLandingPage({
         {/* Deliberately NOT the contact email: it is the client's own, so
             showing it back adds nothing, and a link they forward would carry
             their address with it. Nor the headset sync stamp — that is ours. */}
-        {(project.customer_name || project.address || prepared) && (
+        {(project.customer_name || project.address) && (
           <p className="mt-1 text-sm text-muted">
             {project.customer_name && <>Prepared for {project.customer_name}</>}
             {project.customer_name && project.address && " · "}
             {project.address}
-            {(project.customer_name || project.address) && prepared && " · "}
-            {prepared}
           </p>
         )}
 
