@@ -57,8 +57,11 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
   // Both of these do something the designer can't casually take back —
   // one throws work away, the other changes what the client sees.
   const [confirming, setConfirming] = useState<
-    "publish" | "discard" | "exit" | null
+    "publish" | "discard" | "leave" | null
   >(null);
+  // Where the leave prompt is headed once it's answered: a href to follow,
+  // or null when the way out was just dropping back to view mode.
+  const [leaveTo, setLeaveTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Drafts autosave, but silently — which read as "there's no way to save".
   // The state is now visible and there's a button that flushes it now.
@@ -186,6 +189,10 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
     }
     return n;
   }, [base, staged]);
+
+  // Net, not per-operation: reverting everything leaves nothing to publish
+  // or discard, so the bar goes back to its hint.
+  const dirty = changedPlantCount > 0;
 
   const selected = useMemo(
     () => withoutDeletes.placements?.find((p) => p.id === selectedId) ?? null,
@@ -318,14 +325,52 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
     [persist]
   );
 
-  // A reload or a closed tab loses unsaved edits the same way leaving edit
-  // mode does, and the browser is the only thing that can ask there.
+  /**
+   * The one question both exits have to ask.
+   *
+   * Nothing outlives this tab but a published revision — Save is local now
+   * — so walking out with changes in hand is exactly how a plan and an
+   * estimate come to disagree. Leaving edit mode and leaving the page both
+   * stop here and make the designer choose.
+   *
+   * Returns true when it has taken the exit over, which is the contract
+   * LivingBlueprint's back link expects.
+   */
+  const guardLeave = useCallback(
+    (href: string | null): boolean => {
+      if (!dirty) {
+        // Nothing differs from the published design, so whatever is still
+        // in the edit list cancels itself out — it goes too, rather than
+        // following the designer out of the mode as an invisible change.
+        setEdits([]);
+        setSavedEdits([]);
+        setSaveState("idle");
+        return false;
+      }
+      // What's on screen is what the prompt is about, so the plant being
+      // fiddled with is recorded first — otherwise the change list behind
+      // the dialog reads one row short of the count inside it, and Publish
+      // would quietly drop the edit the designer is looking at.
+      setSavedEdits(edits);
+      setSaveState("saved");
+      setSelectedId(null);
+      setPicking(false);
+      setLeaveTo(href);
+      setConfirming("leave");
+      return true;
+    },
+    [dirty, edits]
+  );
+
+  // A reload or a closed tab loses the whole draft — recorded rows
+  // included, since none of it is written anywhere — and the browser is the
+  // only thing that can ask there.
   useEffect(() => {
-    if (!hasUnsaved) return;
+    if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [hasUnsaved]);
+  }, [dirty]);
 
   // ⌘Z / Ctrl+Z. No redo, matching the deliberate call made for the
   // headset's own undo: a session-scoped stack and nothing to walk forward
@@ -400,10 +445,6 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
     });
   }
 
-  // Net, not per-operation: reverting everything leaves nothing to publish
-  // or discard, so the bar goes back to its hint.
-  const dirty = changedPlantCount > 0;
-
   return (
     <div className="flex h-dvh flex-col">
       <div className="min-h-0 flex-1">
@@ -420,16 +461,16 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
           onToggleEditing={
             canEdit
               ? () => {
-                  if (editing && hasUnsaved) {
-                    setConfirming("exit");
-                    return;
-                  }
+                  if (editing && guardLeave(null)) return;
                   setEditing((e) => !e);
                   setSelectedId(null);
                   setPicking(false);
                 }
               : undefined
           }
+          // The back link is the other way out of the editor, and it used
+          // to be the silent one.
+          onBeforeLeave={() => guardLeave(viewer.backHref ?? "/dashboard")}
           editorPanel={
             <EditorPanel
               selected={selected}
@@ -477,31 +518,10 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
         />
       </div>
 
-      {/* Leaving edit mode used to take the bar with it, so an unpublished
-          draft became invisible: the designer's viewer showed the edited
-          design while the client's share link still showed the published
-          one, with nothing to say so. */}
-      {!editing && dirty && (
-        <div className="flex flex-wrap items-center gap-3 border-t border-gold/40 bg-gold/[0.09] px-4 py-2.5">
-          <span className="h-[7px] w-[7px] rounded-full bg-gold" />
-          <span className="text-sm text-ink">
-            {changedPlantCount > 0
-              ? `${changedPlantCount} plant${changedPlantCount === 1 ? "" : "s"} changed, not published`
-              : "Unpublished draft"}
-          </span>
-          <span className="text-sm text-muted">
-            Your client still sees the last published revision.
-          </span>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="rounded-lg border border-rule-strong bg-card px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card-hover"
-          >
-            Resume editing
-          </button>
-        </div>
-      )}
+      {/* No "unpublished draft" bar out here: leaving edit mode now means
+          the changes were either published or discarded, so the viewer can
+          never sit on an edited design that the client's share link
+          disagrees with. */}
       {editing && error && (
         <div className="flex items-start gap-3 border-t border-clay/40 bg-clay/[0.08] px-4 py-3">
           <span className="mt-0.5 text-sm font-semibold text-clay">
@@ -518,29 +538,33 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
           </button>
         </div>
       )}
-      {confirming === "exit" && (
+      {confirming === "leave" && (
         <Confirm
-          destructive
-          title="Leave without saving?"
-          body="Changes you haven't saved are only in this browser — leaving drops them. Saving keeps them in the draft until you publish."
-          confirmLabel="Leave without saving"
-          altLabel="Save and leave"
+          title="Publish these changes?"
+          body={`${changedPlantCount} changed plant${
+            changedPlantCount === 1 ? " is" : "s are"
+          } only in this browser. Publish to update the plan, the estimate and your client's share link — or discard to go back to the last published revision.`}
+          cancelLabel={leaveTo ? "Stay here" : "Keep editing"}
+          confirmLabel="Discard changes"
+          altLabel="Publish revision"
           onAlt={() => {
-            saveNow();
-            setConfirming(null);
-            setEditing(false);
-            setSelectedId(null);
-            setPicking(false);
+            // Publishing lands on the project record either way — the page
+            // that shows the new total is a better answer to "I'm done
+            // here" than the list the back link points at.
+            setLeaveTo(null);
+            publish();
           }}
           onConfirm={() => {
-            setConfirming(null);
-            // Drop the unsaved edits back to what was recorded.
-            setEdits(savedEdits);
-            setEditing(false);
-            setSelectedId(null);
-            setPicking(false);
+            discard();
+            // Discarding still answers the exit that asked the question —
+            // staying put in edit mode would ignore half of it.
+            if (leaveTo) router.push(leaveTo);
+            else setEditing(false);
           }}
-          onCancel={() => setConfirming(null)}
+          onCancel={() => {
+            setConfirming(null);
+            setLeaveTo(null);
+          }}
         />
       )}
       {confirming === "publish" && (
@@ -671,6 +695,7 @@ function Confirm({
   body,
   confirmLabel,
   altLabel,
+  cancelLabel = "Cancel",
   destructive = false,
   onConfirm,
   onAlt,
@@ -679,8 +704,10 @@ function Confirm({
   title: string;
   body: string;
   confirmLabel: string;
-  /** The safe way forward, when there is one — "Save and leave". */
+  /** The safe way forward, when there is one — "Publish revision". */
   altLabel?: string;
+  /** What backing out means here — "Keep editing", "Stay here". */
+  cancelLabel?: string;
   destructive?: boolean;
   onConfirm: () => void;
   onAlt?: () => void;
@@ -705,7 +732,11 @@ function Confirm({
         aria-modal="true"
         aria-labelledby="confirm-title"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-[14px] border border-edge bg-card p-6 shadow-[0_30px_60px_-20px_rgba(28,42,33,0.5)]"
+        // Three ways out need the extra 64px, or the labels wrap to two
+        // lines each and the row reads like a paragraph.
+        className={`w-full rounded-[14px] border border-edge bg-card p-6 shadow-[0_30px_60px_-20px_rgba(28,42,33,0.5)] ${
+          altLabel ? "max-w-md" : "max-w-sm"
+        }`}
       >
         <h2 id="confirm-title" className="font-serif text-xl text-ink">
           {title}
@@ -720,7 +751,7 @@ function Confirm({
             autoFocus
             className="rounded-lg border border-rule-strong bg-card-hover px-3.5 py-2 text-[13px] font-semibold text-ink transition hover:bg-card"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"
