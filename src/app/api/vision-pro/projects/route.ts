@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
 
 /**
  * The designer's projects, as the headset needs to see them.
@@ -88,11 +89,44 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // House outlines picked at a desk (migration 020). Its own query so a
+  // database that hasn't run 020 still serves the project list — the outline
+  // is a head start, never a reason to fail the list.
+  const outlines = new Map<
+    string,
+    { stored: StoredBlueprint; fetchedAt: string | null; orthoPath: string | null }
+  >();
+  const { data: outlineRows } = await supabase
+    .from("projects")
+    .select("id, blueprint_payload, blueprint_ortho_path, blueprint_fetched_at")
+    .eq("client_id", account.id)
+    .not("blueprint_payload", "is", null);
+  for (const row of outlineRows ?? []) {
+    const stored = readStored(row.blueprint_payload);
+    if (!stored) continue;
+    outlines.set(row.id, {
+      stored,
+      // Normalised to millisecond ISO-8601: the headset compares it with its
+      // own copy's date, and Postgres's microsecond form is not one Foundation
+      // parses reliably.
+      fetchedAt: row.blueprint_fetched_at
+        ? new Date(row.blueprint_fetched_at).toISOString()
+        : null,
+      orthoPath: row.blueprint_ortho_path ?? null,
+    });
+  }
+
   // One signing call for every project's photos rather than one per project.
   // Best effort: a project with no photos, or a database without
-  // migration-010, simply contributes nothing.
+  // migration-010, simply contributes nothing. Outline tiles ride along in
+  // the same call.
   const anchorPhotos: Record<string, Record<string, string>> = {};
   const pathOwner = new Map<string, { id: string; step: string }>();
+  const orthoOwner = new Map<string, string>();
+  for (const [id, outline] of outlines) {
+    if (outline.orthoPath) orthoOwner.set(outline.orthoPath, id);
+  }
+  const orthoUrls: Record<string, string> = {};
   for (const project of data ?? []) {
     const paths = (project as { anchor_paths?: Record<string, string> | null })
       .anchor_paths;
@@ -101,12 +135,14 @@ export async function GET(request: NextRequest) {
       if (typeof path === "string") pathOwner.set(path, { id: project.id, step });
     }
   }
-  if (pathOwner.size > 0) {
+  if (pathOwner.size > 0 || orthoOwner.size > 0) {
     const { data: signed } = await supabase.storage
       .from("project-media")
-      .createSignedUrls([...pathOwner.keys()], 60 * 60);
+      .createSignedUrls([...pathOwner.keys(), ...orthoOwner.keys()], 60 * 60);
     for (const item of signed ?? []) {
       if (!item.path || !item.signedUrl) continue;
+      const ortho = orthoOwner.get(item.path);
+      if (ortho) orthoUrls[ortho] = item.signedUrl;
       const owner = pathOwner.get(item.path);
       if (!owner) continue;
       (anchorPhotos[owner.id] ??= {})[owner.step] = item.signedUrl;
@@ -128,6 +164,20 @@ export async function GET(request: NextRequest) {
       // headset cannot take these itself (visionOS main camera access is an
       // enterprise entitlement), so the office is often where they arrive.
       anchor_photos: anchorPhotos[p.id] ?? {},
+      // The lot and house outline the office picked, so Blueprint opens on
+      // the corner walk with no lookup in the yard. `candidate` is the same
+      // shape /api/blueprint returns, minus the image — the tile is a
+      // separate signed download, never base64 in a list the headset polls.
+      blueprint: (() => {
+        const outline = outlines.get(p.id);
+        if (!outline) return null;
+        return {
+          provider: outline.stored.provider,
+          candidate: outline.stored.candidate,
+          fetched_at: outline.fetchedAt,
+          ortho_url: orthoUrls[p.id] ?? null,
+        };
+      })(),
       // Whether a design has ever been synced. A project created at a desk
       // has none, and the headset treats it as a yard still to be walked.
       has_design: Boolean(p.project_json_updated_at),

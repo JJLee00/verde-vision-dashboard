@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { maricopaProvider, normalizeStreetAddress } from "@/lib/blueprint/maricopa";
-import { enrichParcel } from "@/lib/blueprint/enrich";
-import { ringCentroid, ringToXZMeters } from "@/lib/blueprint/normalize";
-import type { BlueprintCandidate, ParcelProvider } from "@/lib/blueprint/types";
+import {
+  BlueprintLookupError,
+  enrichCandidate,
+  findCandidates,
+} from "@/lib/blueprint/lookup";
 
 /**
  * Auto Blueprint fetch for the Verde Vision Pro app.
@@ -32,23 +33,9 @@ import type { BlueprintCandidate, ParcelProvider } from "@/lib/blueprint/types";
 // default uncomfortably.
 export const maxDuration = 60;
 
-// Today everything ships from Maricopa's free endpoint. When we expand,
-// this becomes a lookup (geocode → county → provider) — the app never
-// knows which provider answered.
-const provider: ParcelProvider = maricopaProvider;
-
-// Parcel data changes on assessor timescales — cache generously. Module
-// scope = per server instance, best effort; that's fine for our volume.
-// Only the parcel-candidate list is cached: enriched responses carry a
-// ~500 KB ortho each, and holding 500 of those would be half a gigabyte.
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const CACHE_MAX_ENTRIES = 500;
-const cache = new Map<string, { expires: number; body: ResponseBody }>();
-
-interface ResponseBody {
-  provider: string;
-  candidates: BlueprintCandidate[];
-}
+// The lookup itself lives in @/lib/blueprint/lookup, shared with the project
+// page's House outline card — the normal path, run at a desk. This route is
+// the headset's backup for a project nobody looked up beforehand.
 
 export async function GET(request: NextRequest) {
   const apiKey = request.headers.get("x-api-key");
@@ -64,89 +51,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const cacheKey = normalizeStreetAddress(address);
-  const hit = cache.get(cacheKey);
-  if (hit && hit.expires > Date.now()) {
-    // Through respond(), not straight out: a cached candidate list must
-    // still be enrichable, or ?apn= would silently return an un-enriched
-    // parcel for any address someone had already looked up.
-    return respond(hit.body, request);
-  }
-
-  let candidates: BlueprintCandidate[];
   try {
-    const records = await provider.findByAddress(address);
-    candidates = records.map((record) => {
-      const centroid = ringCentroid(record.ring);
-      return {
-        apn: record.apn,
-        address: record.address,
-        centroid,
-        parcelXZ: ringToXZMeters(record.ring, centroid),
-        attributes: record.attributes,
-      };
-    });
+    const list = await findCandidates(address);
+    const apn = request.nextUrl.searchParams.get("apn")?.trim();
+    if (!apn) return NextResponse.json(list);
+
+    const includeImagery = request.nextUrl.searchParams.get("imagery") === "1";
+    const candidate = await enrichCandidate(list, apn, { includeImagery });
+    return NextResponse.json({ provider: list.provider, candidates: [candidate] });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Parcel lookup failed";
-    return NextResponse.json({ error: message }, { status: 502 });
+    if (err instanceof BlueprintLookupError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
   }
-
-  if (candidates.length === 0) {
-    return NextResponse.json(
-      { error: `No parcel found for "${address}"` },
-      { status: 404 }
-    );
-  }
-
-  const body: ResponseBody = { provider: provider.name, candidates };
-  if (cache.size >= CACHE_MAX_ENTRIES) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
-  }
-  cache.set(cacheKey, { expires: Date.now() + CACHE_TTL_MS, body });
-
-  return respond(body, request);
-}
-
-/**
- * Serves the candidate list, or — when the caller has named an APN —
- * enriches just that parcel with its house footprint and imagery.
- *
- * Enrichment is per-APN rather than automatic so the "which lot is it?"
- * picker stays a fast, cacheable call: enriching every candidate of an
- * ambiguous address would mean several imagery fetches to show a list the
- * designer is about to narrow to one anyway.
- */
-async function respond(body: ResponseBody, request: NextRequest) {
-  const apn = request.nextUrl.searchParams.get("apn")?.trim();
-  if (!apn) return NextResponse.json(body);
-
-  const candidate = body.candidates.find((c) => c.apn === apn);
-  if (!candidate) {
-    return NextResponse.json(
-      { error: `No candidate with APN "${apn}" for this address` },
-      { status: 404 }
-    );
-  }
-
-  const includeImagery = request.nextUrl.searchParams.get("imagery") === "1";
-  const records = await provider.findByAddress(candidate.address);
-  const record = records.find((r) => r.apn === apn);
-  if (!record) {
-    return NextResponse.json({ error: `Parcel ${apn} vanished mid-request` }, { status: 502 });
-  }
-
-  const enriched = await enrichParcel(record, candidate.centroid, { includeImagery });
-  return NextResponse.json({
-    provider: body.provider,
-    candidates: [
-      {
-        ...candidate,
-        houseXZ: enriched.houseXZ,
-        houseAreaSqFt: enriched.houseAreaSqFt,
-        imagery: enriched.imagery,
-        warnings: enriched.warnings,
-      },
-    ],
-  });
 }
