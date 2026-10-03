@@ -125,7 +125,8 @@ export function NotesEditor({
         className={`${fieldClass(washField === "notes")} resize-y leading-relaxed`}
       />
       <p className="mt-1.5 text-[11px] text-faint">
-        Saves when you click away. Not shown on client links.
+        Saves when you click away. Reaches the headset with the project, so
+        it is there in the yard — never on client links.
       </p>
       {error && <p className="mt-1 text-xs text-clay">{error}</p>}
     </div>

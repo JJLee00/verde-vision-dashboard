@@ -10,6 +10,7 @@ import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 import { StatusSelect, NotesEditor } from "./editors";
 import { SiteMarkers } from "./site-markers";
 import {
+  anchorNotesFrom,
   buildSiteMarkers,
   registrationsFrom,
   type AnchorStep,
@@ -144,7 +145,9 @@ function buildFixtureData(): PageData {
     contactEmail: "hoffmans@example.com",
     notes: "Sample project — fields are read-only in fixture mode.",
     videos: [],
-    markers: buildSiteMarkers([], {}),
+    markers: buildSiteMarkers([], {}, {
+      origin: { text: "Garage frame, 4 ft up", updated_at: "2026-10-02T18:00:00Z" },
+    }),
     houseOutline: { stored: FIXTURE_OUTLINE, fetchedAt: "2026-07-12T16:00:00Z", orthoUrl: null },
     houseOutlineReady: true,
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
@@ -179,6 +182,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     deletedRes,
     customerRes,
     outlineRes,
+    notesRes,
     priceRes,
     membership,
   ] = await Promise.all([
@@ -211,6 +215,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
       .select("blueprint_payload, blueprint_ortho_path, blueprint_fetched_at")
       .eq("id", id)
       .single(),
+    // And again for migration-021: the plate notes live in their own column
+    // now, two-way with the headset.
+    supabase.from("projects").select("anchor_notes").eq("id", id).single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
     getMembership(supabase, user.id),
   ]);
@@ -346,7 +353,11 @@ async function loadPageData(id: string): Promise<PageData | null> {
     const url = anchorUrlByPath.get(entry.path);
     if (url) photoUrlByStep[entry.step as AnchorStep] = url;
   }
-  const markers = buildSiteMarkers(registrationsFrom(projectJson), photoUrlByStep);
+  const markers = buildSiteMarkers(
+    registrationsFrom(projectJson),
+    photoUrlByStep,
+    anchorNotesFrom(notesRes.data?.anchor_notes)
+  );
 
   // Rail prices: designer's Prices-tab overrides, same as the viewer.
   // Fetched in the first parallel wave above.
@@ -648,9 +659,10 @@ export default async function ProjectPage({
             />
             <p className="mt-4 text-[11px] text-faint">
               The plates the headset locks onto to re-align this project on a
-              return visit. Photos are for finding them again on site — the
-              headset has no camera of its own, so adding them here is often
-              easier than in the app.
+              return visit. Photos and notes are for finding them again on
+              site, and both reach the headset with the project — the headset
+              has no camera of its own, so adding a photo here is often easier
+              than in the app.
             </p>
           </SectionCard>
         </div>

@@ -20,9 +20,36 @@ Body:   multipart/form-data
 | `project_date`    | no                | `YYYY-MM-DD`                                   |
 | `estimate_amount` | no                | Number computed by the app, e.g. `12400.50`    |
 | `blueprint`       | no                | The blueprint PDF file                         |
+| `cover`           | no                | Project card photo, JPEG                       |
+| `cover_at`        | no                | When that cover was chosen, ISO-8601           |
+| `cover_cleared`   | no                | `1` to remove the cover                        |
+| `anchor_note_<step>`    | no          | Plate note; `<step>` = origin/first/second     |
+| `anchor_note_<step>_at` | no          | When the note was written, ISO-8601            |
 
 Response: `{ "ok": true, "project_id": "<uuid>" }` — store `project_id` if the
 app may re-send updated data for the same project later.
+
+## Record fields vs design fields
+
+The cover photo, the plate notes and the plate photos are RECORD fields, and
+they behave differently from a design push on purpose:
+
+* A POST carrying no `project_json` creates no version and is never refused
+  with a 409. That is what lets the app send a cover the moment a designer
+  picks one, instead of waiting for a blueprint export that may never happen.
+* The cover and the notes are editable at a desk AND in the headset, so they
+  are last-write-wins on the timestamp sent beside them (`cover_at`,
+  `anchor_note_<step>_at`). The server keeps the newer of the two and ignores
+  the older, so a headset that has been out of signal for a week cannot land
+  a stale photo on top of newer office work.
+* An empty `anchor_note_<step>` is a DELETION, and is stored as an empty
+  entry rather than dropped — the timestamp is what stops the next headset to
+  sync, still holding its own copy, from writing the note straight back.
+* Plate photos carry no timestamp, so send only the one that just changed.
+
+These come back down through `GET /api/vision-pro/projects` as `cover`,
+`anchor_notes`, `customer_name`, `contact_email` and `notes`. The last three
+are office-owned: the app displays them and never collects them.
 
 ## Test with curl
 
