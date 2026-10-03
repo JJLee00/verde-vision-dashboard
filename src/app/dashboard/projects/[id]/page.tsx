@@ -19,6 +19,8 @@ import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
 import { VideoManager, type VideoItem } from "./video-manager";
+import { HouseOutline } from "./house-outline";
+import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
 
 // The project page: everything the dashboard knows about one project.
 // The card on /dashboard stays a glance; this is the record — cover,
@@ -27,6 +29,11 @@ import { VideoManager, type VideoItem } from "./video-manager";
 // share link stays a curated viewer (/share/[token]).
 
 export const metadata = { title: "Project — Verde Vision" };
+
+// Server actions run under the page's limit, and the House outline card's
+// pickLot downloads and decodes two GeoTIFFs — measured 10–15 s, past the
+// common serverless default.
+export const maxDuration = 60;
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -65,6 +72,13 @@ type PageData = {
   notes: string | null;
   videos: VideoItem[];
   markers: SiteMarker[];
+  // The lot + house outline picked for the headset (migration 020).
+  houseOutline: {
+    stored: StoredBlueprint;
+    fetchedAt: string | null;
+    orthoUrl: string | null;
+  } | null;
+  houseOutlineReady: boolean; // false until migration-020 has been run
   modeSeconds: Record<string, number> | null;
   // The designer whose folder holds this project's media ({client_id}/
   // {project_id}/…) — owner uploads land there too, one canonical spot.
@@ -76,6 +90,37 @@ type PageData = {
   readOnly: boolean; // dev fixture
   deleted: boolean; // soft-deleted (migration 018); false before it has run
   rail: { rows: RailRow[]; subtotal: number | null };
+};
+
+// A made-up lot and L-shaped house for the dev fixture — synthetic on
+// purpose, so no real property's outline lives in the repo.
+const FIXTURE_OUTLINE: StoredBlueprint = {
+  version: 1,
+  provider: "maricopa",
+  lookupAddress: "27210 N Rio Verde Dr, Rio Verde, AZ",
+  candidate: {
+    apn: "000-00-000",
+    address: "27210 N RIO VERDE DR",
+    centroid: { lat: 33.72, lng: -111.67 },
+    parcelXZ: [
+      [-16, -22],
+      [16, -22],
+      [16, 22],
+      [-16, 22],
+    ],
+    attributes: { lotSizeSqFt: 15155, livableAreaSqFt: 2650, constructionYear: 2004 },
+    houseXZ: [
+      [-10, -14],
+      [8, -14],
+      [8, -2],
+      [0, -2],
+      [0, 6],
+      [-10, 6],
+    ],
+    houseAreaSqFt: 3186,
+    imagery: { captureDate: "2022-03-14", quality: "MEDIUM" },
+    warnings: [],
+  },
 };
 
 // Mode-time buckets in display order. "clientView" is the presenting
@@ -100,6 +145,8 @@ function buildFixtureData(): PageData {
     notes: "Sample project — fields are read-only in fixture mode.",
     videos: [],
     markers: buildSiteMarkers([], {}),
+    houseOutline: { stored: FIXTURE_OUTLINE, fetchedAt: "2026-07-12T16:00:00Z", orthoUrl: null },
+    houseOutlineReady: true,
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
     mediaOwnerId: "fixture",
     designerName: null,
@@ -131,6 +178,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     anchorRes,
     deletedRes,
     customerRes,
+    outlineRes,
     priceRes,
     membership,
   ] = await Promise.all([
@@ -157,6 +205,12 @@ async function loadPageData(id: string): Promise<PageData | null> {
     supabase.from("projects").select("deleted_at").eq("id", id).single(),
     // Its own select for the same reason: migration-019 may not have run.
     supabase.from("projects").select("customer_name").eq("id", id).single(),
+    // And again for migration-020.
+    supabase
+      .from("projects")
+      .select("blueprint_payload, blueprint_ortho_path, blueprint_fetched_at")
+      .eq("id", id)
+      .single(),
     supabase.from("price_items").select("name, price, category").eq("category", "plant"),
     getMembership(supabase, user.id),
   ]);
@@ -218,9 +272,17 @@ async function loadPageData(id: string): Promise<PageData | null> {
         .filter((step) => anchorPathMap[step])
         .map((step) => ({ step, path: anchorPathMap[step] }))
     : [];
+  const outlineRow = outlineRes.data as {
+    blueprint_payload?: unknown;
+    blueprint_ortho_path?: string | null;
+    blueprint_fetched_at?: string | null;
+  } | null;
+  const storedOutline = readStored(outlineRow?.blueprint_payload);
+  const orthoPath = storedOutline ? (outlineRow?.blueprint_ortho_path ?? null) : null;
+
   // No cover photo here: it is set and shown on the project CARD, so
   // signing a URL for it on every project page render bought nothing.
-  const [docUrlRes, videoUrlRes, anchorUrlRes] = await Promise.all([
+  const [docUrlRes, videoUrlRes, anchorUrlRes, orthoUrlRes] = await Promise.all([
     docPaths.length > 0
       ? supabase.storage.from("blueprints").createSignedUrls(docPaths, 60 * 60)
       : Promise.resolve({ data: [] }),
@@ -248,6 +310,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
             60 * 60
           )
       : Promise.resolve({ data: [] }),
+    orthoPath
+      ? supabase.storage.from("project-media").createSignedUrl(orthoPath, 60 * 60)
+      : Promise.resolve({ data: null }),
   ]);
 
   const docUrls = new Map<string, string>();
@@ -315,6 +380,14 @@ async function loadPageData(id: string): Promise<PageData | null> {
     notes,
     videos,
     markers,
+    houseOutline: storedOutline
+      ? {
+          stored: storedOutline,
+          fetchedAt: outlineRow?.blueprint_fetched_at ?? null,
+          orthoUrl: orthoUrlRes.data?.signedUrl ?? null,
+        }
+      : null,
+    houseOutlineReady: !outlineRes.error,
     modeSeconds:
       (projectJson?.modeSeconds as Record<string, number> | null) ?? null,
     mediaOwnerId: base.client_id,
@@ -555,6 +628,16 @@ export default async function ProjectPage({
               )}
             </SectionCard>
           </div>
+
+          <SectionCard title="House outline">
+            <HouseOutline
+              projectId={data.id}
+              address={data.address}
+              outline={data.houseOutline}
+              ready={data.houseOutlineReady}
+              disabled={disabled}
+            />
+          </SectionCard>
 
           <SectionCard title="Site markers">
             <SiteMarkers
