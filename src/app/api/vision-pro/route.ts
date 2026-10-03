@@ -9,6 +9,14 @@ import {
 } from "@/lib/versions";
 import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
+import { ANCHOR_STEPS } from "@/lib/markers";
+
+/** An ISO-8601 stamp the app sent, or null if it sent nothing usable. */
+function parseStamp(raw: string | null | undefined): Date | null {
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 /**
  * Ingest endpoint for the Verde Vision Pro app.
@@ -25,6 +33,18 @@ import type { ProjectFileJSON } from "@/lib/viewer/types";
  *   project_json    — full ProjectFile JSON saved by the app (optional);
  *                     drives the living-blueprint 3D viewer. Replaced
  *                     wholesale on every sync.
+ *   cover           — project card photo, JPEG (optional)
+ *   cover_at        — when that cover was chosen, ISO-8601 (optional)
+ *   cover_cleared   — "1" to remove the cover (optional)
+ *   anchor_note_{origin,first,second}      — plate reference note (optional)
+ *   anchor_note_{…}_at                     — when it was written, ISO-8601
+ *
+ * Those last ones are RECORD fields, which both sides may edit, so they are
+ * last-write-wins on the timestamp sent beside them. A sync carrying only
+ * record fields creates no version and is never revision-blocked, which is
+ * what lets the app push a cover the moment the designer picks one. An empty
+ * anchor_note is a deletion and is stored as an empty entry, not dropped —
+ * see the write below.
  */
 const VALID_STATUSES = ["draft", "pending", "approved", "installed", "declined"];
 export async function POST(request: NextRequest) {
@@ -67,6 +87,20 @@ export async function POST(request: NextRequest) {
     first: form.get("anchor_first"),
     second: form.get("anchor_second"),
   };
+  const coverPart = form.get("cover");
+  const coverAtRaw = form.get("cover_at")?.toString() || null;
+  const coverCleared = form.get("cover_cleared")?.toString() === "1";
+  // A note the app did not send is absent; a note it sent EMPTY is a
+  // deletion, so presence is what's tested here, never truthiness.
+  const notePartsSent: Record<string, { text: string; at: string | null }> = {};
+  for (const step of ANCHOR_STEPS) {
+    const part = form.get(`anchor_note_${step}`);
+    if (part == null) continue;
+    notePartsSent[step] = {
+      text: part.toString(),
+      at: form.get(`anchor_note_${step}_at`)?.toString() || null,
+    };
+  }
 
   if (status && !VALID_STATUSES.includes(status)) {
     return NextResponse.json(
@@ -443,6 +477,128 @@ export async function POST(request: NextRequest) {
       .eq("id", project.id);
     if (error && !/column .*anchor_paths.* does not exist/i.test(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  // Cover photo and plate notes (migration 021).
+  //
+  // Both are editable at a desk AND in the headset, so the newer write wins
+  // on the timestamp the app sends beside them. The comparison happens here
+  // as well as in the app because the app's half can only compare against
+  // what it last SAW: a headset that has been out of signal for a week is
+  // carrying a cover it believes is current, and without this check it would
+  // land on top of newer office work the moment it reconnects.
+  //
+  // Last, and in its own update, for the same reason anchor_paths is: a
+  // database that hasn't run 021 yet must still accept the sync rather than
+  // lose a designer their design over a cover photo.
+  if (coverPart instanceof File || coverCleared || Object.keys(notePartsSent).length > 0) {
+    const { data: recordRow } = await supabase
+      .from("projects")
+      .select("cover_updated_at, anchor_notes")
+      .eq("id", project.id)
+      .maybeSingle();
+    const storedCoverAt = parseStamp(
+      (recordRow as { cover_updated_at?: string | null } | null)?.cover_updated_at
+    );
+    const rawNotes = (recordRow as { anchor_notes?: unknown } | null)?.anchor_notes;
+    const storedNotes: Record<string, { text?: string; updated_at?: string }> =
+      rawNotes && typeof rawNotes === "object" && !Array.isArray(rawNotes)
+        ? { ...(rawNotes as Record<string, { text?: string; updated_at?: string }>) }
+        : {};
+
+    const recordUpdates: Record<string, unknown> = {};
+
+    if (coverCleared) {
+      // The designer deleted the cover in the headset. Without this leg the
+      // next project-list refresh would hand the office's copy straight back
+      // and the photo they just removed would return.
+      const sentAt = parseStamp(coverAtRaw) ?? new Date();
+      if (storedCoverAt && storedCoverAt > sentAt) {
+        console.log(
+          `[vision-pro] cover clear for ${project.id} is older than the stored cover — kept`
+        );
+      } else {
+        const { data: existing } = await supabase
+          .from("projects")
+          .select("cover_path")
+          .eq("id", project.id)
+          .maybeSingle();
+        const stale = (existing as { cover_path?: string | null } | null)?.cover_path;
+        // Best effort: the column is what every reader goes through, so a
+        // leftover object is wasted bytes rather than a wrong cover.
+        if (stale) {
+          await supabase.storage.from("project-media").remove([stale]);
+        }
+        recordUpdates.cover_path = null;
+        recordUpdates.cover_updated_at = sentAt.toISOString();
+      }
+    } else if (coverPart instanceof File && coverPart.size > 0) {
+      const sentAt = parseStamp(coverAtRaw) ?? new Date();
+      if (storedCoverAt && storedCoverAt > sentAt) {
+        console.log(
+          `[vision-pro] cover for ${project.id} is older than the stored one — kept`
+        );
+      } else {
+        // ONE path per project, overwritten — the same argument as the
+        // blueprint PDF above. The dashboard's own uploader timestamps its
+        // filenames and leaves the old ones behind; a cover is a single
+        // current fact about a project, not a document set.
+        const path = `${project.client_id}/${project.id}/cover.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from("project-media")
+          .upload(path, coverPart, {
+            contentType: "image/jpeg",
+            upsert: true,
+            cacheControl: "60",
+          });
+        if (uploadError) {
+          return NextResponse.json({ error: uploadError.message }, { status: 500 });
+        }
+        recordUpdates.cover_path = path;
+        recordUpdates.cover_updated_at = sentAt.toISOString();
+      }
+    }
+
+    let notesChanged = false;
+    for (const [step, part] of Object.entries(notePartsSent)) {
+      const sentAt = parseStamp(part.at) ?? new Date();
+      const storedAt = parseStamp(storedNotes[step]?.updated_at);
+      if (storedAt && storedAt > sentAt) continue;
+      // An empty note is kept as an entry rather than deleted: the timestamp
+      // is the only thing that stops the next headset to sync — still
+      // holding its own copy of the note, written before the deletion —
+      // from writing it straight back.
+      storedNotes[step] = { text: part.text.trim(), updated_at: sentAt.toISOString() };
+      notesChanged = true;
+    }
+    if (notesChanged) recordUpdates.anchor_notes = storedNotes;
+
+    if (Object.keys(recordUpdates).length > 0) {
+      const { error } = await supabase
+        .from("projects")
+        .update(recordUpdates)
+        .eq("id", project.id);
+      if (error) {
+        // Pre-021: drop the two new columns and keep the cover, which has
+        // lived on projects.cover_path since migration 009 and is already
+        // uploaded by this point.
+        if (/column .*(cover_updated_at|anchor_notes).* does not exist/i.test(error.message)) {
+          delete recordUpdates.cover_updated_at;
+          delete recordUpdates.anchor_notes;
+          if (Object.keys(recordUpdates).length > 0) {
+            const { error: retryError } = await supabase
+              .from("projects")
+              .update(recordUpdates)
+              .eq("id", project.id);
+            if (retryError) {
+              return NextResponse.json({ error: retryError.message }, { status: 500 });
+            }
+          }
+        } else {
+          return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+      }
     }
   }
 

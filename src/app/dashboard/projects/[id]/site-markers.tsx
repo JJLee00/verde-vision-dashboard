@@ -194,9 +194,94 @@ function MarkerColumn({
         )}
       </p>
 
-      {marker.note && (
-        <p className="mt-1 text-sm text-muted">{marker.note}</p>
-      )}
+      <MarkerNote
+        projectId={projectId}
+        step={marker.step}
+        initial={marker.note}
+        disabled={disabled}
+      />
+      {error && <p className="mt-1 text-xs text-clay">{error}</p>}
+    </div>
+  );
+}
+
+/**
+ * The note that says where this plate actually is.
+ *
+ * Writes `anchor_notes[step]` (migration 021), which the headset reads with
+ * the project list — so this is the field that answers "where did plate C
+ * go?" for the person standing in the yard six months from now.
+ *
+ * Save-on-blur with the green wash, the same as the project notes field. The
+ * timestamp goes in beside the text because the headset can edit this too and
+ * the newer write has to win; the app compares against it rather than
+ * assuming the desk is authoritative.
+ */
+function MarkerNote({
+  projectId,
+  step,
+  initial,
+  disabled,
+}: {
+  projectId: string;
+  step: string;
+  initial: string | null;
+  disabled: boolean;
+}) {
+  const [note, setNote] = useState(initial ?? "");
+  const [saved, setSaved] = useState(initial ?? "");
+  const [washing, setWashing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function commit() {
+    if (note.trim() === saved.trim()) return;
+    setError(null);
+    const supabase = createClient();
+    // Read-merge-write, like the photo upload above: anchor_notes holds all
+    // three plates, and replacing the map wholesale would forget the other
+    // two.
+    const { data: current } = await supabase
+      .from("projects")
+      .select("anchor_notes")
+      .eq("id", projectId)
+      .maybeSingle();
+    const existing =
+      (current?.anchor_notes as Record<string, unknown> | null) ?? {};
+    const merged = {
+      ...existing,
+      [step]: { text: note.trim(), updated_at: new Date().toISOString() },
+    };
+    const { error: updateError } = await supabase
+      .from("projects")
+      .update({ anchor_notes: merged })
+      .eq("id", projectId);
+    if (updateError) {
+      setError(
+        /anchor_notes/.test(updateError.message)
+          ? "Run migration-021 to save plate notes."
+          : "Could not save — try again."
+      );
+      return;
+    }
+    setSaved(note);
+    setWashing(true);
+    setTimeout(() => setWashing(false), 1000);
+  }
+
+  return (
+    <div className="mt-1.5">
+      <textarea
+        value={note}
+        disabled={disabled}
+        rows={2}
+        placeholder="Where is it mounted?"
+        onChange={(e) => setNote(e.target.value)}
+        onBlur={commit}
+        aria-label={`Note for ${step} plate`}
+        className={`w-full resize-y rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm leading-relaxed text-body outline-none transition placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60 ${
+          washing ? "save-wash" : ""
+        }`}
+      />
       {error && <p className="mt-1 text-xs text-clay">{error}</p>}
     </div>
   );

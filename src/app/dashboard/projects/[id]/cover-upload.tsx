@@ -49,10 +49,22 @@ export function CoverUpload({
         .from("project-media")
         .upload(path, file, { contentType: file.type });
       if (uploadError) throw new Error(uploadError.message);
-      const { error: updateError } = await supabase
+      // cover_updated_at is what lets the headset — which keeps its covers
+      // as plain files — work out whether this one is newer than the one it
+      // already has. Without the stamp the photo still appears on a headset
+      // that has no cover, and is never allowed to replace one.
+      const stamped = { cover_path: path, cover_updated_at: new Date().toISOString() };
+      let { error: updateError } = await supabase
         .from("projects")
-        .update({ cover_path: path })
+        .update(stamped)
         .eq("id", projectId);
+      if (updateError && /cover_updated_at/.test(updateError.message)) {
+        // Pre-021. The cover itself still belongs on the project.
+        ({ error: updateError } = await supabase
+          .from("projects")
+          .update({ cover_path: path })
+          .eq("id", projectId));
+      }
       if (updateError) throw new Error(updateError.message);
       router.refresh();
     } catch (err) {

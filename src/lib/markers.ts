@@ -5,9 +5,13 @@
 // later, the headset finds the plates and rebuilds the frame — which is why a
 // reference photo of each one is worth as much as the design itself.
 //
-// Everything here is read out of data the headset already syncs. The
-// registrations ride inside project_json; the photos arrive as anchor_paths.
-// Nothing new is stored.
+// The registrations ride inside project_json and the photos arrive as
+// anchor_paths. The NOTES used to be read out of the registrations too, which
+// was wrong in a way that was invisible: the app writes a registration's note
+// once, when the plate is registered, so a note the designer typed afterwards
+// never appeared here and the one on screen could be months stale. They have
+// their own column now (migration 021, two-way), and the registration's copy
+// is kept only as a fallback so nothing already on screen disappears.
 
 /** What the app writes into project_json.markerRegistrations. */
 export type MarkerRegistration = {
@@ -53,28 +57,66 @@ export type SiteMarker = {
    * helps a person find the plate, a lock is the headset having measured it.
    */
   locked: boolean;
+  /**
+   * What somebody wrote about where this plate is mounted — "garage frame,
+   * 4 ft up". Editable here and in the headset.
+   *
+   * An empty string and null are different: empty means a note was written
+   * and then cleared, which is a fact the headset needs in order to clear its
+   * own copy. Null means nobody has ever written one.
+   */
   note: string | null;
+  /** When the note was last written, for the newer-wins comparison. */
+  noteUpdatedAt: string | null;
   lockedDate: string | null;
   /** Signed URL for the reference photo, if there is one. */
   photoUrl: string | null;
 };
 
+/** One `anchor_notes` entry as the column stores it. */
+export type AnchorNote = { text: string; updated_at: string | null };
+
 export function buildSiteMarkers(
   registrations: MarkerRegistration[],
-  photoUrlByStep: Partial<Record<AnchorStep, string>>
+  photoUrlByStep: Partial<Record<AnchorStep, string>>,
+  noteByStep: Partial<Record<AnchorStep, AnchorNote>> = {}
 ): SiteMarker[] {
   return ANCHOR_STEPS.map((step, pointIndex) => {
     const reg = registrations.find((r) => r.pointIndex === pointIndex) ?? null;
+    const note = noteByStep[step];
     return {
       step,
       pointIndex,
       plateLabel: PLATE_LABELS[pointIndex],
       locked: reg != null,
-      note: reg?.note ?? null,
+      // The column wins whenever it has an entry at all, including an empty
+      // one — a cleared note must not fall back to the stale copy inside the
+      // registration, which is exactly the note that was cleared.
+      note: note ? note.text : (reg?.note ?? null),
+      noteUpdatedAt: note?.updated_at ?? null,
       lockedDate: reg?.registeredDate ?? null,
       photoUrl: photoUrlByStep[step] ?? null,
     };
   });
+}
+
+/** Pulls `anchor_notes` off a project row, defensively. */
+export function anchorNotesFrom(
+  raw: unknown
+): Partial<Record<AnchorStep, AnchorNote>> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  const out: Partial<Record<AnchorStep, AnchorNote>> = {};
+  for (const step of ANCHOR_STEPS) {
+    const entry = (raw as Record<string, unknown>)[step];
+    if (typeof entry !== "object" || entry === null) continue;
+    const { text, updated_at: updatedAt } = entry as Record<string, unknown>;
+    if (typeof text !== "string") continue;
+    out[step] = {
+      text,
+      updated_at: typeof updatedAt === "string" ? updatedAt : null,
+    };
+  }
+  return out;
 }
 
 /** Pulls the registrations out of a synced project_json, defensively. */
