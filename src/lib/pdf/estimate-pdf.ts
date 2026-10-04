@@ -25,25 +25,21 @@ import {
 import {
   computeTotals,
   qtyLabel,
-  groupByCategory,
   sortItems,
   type EstimateItem,
   type EstimateSettings,
 } from "@/lib/estimate";
 
-// The proposal. Two shapes off the same rows, chosen per estimate:
+// The proposal: every line with its quantity and its INSTALLED price — material and labor as one number, the way a homeowner
+// reads a bid. Per-line labor stays internal to the estimate builder
+// (migration 023); a client who sees "$45 to plant a 5-gallon" haggles over
+// the labor, not the job.
 //
-//   itemized — every line with its quantity and its INSTALLED price —
-//              material and labor as one number, the way a homeowner reads
-//              a bid. Per-line labor stays internal to the estimate builder
-//              (migration 023); a client who sees "$45 to plant a 5-gallon"
-//              haggles over the labor, not the job.
-//   grouped  — rows rolled up by category into one line each, label and
-//              total only. Quantities and unit prices stay internal.
+// One shape since Oct 4 2026. The lump-sum version rolled lines up by
+// category, and the category column is gone from the builder.
 //
-// They MUST reach the same bottom line. Both call computeTotals() on the
-// same rows for exactly that reason — the grouping only changes what is
-// printed above the totals, never the arithmetic.
+// It MUST reach the builder's bottom line, so both call computeTotals() on
+// the same rows.
 
 export type EstimateDocInput = {
   project: {
@@ -55,8 +51,6 @@ export type EstimateDocInput = {
   org: OrgBrand;
   items: EstimateItem[];
   settings: EstimateSettings;
-  /** Project-level override; falls back to the org's standing terms. */
-  terms: string | null;
 };
 
 // Column geometry for the itemized table, measured from the left margin.
@@ -90,17 +84,17 @@ export async function renderEstimatePDF(
   y = drawParties(doc, project, y);
   y += 20;
 
-  y =
-    settings.detail === "grouped"
-      ? drawGrouped(doc, items, y)
-      : drawItemized(doc, items, y);
+  y = drawItemized(doc, items, y);
 
   y = drawTotals(doc, totals, settings, y + 16);
 
   // Terms and the signature line are reserved as ONE block. A proposal whose
   // second page holds nothing but a lonely "Client signature" rule reads as a
   // printing mistake, so they break to a new page together or not at all.
-  const terms = input.terms?.trim() || org.terms?.trim() || null;
+  //
+  // The company's terms, always (Oct 4 2026) — the per-estimate override is
+  // gone; a firm changes its terms in Company settings, once.
+  const terms = org.terms?.trim() || null;
   const termsHeight = terms ? measureTerms(doc, terms) : 0;
   y = ensureSpace(
     doc,
@@ -227,45 +221,6 @@ function drawItemized(doc: Doc, items: EstimateItem[], startY: number): number {
 
     y += rowHeight;
     rule(doc, y - 4, RULE_SOFT);
-  }
-
-  if (items.length === 0) {
-    doc
-      .font(FONT.italic)
-      .fontSize(10)
-      .fillColor(MUTED)
-      .text("No line items.", PAGE.margin, y);
-    y = doc.y + 6;
-  }
-
-  return y;
-}
-
-/* ── Grouped lump sums ────────────────────────────────────────────────── */
-
-function drawGrouped(doc: Doc, items: EstimateItem[], startY: number): number {
-  let y = startY;
-  label(doc, "Scope of work", PAGE.margin, y);
-  rule(doc, y + 12, RULE);
-  y += 20;
-
-  for (const group of groupByCategory(items)) {
-    y = ensureSpace(doc, y, 26);
-    doc
-      .font(FONT.sans)
-      .fontSize(10.5)
-      .fillColor(TEXT)
-      .text(group.label, PAGE.margin, y, { width: CONTENT_WIDTH - 110 });
-    doc
-      .font(FONT.sansSemi)
-      .fontSize(10.5)
-      .fillColor(INK)
-      .text(money.format(group.total), PAGE.margin, y, {
-        width: CONTENT_WIDTH,
-        align: "right",
-      });
-    y += 20;
-    rule(doc, y - 5, RULE_SOFT);
   }
 
   if (items.length === 0) {

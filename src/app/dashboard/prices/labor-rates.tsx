@@ -68,7 +68,7 @@ export function LaborRates({ sizes, initial }: Props) {
               {sizes.map((size) => (
                 <th
                   key={size}
-                  className="w-28 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted"
+                  className="w-28 border border-ink/20 bg-clay px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-on-clay"
                 >
                   <label htmlFor={`labor-${size}`}>{size}</label>
                 </th>

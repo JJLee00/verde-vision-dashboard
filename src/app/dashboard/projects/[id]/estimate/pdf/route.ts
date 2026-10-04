@@ -39,7 +39,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const detailParam = request.nextUrl.searchParams.get("detail");
   const download = request.nextUrl.searchParams.get("download") === "1";
 
   const loaded =
@@ -51,22 +50,11 @@ export async function GET(
     return NextResponse.json({ error: loaded.error }, { status: loaded.status });
   }
 
-  const settings: EstimateSettings = {
-    ...loaded.settings,
-    detail:
-      detailParam === "grouped"
-        ? "grouped"
-        : detailParam === "itemized"
-          ? "itemized"
-          : loaded.settings.detail,
-  };
-
   const pdf = await renderEstimatePDF({
     project: loaded.project,
     org: loaded.org,
     items: loaded.items,
-    settings,
-    terms: loaded.terms,
+    settings: loaded.settings,
   });
 
   const safeName = loaded.project.name.replace(/[^\w\s-]/g, "").trim() || "estimate";
@@ -85,7 +73,6 @@ type Loaded = {
   org: OrgBrand;
   items: ReturnType<typeof fromRow>[];
   settings: EstimateSettings;
-  terms: string | null;
 };
 
 function loadFixture(): Loaded {
@@ -94,7 +81,6 @@ function loadFixture(): Loaded {
     org: FIXTURE_ORG,
     items: FIXTURE_ITEMS,
     settings: FIXTURE_SETTINGS,
-    terms: null,
   };
 }
 
@@ -112,7 +98,7 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
     supabase.from("projects").select("address, contact_email").eq("id", id).single(),
     supabase
       .from("projects")
-      .select("tax_rate, deposit_percent, estimate_detail, estimate_terms")
+      .select("tax_rate, deposit_percent")
       .eq("id", id)
       .single(),
     supabase
@@ -151,9 +137,7 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
     settings: {
       taxRate: Number(settingsRes.data?.tax_rate ?? 0),
       depositPercent: Number(settingsRes.data?.deposit_percent ?? 0),
-      detail: settingsRes.data?.estimate_detail === "grouped" ? "grouped" : "itemized",
     },
-    terms: settingsRes.data?.estimate_terms ?? null,
   };
 }
 

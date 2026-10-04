@@ -86,10 +86,10 @@ export function SurfacePrices({ initial }: Props) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] border-collapse text-left text-sm">
           <thead>
-            <tr className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-              <th className="border border-ink/20 bg-paper-deep px-2.5 py-2">Surface</th>
+            <tr className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-on-clay">
+              <th className="border border-ink/20 bg-clay px-2.5 py-2">Surface</th>
               {COLUMNS.map(({ size, label }) => (
-                <th key={size} className="w-36 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right">
+                <th key={size} className="w-36 border border-ink/20 bg-clay px-2.5 py-2 text-right">
                   {label}
                 </th>
               ))}
