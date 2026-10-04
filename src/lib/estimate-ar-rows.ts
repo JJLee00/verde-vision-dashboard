@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { currentSize, plantForModel, unitPrice } from "@/lib/design-edit";
+import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
 /** The one estimate row a design's labor lands in, like the headset's line. */
@@ -21,16 +22,14 @@ export const LABOR_AR_KEY = "labor:install";
 /**
  * Installation labor for a design: every placement at its container size's
  * labor rate — the org's (Prices tab → Labor rates) when it set one, the
- * catalog's otherwise. The SAME rule the headset applies
- * (InventoryStore.laborCost), which is the only reason the two agree.
+ * catalog's otherwise — plus every surface at its style's labor per sq ft.
+ * The SAME rule the headset applies (InventoryStore.laborCost plus each
+ * HardscapeArea.laborCost), which is the only reason the two agree.
  *
  * A placement the catalog doesn't know (a placeholder plant) still has a
  * container size, and "a 5-gallon plant takes the same work no matter the
  * species", so the org's rate applies to it too; with no rate it costs
  * nothing, exactly as on the headset.
- *
- * Surfaces are deliberately absent: the estimate has no surface rows yet, so
- * their labor would be the only trace of them.
  */
 export function designLabor(
   design: ProjectFileJSON,
@@ -44,6 +43,10 @@ export function designLabor(
     if (!sizeName) continue;
     total += ratesBySize[sizeName] ?? size?.laborCost ?? 0;
   }
+  for (const area of design.hardscapeAreas ?? []) {
+    const style = surfaceStyle(area.style);
+    if (style) total += surfaceSqFt(area) * style.laborPerSqFt;
+  }
   return Math.round(total * 100) / 100;
 }
 
@@ -55,9 +58,9 @@ type DbClient = SupabaseClient;
 /**
  * Rewrites the estimate's plant rows to match the design.
  *
- * Only `source='ar'` rows keyed `plant:…` (and the one `labor:install` row,
- * when the design has labor switched on) are touched — hardscape rows still
- * belong to the headset, and every manual row is left completely alone. A price a designer typed over survives too: quantity follows the
+ * Only `source='ar'` rows are touched — `plant:…`, one `hardscape:<area id>`
+ * per traced surface, and the one `labor:install` row when the design has
+ * labor switched on. Every manual row is left completely alone. A price a designer typed over survives too: quantity follows the
  * design, the price stays theirs.
  *
  * Returns how many plant rows the design produced, so a caller can tell
@@ -168,6 +171,7 @@ export async function rebuildPlantRows(
     await supabase.from("estimate_items").delete().in("id", stale);
   }
 
+  await syncSurfaceRows(supabase, projectId, design);
   await syncLaborRow(supabase, projectId, orgId, design);
 
   const { data: allRows } = await supabase
@@ -194,6 +198,80 @@ export async function rebuildPlantRows(
   }
 
   return groups.size;
+}
+
+/**
+ * One row per traced surface — pavers, turf, decomposed granite — keyed by
+ * the area's id (the 'hardscape:<area id>' that migration 016 reserved).
+ * Quantity is its square footage and the price its style's per-sq-ft rate,
+ * both exactly as the headset quotes them.
+ *
+ * Same contract as a plant row: the footage follows the design and a price
+ * someone typed over survives. Except across a change of material — a price
+ * typed for pavers says nothing about turf — so a re-styled area takes the
+ * new style's description and price, and loses the override.
+ */
+async function syncSurfaceRows(
+  supabase: DbClient,
+  projectId: string,
+  design: ProjectFileJSON
+): Promise<void> {
+  type Wanted = { description: string; sqFt: number; price: number };
+  const wanted = new Map<string, Wanted>();
+  for (const area of design.hardscapeAreas ?? []) {
+    const style = surfaceStyle(area.style);
+    const sqFt = Math.round(surfaceSqFt(area) * 100) / 100;
+    if (!style || sqFt <= 0) continue;
+    wanted.set(`hardscape:${area.id}`, {
+      description: `${style.style} surface`,
+      sqFt,
+      price: style.pricePerSqFt,
+    });
+  }
+
+  const { data: existingRows } = await supabase
+    .from("estimate_items")
+    .select("id, ar_key, description, price_overridden")
+    .eq("project_id", projectId)
+    .eq("source", "ar")
+    .like("ar_key", "hardscape:%");
+  const byKey = new Map(
+    (existingRows ?? []).map((r) => [String(r.ar_key), r])
+  );
+
+  for (const [arKey, row] of wanted) {
+    const existing = byKey.get(arKey);
+    if (existing) {
+      const patch: Record<string, unknown> = { quantity: row.sqFt };
+      if (existing.description !== row.description) {
+        patch.description = row.description;
+        patch.unit_price = row.price;
+        patch.price_overridden = false;
+      } else if (!existing.price_overridden) {
+        patch.unit_price = row.price;
+      }
+      await supabase.from("estimate_items").update(patch).eq("id", existing.id);
+      byKey.delete(arKey);
+    } else {
+      await supabase.from("estimate_items").insert({
+        project_id: projectId,
+        description: row.description,
+        category: "hardscape",
+        quantity: row.sqFt,
+        unit: "ft²",
+        unit_price: row.price,
+        taxable: true,
+        source: "ar",
+        ar_key: arKey,
+      });
+    }
+  }
+
+  // Surfaces erased from the design leave the estimate with them.
+  const stale = [...byKey.values()].map((r) => r.id);
+  if (stale.length > 0) {
+    await supabase.from("estimate_items").delete().in("id", stale);
+  }
 }
 
 /**
