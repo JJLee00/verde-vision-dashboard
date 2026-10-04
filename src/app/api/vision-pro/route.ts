@@ -508,7 +508,13 @@ export async function POST(request: NextRequest) {
     // doesn't know yet (gen-catalog hasn't been re-run since the app added
     // them) produces no rows at all, and writing the derived zero would blank
     // a real bid. There, keep the total the headset sent.
-    if (plantRows === 0) {
+    //
+    // Only when there ARE placements and none were recognised. Since Oct 4
+    // 2026 surfaces make rows too, so a design with no plants — a patio
+    // job, or every plant deleted — has a derived total that is correct, and
+    // falling back would pin the card to whatever the last sync said.
+    const placements = (projectJson as ProjectFileJSON).placements ?? [];
+    if (plantRows === 0 && placements.length > 0) {
       // Fall back to the total the app sent, or failing that the one already
       // on the project. A leave-sync sends no estimate at all, so without the
       // second half a design whose plants this catalog doesn't know yet would

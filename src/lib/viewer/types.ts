@@ -43,8 +43,10 @@ export type FeaturePolygonJSON = {
 
 export type HardscapeAreaJSON = {
   id: string;
-  // HardscapeStyle raw value, e.g. "paver", "travertine", "concrete",
-  // "decomposedGranite", "turf", "flagstone", "pool"
+  // HardscapeStyle raw value, e.g. "Paving Stones 081", "Travertine",
+  // "Concrete", "Artificial Turf" — see catalog.json `surfaces`. Legacy saves
+  // may carry "Pavers" (the paver style's old name); src/lib/surfaces.ts
+  // resolves those the way the headset does.
   style: string;
   vertices: LocalPoint[];
   gradeHeight?: number | null;

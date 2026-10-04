@@ -1861,5 +1861,49 @@
       "growthRate": "Slow",
       "lifespan": "Long-lived (25+ yrs)"
     }
+  ],
+  "surfaces": [
+    {
+      "case": "paver",
+      "style": "Paving Stones 081",
+      "pricePerSqFt": 6.5,
+      "laborPerSqFt": 5
+    },
+    {
+      "case": "sierra",
+      "style": "Sierra Blend Cobble",
+      "pricePerSqFt": 7.25,
+      "laborPerSqFt": 5.75
+    },
+    {
+      "case": "travertine",
+      "style": "Travertine",
+      "pricePerSqFt": 9,
+      "laborPerSqFt": 6.5
+    },
+    {
+      "case": "flagstone",
+      "style": "Flagstone",
+      "pricePerSqFt": 8,
+      "laborPerSqFt": 6
+    },
+    {
+      "case": "concrete",
+      "style": "Concrete",
+      "pricePerSqFt": 4.5,
+      "laborPerSqFt": 3.5
+    },
+    {
+      "case": "decomposedGranite",
+      "style": "Decomposed Granite",
+      "pricePerSqFt": 1.5,
+      "laborPerSqFt": 1
+    },
+    {
+      "case": "turf",
+      "style": "Artificial Turf",
+      "pricePerSqFt": 10,
+      "laborPerSqFt": 4
+    }
   ]
 }
