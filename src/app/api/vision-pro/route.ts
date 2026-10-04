@@ -87,6 +87,14 @@ export async function POST(request: NextRequest) {
     first: form.get("anchor_first"),
     second: form.get("anchor_second"),
   };
+  // When each plate photo was taken, and which ones were deleted (022).
+  const photoAtSent: Record<string, string | null> = {};
+  const photoCleared: Record<string, boolean> = {};
+  for (const step of ANCHOR_STEPS) {
+    photoAtSent[step] = form.get(`anchor_photo_${step}_at`)?.toString() || null;
+    photoCleared[step] =
+      form.get(`anchor_photo_${step}_cleared`)?.toString() === "1";
+  }
   const coverPart = form.get("cover");
   const coverAtRaw = form.get("cover_at")?.toString() || null;
   const coverCleared = form.get("cover_cleared")?.toString() === "1";
@@ -357,22 +365,70 @@ export async function POST(request: NextRequest) {
     updates.estimate_path = path;
   }
 
-  // Anchor reference photos → project-media bucket, one stable path per
-  // step (upsert so re-syncs replace rather than pile up). Paths recorded
-  // in anchor_paths keyed by step. Guarded so this still succeeds before
-  // migration-010 has added the column.
-  const anchorPaths: Record<string, string> = {};
+  // The record columns, read ONCE: the plate photos, their times, the plate
+  // notes and the cover all merge into what is already there, and reading the
+  // row per field would let two of those writes race each other.
+  const { data: recordRow } = await supabase
+    .from("projects")
+    .select("cover_updated_at, anchor_notes, anchor_paths, anchor_photo_times")
+    .eq("id", project.id)
+    .maybeSingle();
+  const readMap = (value: unknown): Record<string, string> =>
+    value && typeof value === "object" && !Array.isArray(value)
+      ? { ...(value as Record<string, string>) }
+      : {};
+  const mergedPaths = readMap(
+    (recordRow as { anchor_paths?: unknown } | null)?.anchor_paths
+  );
+  const mergedPhotoTimes = readMap(
+    (recordRow as { anchor_photo_times?: unknown } | null)?.anchor_photo_times
+  );
+  let anchorsChanged = false;
+
+  // Anchor reference photos → project-media bucket, one stable path per step
+  // (upsert so re-syncs replace rather than pile up).
+  //
+  // MERGED into what is already recorded, never replacing it. The whole map
+  // used to be overwritten, which was harmless only while every sync carried
+  // all three photos; the app now pushes the ONE plate a designer just
+  // changed, and a wholesale write would take the other two plates' photos
+  // off the project.
+  //
+  // Each step is also time-checked before anything is uploaded, so a headset
+  // that has been carrying an old photo around cannot overwrite the file a
+  // desk replaced it with.
   for (const [step, part] of Object.entries(anchorParts)) {
-    if (part instanceof File && part.size > 0) {
-      const path = `${project.client_id}/${project.id}/anchors/${step}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from("project-media")
-        .upload(path, part, { contentType: "image/jpeg", upsert: true });
-      if (uploadError) {
-        return NextResponse.json({ error: uploadError.message }, { status: 500 });
-      }
-      anchorPaths[step] = path;
+    const storedAt = parseStamp(mergedPhotoTimes[step]);
+
+    if (photoCleared[step]) {
+      const sentAt = parseStamp(photoAtSent[step]) ?? new Date();
+      if (storedAt && storedAt > sentAt) continue;
+      const stale = mergedPaths[step];
+      if (stale) await supabase.storage.from("project-media").remove([stale]);
+      delete mergedPaths[step];
+      mergedPhotoTimes[step] = sentAt.toISOString();
+      anchorsChanged = true;
+      continue;
     }
+
+    if (!(part instanceof File) || part.size === 0) continue;
+    const sentAt = parseStamp(photoAtSent[step]) ?? new Date();
+    if (storedAt && storedAt > sentAt) {
+      console.log(
+        `[vision-pro] ${step} photo for ${project.id} is older than the stored one — kept`
+      );
+      continue;
+    }
+    const path = `${project.client_id}/${project.id}/anchors/${step}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from("project-media")
+      .upload(path, part, { contentType: "image/jpeg", upsert: true });
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    }
+    mergedPaths[step] = path;
+    mergedPhotoTimes[step] = sentAt.toISOString();
+    anchorsChanged = true;
   }
   if (Object.keys(updates).length > 0) {
     const { error } = await supabase
@@ -467,19 +523,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // anchor_paths lives in its own update: the photos are already stored,
-  // and a project synced before migration-010 (no column yet) shouldn't
-  // fail the whole request — just skip recording the paths.
-  if (Object.keys(anchorPaths).length > 0) {
-    const { error } = await supabase
-      .from("projects")
-      .update({ anchor_paths: anchorPaths })
-      .eq("id", project.id);
-    if (error && !/column .*anchor_paths.* does not exist/i.test(error.message)) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-  }
-
   // Cover photo and plate notes (migration 021).
   //
   // Both are editable at a desk AND in the headset, so the newer write wins
@@ -492,12 +535,7 @@ export async function POST(request: NextRequest) {
   // Last, and in its own update, for the same reason anchor_paths is: a
   // database that hasn't run 021 yet must still accept the sync rather than
   // lose a designer their design over a cover photo.
-  if (coverPart instanceof File || coverCleared || Object.keys(notePartsSent).length > 0) {
-    const { data: recordRow } = await supabase
-      .from("projects")
-      .select("cover_updated_at, anchor_notes")
-      .eq("id", project.id)
-      .maybeSingle();
+  {
     const storedCoverAt = parseStamp(
       (recordRow as { cover_updated_at?: string | null } | null)?.cover_updated_at
     );
@@ -508,6 +546,10 @@ export async function POST(request: NextRequest) {
         : {};
 
     const recordUpdates: Record<string, unknown> = {};
+    if (anchorsChanged) {
+      recordUpdates.anchor_paths = mergedPaths;
+      recordUpdates.anchor_photo_times = mergedPhotoTimes;
+    }
 
     if (coverCleared) {
       // The designer deleted the cover in the headset. Without this leg the
@@ -580,12 +622,14 @@ export async function POST(request: NextRequest) {
         .update(recordUpdates)
         .eq("id", project.id);
       if (error) {
-        // Pre-021: drop the two new columns and keep the cover, which has
-        // lived on projects.cover_path since migration 009 and is already
-        // uploaded by this point.
-        if (/column .*(cover_updated_at|anchor_notes).* does not exist/i.test(error.message)) {
+        // Pre-021/022: drop the new columns and keep what the older schema
+        // can hold — the cover (projects.cover_path, migration 009) and the
+        // plate photo paths (anchor_paths, migration 010). Both files are
+        // already uploaded by this point.
+        if (/column .*(cover_updated_at|anchor_notes|anchor_photo_times).* does not exist/i.test(error.message)) {
           delete recordUpdates.cover_updated_at;
           delete recordUpdates.anchor_notes;
+          delete recordUpdates.anchor_photo_times;
           if (Object.keys(recordUpdates).length > 0) {
             const { error: retryError } = await supabase
               .from("projects")

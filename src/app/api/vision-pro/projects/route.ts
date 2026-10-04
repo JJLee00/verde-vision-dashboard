@@ -14,6 +14,20 @@ import { ANCHOR_STEPS } from "@/lib/markers";
  * compares them with its own files' dates, and Postgres's microsecond form is
  * not one Foundation parses reliably.
  */
+/** `anchor_photo_times` as the headset reads it: step → millisecond ISO. */
+function readPhotoTimes(raw: unknown): Record<string, string> {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const step of ANCHOR_STEPS) {
+    const value = (raw as Record<string, unknown>)[step];
+    if (typeof value !== "string") continue;
+    const stamp = new Date(value);
+    if (Number.isNaN(stamp.getTime())) continue;
+    out[step] = stamp.toISOString();
+  }
+  return out;
+}
+
 function readAnchorNotes(
   raw: unknown
 ): Record<string, { text: string; updated_at: string | null }> {
@@ -174,11 +188,12 @@ export async function GET(request: NextRequest) {
     id: string;
     cover_updated_at: string | null;
     anchor_notes: Record<string, unknown> | null;
+    anchor_photo_times: Record<string, unknown> | null;
   };
   const syncRows = new Map<string, SyncRow>();
   const { data: syncColumns } = await supabase
     .from("projects")
-    .select("id, cover_updated_at, anchor_notes")
+    .select("id, cover_updated_at, anchor_notes, anchor_photo_times")
     .eq("client_id", account.id);
   for (const row of syncColumns ?? []) syncRows.set(row.id, row as SyncRow);
 
@@ -268,6 +283,11 @@ export async function GET(request: NextRequest) {
       // photos. Editable on both sides; each entry carries the time it was
       // written so the newer one wins.
       anchor_notes: readAnchorNotes(syncRows.get(p.id)?.anchor_notes),
+      // When each plate photo was written (migration 022). Sent beside the
+      // photos rather than folded into them, because `anchor_photos` is a
+      // wire contract with headsets already in the field. A time here with no
+      // photo above it is a deletion.
+      anchor_photo_times: readPhotoTimes(syncRows.get(p.id)?.anchor_photo_times),
       // Signed URLs for any marker reference photos, so a photo added at a
       // desk reaches the yard — which is the only place it is any use. The
       // headset cannot take these itself (visionOS main camera access is an
