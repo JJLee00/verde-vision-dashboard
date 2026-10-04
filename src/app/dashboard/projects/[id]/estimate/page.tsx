@@ -169,8 +169,9 @@ export default async function EstimatePage({
         <div>
           <h1 className="font-serif text-4xl text-ink">Estimate</h1>
           <p className="mt-1.5 max-w-xl text-sm text-muted">
-            Plants and surfaces come from the design. Everything else —
-            irrigation, demolition, delivery, dump fees, labor — you add here.
+            Plants come from the design, and so does installation labor when
+            it&apos;s switched on for this project in the headset. Everything
+            else — irrigation, demolition, delivery, dump fees — you add here.
           </p>
         </div>
         {data.readOnly && (

@@ -15,6 +15,38 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { currentSize, plantForModel, unitPrice } from "@/lib/design-edit";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
+/** The one estimate row a design's labor lands in, like the headset's line. */
+export const LABOR_AR_KEY = "labor:install";
+
+/**
+ * Installation labor for a design: every placement at its container size's
+ * labor rate — the org's (Prices tab → Labor rates) when it set one, the
+ * catalog's otherwise. The SAME rule the headset applies
+ * (InventoryStore.laborCost), which is the only reason the two agree.
+ *
+ * A placement the catalog doesn't know (a placeholder plant) still has a
+ * container size, and "a 5-gallon plant takes the same work no matter the
+ * species", so the org's rate applies to it too; with no rate it costs
+ * nothing, exactly as on the headset.
+ *
+ * Surfaces are deliberately absent: the estimate has no surface rows yet, so
+ * their labor would be the only trace of them.
+ */
+export function designLabor(
+  design: ProjectFileJSON,
+  ratesBySize: Record<string, number>
+): number {
+  let total = 0;
+  for (const p of design.placements ?? []) {
+    const plant = plantForModel(p.plantModelName);
+    const size = plant ? currentSize(plant, p as PlacedPlantJSON) : null;
+    const sizeName = size?.size ?? p.containerType ?? null;
+    if (!sizeName) continue;
+    total += ratesBySize[sizeName] ?? size?.laborCost ?? 0;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 // Both the service-role client (the Vision Pro ingest route) and the
 // user-scoped server client (the dashboard editor) are SupabaseClient — the
 // same reasoning as versions.ts.
@@ -23,9 +55,9 @@ type DbClient = SupabaseClient;
 /**
  * Rewrites the estimate's plant rows to match the design.
  *
- * Only `source='ar'` rows whose key starts `plant:` are touched — hardscape
- * rows still belong to the headset, and every manual row is left completely
- * alone. A price a designer typed over survives too: quantity follows the
+ * Only `source='ar'` rows keyed `plant:…` (and the one `labor:install` row,
+ * when the design has labor switched on) are touched — hardscape rows still
+ * belong to the headset, and every manual row is left completely alone. A price a designer typed over survives too: quantity follows the
  * design, the price stays theirs.
  *
  * Returns how many plant rows the design produced, so a caller can tell
@@ -136,6 +168,8 @@ export async function rebuildPlantRows(
     await supabase.from("estimate_items").delete().in("id", stale);
   }
 
+  await syncLaborRow(supabase, projectId, orgId, design);
+
   const { data: allRows } = await supabase
     .from("estimate_items")
     .select("total, taxable")
@@ -160,4 +194,75 @@ export async function rebuildPlantRows(
   }
 
   return groups.size;
+}
+
+/**
+ * Keeps the Labor line in step with the design: there while the project has
+ * labor switched on, gone when it doesn't. Same contract as a plant row — the
+ * amount follows the design until someone types over the price, and then the
+ * price is theirs. Manual labor lines are never touched.
+ */
+async function syncLaborRow(
+  supabase: DbClient,
+  projectId: string,
+  orgId: string | null,
+  design: ProjectFileJSON
+): Promise<void> {
+  const { data: existingRows } = await supabase
+    .from("estimate_items")
+    .select("id, price_overridden")
+    .eq("project_id", projectId)
+    .eq("source", "ar")
+    .eq("ar_key", LABOR_AR_KEY);
+  const [existing, ...duplicates] = existingRows ?? [];
+  // Two syncs landing together could each have inserted one. Keep the first.
+  if (duplicates.length > 0) {
+    await supabase
+      .from("estimate_items")
+      .delete()
+      .in("id", duplicates.map((r) => r.id));
+  }
+
+  if (design.includeLabor !== true) {
+    if (existing) {
+      await supabase.from("estimate_items").delete().eq("id", existing.id);
+    }
+    return;
+  }
+
+  // Scoped by hand for the same reason as price_items above: the ingest route
+  // calls this with the service role. No org, or no labor_rates table yet
+  // (migration 005), reads as no rates — catalog labor, as on the headset.
+  const { data: rateRows } = orgId
+    ? await supabase.from("labor_rates").select("size, rate").eq("org_id", orgId)
+    : { data: [] };
+  const rates: Record<string, number> = {};
+  for (const row of rateRows ?? []) {
+    const rate = Number(row.rate);
+    if (Number.isFinite(rate)) rates[String(row.size)] = rate;
+  }
+  const amount = designLabor(design, rates);
+
+  if (existing) {
+    if (!existing.price_overridden) {
+      await supabase
+        .from("estimate_items")
+        .update({ unit_price: amount })
+        .eq("id", existing.id);
+    }
+    return;
+  }
+  await supabase.from("estimate_items").insert({
+    project_id: projectId,
+    description: "Installation labor",
+    category: "labor",
+    quantity: 1,
+    unit: "ls",
+    unit_price: amount,
+    // Labor is untaxed everywhere else on the dashboard (the Saved Items
+    // picker sets taxable = category !== "labor").
+    taxable: false,
+    source: "ar",
+    ar_key: LABOR_AR_KEY,
+  });
 }
