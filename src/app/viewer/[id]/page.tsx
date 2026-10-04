@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
 import { DesignEditor } from "./design-editor";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
+import { pricesFromRows } from "@/lib/price-book";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 
 // Full-screen living-blueprint viewer for a signed-in designer.
@@ -63,7 +64,7 @@ export default async function ViewerPage({
       .select("project_json")
       .eq("id", id)
       .single(),
-    supabase.from("price_items").select("name, price, category").eq("category", "plant"),
+    supabase.from("plant_prices").select("plant_key, size, price"),
   ]);
 
   const project = baseRes.data;
@@ -93,13 +94,11 @@ export default async function ViewerPage({
     );
   }
 
-  // The designer's own Prices-tab entries override catalog defaults in the
-  // material rail (matched by plant name, same as the headset app does).
-  // Already fetched alongside the project rows above.
-  const priceOverrides: Record<string, number> = {};
-  for (const row of priceRes.data ?? []) {
-    priceOverrides[row.name.toLowerCase()] = Number(row.price);
-  }
+  // The org's Plant Prices / Hardscape Prices grid (RLS scopes the read to
+  // the viewer's org, as on the Prices pages). Blank cells are $0 — the same
+  // numbers the estimate and the headset use. Fetched alongside the project
+  // rows above.
+  const priceOverrides = pricesFromRows(priceRes.data);
 
   // Same PDF buttons the share page offers, so designers see exactly what
   // clients get. Signed for an hour, like the project page's document links.

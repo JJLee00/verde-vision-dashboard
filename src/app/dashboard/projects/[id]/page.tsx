@@ -6,6 +6,7 @@ import { DeleteProject } from "./delete-project";
 import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
+import { pricesFromRows } from "@/lib/price-book";
 import { FIXTURE_PROJECT } from "@/lib/viewer/fixture";
 import { StatusSelect, NotesEditor } from "./editors";
 import { SiteMarkers } from "./site-markers";
@@ -218,7 +219,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     // And again for migration-021: the plate notes live in their own column
     // now, two-way with the headset.
     supabase.from("projects").select("anchor_notes").eq("id", id).single(),
-    supabase.from("price_items").select("name, price, category").eq("category", "plant"),
+    supabase.from("plant_prices").select("plant_key, size, price"),
     getMembership(supabase, user.id),
   ]);
 
@@ -359,12 +360,9 @@ async function loadPageData(id: string): Promise<PageData | null> {
     anchorNotesFrom(notesRes.data?.anchor_notes)
   );
 
-  // Rail prices: designer's Prices-tab overrides, same as the viewer.
-  // Fetched in the first parallel wave above.
-  const priceOverrides: Record<string, number> = {};
-  for (const row of priceRes.data ?? []) {
-    priceOverrides[row.name.toLowerCase()] = Number(row.price);
-  }
+  // Rail prices: the org's grid, same as the viewer, the estimate and the
+  // headset — blank cells are $0. Fetched in the first parallel wave above.
+  const priceOverrides = pricesFromRows(priceRes.data);
 
   return {
     id: base.id,

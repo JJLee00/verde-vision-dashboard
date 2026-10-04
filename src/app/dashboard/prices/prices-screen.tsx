@@ -85,7 +85,9 @@ export function PricesScreen({
 
       <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
         <h2 className="font-serif text-2xl text-ink">Labor rates</h2>
-        <p className="mt-1 text-sm text-muted">{laborNote}</p>
+        <p className="mt-1 text-sm text-muted">
+          {laborNote} A blank rate is $0.
+        </p>
         <div className="mt-5">
           <LaborRates sizes={laborSizes} initial={laborInitial} />
         </div>
@@ -96,8 +98,8 @@ export function PricesScreen({
           {title === "Plant Prices" ? "Plant prices" : "Item prices"}
         </h2>
         <p className="mt-1 text-sm text-muted">
-          Your price per item, per size. Changes save as you go — blank cells
-          fall back to Verde Vision&rsquo;s built-in pricing in estimates.
+          Your price per item, per size. Changes save as you go. A blank cell
+          is $0 — on estimates and in the headset.
         </p>
         <div className="mt-5">
           <PlantPriceGrid

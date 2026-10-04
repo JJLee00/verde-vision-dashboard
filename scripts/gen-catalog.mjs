@@ -5,13 +5,13 @@
 // the dashboard's Prices grid and Plant Library in sync with it.
 //
 // It also reads the surface styles (HardscapeStyle, in HardscapeArea.swift
-// beside PlantItem.swift) and their per-sq-ft material and labor prices, so
-// the estimate's surface rows bill exactly what the headset quotes.
+// beside PlantItem.swift) — their names only. Surface PRICES are the org's,
+// typed on the Hardscape Prices page; see src/lib/surfaces.ts.
 //
 //   node scripts/gen-catalog.mjs [path/to/PlantItem.swift]
 //
 // Rerun (and commit the JSON) whenever a plant or a surface style is added
-// to the app, or a surface price changes.
+// to the app.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -181,9 +181,9 @@ const laborDefaults = Object.fromEntries(
 const usedSizes = SIZE_ORDER.filter((s) => laborBysize.has(s));
 
 // ── Surface styles ─────────────────────────────────────────────
-// HardscapeStyle's cases and the two per-sq-ft switches. A style missing
-// either price fails the run: a surface billed at nothing is a wrong bid
-// nobody would notice.
+// HardscapeStyle's cases and raw values: the case names key the org's
+// surface prices ("surface:<case>"), the raw values are what a design's
+// hardscapeAreas carry.
 const HARDSCAPE_PATH = join(dirname(SWIFT_PATH), "HardscapeArea.swift");
 const hardscape = readFileSync(HARDSCAPE_PATH, "utf8");
 
@@ -193,26 +193,7 @@ const enumCases = hardscape.slice(enumStart, hardscape.indexOf("var id:", enumSt
 const styleCases = [...enumCases.matchAll(/case\s+(\w+)\s*=\s*"([^"]+)"/g)];
 if (styleCases.length === 0) throw new Error("No HardscapeStyle cases parsed");
 
-function perSqFt(property) {
-  const at = hardscape.indexOf(`var ${property}: Double {`, enumStart);
-  if (at === -1) throw new Error(`HardscapeStyle.${property} not found`);
-  const block = hardscape.slice(at, hardscape.indexOf("\n    }\n", at));
-  return Object.fromEntries(
-    [...block.matchAll(/case\s+\.(\w+):\s*return\s+([\d.]+)/g)].map(
-      ([, c, v]) => [c, Number(v)]
-    )
-  );
-}
-const materialPrices = perSqFt("pricePerSqFt");
-const laborPrices = perSqFt("laborPerSqFt");
-
-const surfaces = styleCases.map(([, caseName, style]) => {
-  const pricePerSqFt = materialPrices[caseName];
-  const laborPerSqFt = laborPrices[caseName];
-  if (pricePerSqFt == null) throw new Error(`surface .${caseName}: no pricePerSqFt`);
-  if (laborPerSqFt == null) throw new Error(`surface .${caseName}: no laborPerSqFt`);
-  return { case: caseName, style, pricePerSqFt, laborPerSqFt };
-});
+const surfaces = styleCases.map(([, caseName, style]) => ({ case: caseName, style }));
 
 const out = {
   source: "Verde-Vision app PlantItem.sampleCatalog",

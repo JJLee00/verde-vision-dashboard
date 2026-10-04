@@ -30,7 +30,7 @@ const format = (entries: Record<string, number>) =>
   );
 
 // Every catalog plant, one row each, editable price per available size.
-// Cells save on blur; a blank cell means "use the built-in default".
+// Cells save on blur; a blank cell is $0 everywhere (see src/lib/price-book.ts).
 export function PlantPriceGrid({ plants, sizes, initial }: Props) {
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     format(initial)

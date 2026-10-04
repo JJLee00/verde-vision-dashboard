@@ -55,9 +55,12 @@ export function PlantLibrary({
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // The grid price; a placeholder plant's sizes carry the price typed in its
+  // own form. Catalog plants never fall back to a built-in number — a blank
+  // cell is $0 on the estimate and the headset, so it shows as unpriced here.
   const priceFor = (plant: LibraryPlant, size: string) =>
     priceOverrides[`${plant.key}|${size}`] ??
-    plant.sizes.find((s) => s.size === size)?.price;
+    (plant.custom ? plant.sizes.find((s) => s.size === size)?.price : undefined);
 
   const placeholderCount = plants.filter((p) => p.custom).length;
   const modelCount = plants.length - placeholderCount;

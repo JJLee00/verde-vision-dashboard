@@ -87,6 +87,8 @@ export function EstimateBuilder({
   const [priceOffer, setPriceOffer] = useState<{
     itemId: string;
     plantName: string;
+    plantKey: string;
+    size: string;
     price: number;
   } | null>(null);
   const [notesOpen, setNotesOpen] = useState<Set<string>>(new Set());
@@ -136,11 +138,16 @@ export function EstimateBuilder({
       }
       // Only owners can write the price book, so only they are offered it.
       if (merged.source === "ar" && isOwner) {
-        const plant = plantForKey(merged.arKey?.split(":")[1] ?? "");
-        if (plant && merged.unitPrice > 0) {
+        // A plant row's key is plant:<catalog key>:<size> — the grid cell.
+        const [kind, plantKey, ...sizeParts] = (merged.arKey ?? "").split(":");
+        const plant = kind === "plant" ? plantForKey(plantKey ?? "") : null;
+        const size = sizeParts.join(":");
+        if (plant && size && merged.unitPrice > 0) {
           setPriceOffer({
             itemId: merged.id,
             plantName: plant.name,
+            plantKey: plant.key,
+            size,
             price: merged.unitPrice,
           });
         }
@@ -306,36 +313,20 @@ export function EstimateBuilder({
 
   // Owners keep the price book (migration 007), so only they can add to it.
   /**
-   * Push a price typed on an estimate up into the price book.
-   *
-   * Keyed on the CATALOG name, because that is what rebuildPlantRows looks
-   * up — `overrides[plant.name.toLowerCase()]` — not the row's description,
-   * which carries a size prefix. And it updates in place rather than
-   * inserting: a second row for the same plant would make which price wins
-   * a matter of row order.
+   * Push a price typed on an estimate up into the price book — the very grid
+   * cell (plant and size) the Plant Prices page shows, which is what
+   * rebuildPlantRows and the headset both read. It wrote the legacy
+   * name-only price_items until Oct 4 2026, which nothing priced from any
+   * more, so the offer saved a price no estimate would ever use.
    */
-  async function savePlantPrice(plantName: string, price: number) {
+  async function savePlantPrice(plantKey: string, size: string, price: number) {
     setError(null);
-    const supabase = createClient();
-    const { data: existing } = await supabase
-      .from("price_items")
-      .select("id")
-      .eq("category", "plant")
-      .eq("name", plantName)
-      .maybeSingle();
-
-    const { error: err } = existing
-      ? await supabase
-          .from("price_items")
-          .update({ price })
-          .eq("id", existing.id)
-      : await supabase.from("price_items").insert({
-          name: plantName,
-          category: "plant",
-          price,
-          unit: "each",
-        });
-
+    const { error: err } = await createClient()
+      .from("plant_prices")
+      .upsert(
+        { plant_key: plantKey, size, price },
+        { onConflict: "user_id,plant_key,size" }
+      );
     setPriceOffer(null);
     if (err) setError("Could not update the price book.");
   }
@@ -481,7 +472,10 @@ export function EstimateBuilder({
                 {currency.format(priceOffer.price)}
               </span>{" "}
               as your price for{" "}
-              <span className="font-semibold">{priceOffer.plantName}</span>?
+              <span className="font-semibold">
+                {priceOffer.plantName} ({priceOffer.size})
+              </span>
+              ?
               <span className="text-muted"> It will apply to new estimates.</span>
             </p>
             <span className="flex items-center gap-2">
@@ -495,7 +489,11 @@ export function EstimateBuilder({
               <button
                 type="button"
                 onClick={() =>
-                  void savePlantPrice(priceOffer.plantName, priceOffer.price)
+                  void savePlantPrice(
+                    priceOffer.plantKey,
+                    priceOffer.size,
+                    priceOffer.price
+                  )
                 }
                 className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
               >

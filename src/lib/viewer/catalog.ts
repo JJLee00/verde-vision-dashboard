@@ -26,8 +26,9 @@ export type SpeciesMeta = {
   matureHeightFt: number;
   matureWidthFt: number;
   renderHeightFt: number;
-  // Catalog default installed price by ContainerSize.SizeType raw value.
-  // The designer's own Prices-tab entries override these by plant name.
+  // Built-in placeholder prices. NOT used for pricing since Oct 4 2026 —
+  // every price comes from the org's grid (src/lib/price-book.ts), blank =
+  // $0. Kept only so this hand-written table stays a straight copy.
   prices: Record<string, number>;
 };
 

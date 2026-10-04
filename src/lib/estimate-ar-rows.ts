@@ -13,39 +13,36 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { currentSize, plantForModel, unitPrice } from "@/lib/design-edit";
-import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
+import { loadPriceBook, type PriceBook } from "@/lib/price-book";
+import { surfaceRates, surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
 /** The one estimate row a design's labor lands in, like the headset's line. */
 export const LABOR_AR_KEY = "labor:install";
 
 /**
- * Installation labor for a design: every placement at its container size's
- * labor rate — the org's (Prices tab → Labor rates) when it set one, the
- * catalog's otherwise — plus every surface at its style's labor per sq ft.
- * The SAME rule the headset applies (InventoryStore.laborCost plus each
- * HardscapeArea.laborCost), which is the only reason the two agree.
+ * Installation labor for a design: every placement at the org's labor rate
+ * for its container size, plus every surface at the org's labor per ft² for
+ * its style. A blank rate is $0 — the same rule the headset applies
+ * (InventoryStore.laborCost and surfaceLabor), which is the only reason the
+ * two agree.
  *
  * A placement the catalog doesn't know (a placeholder plant) still has a
  * container size, and "a 5-gallon plant takes the same work no matter the
- * species", so the org's rate applies to it too; with no rate it costs
- * nothing, exactly as on the headset.
+ * species", so the org's rate applies to it too.
  */
-export function designLabor(
-  design: ProjectFileJSON,
-  ratesBySize: Record<string, number>
-): number {
+export function designLabor(design: ProjectFileJSON, book: PriceBook): number {
   let total = 0;
   for (const p of design.placements ?? []) {
     const plant = plantForModel(p.plantModelName);
     const size = plant ? currentSize(plant, p as PlacedPlantJSON) : null;
     const sizeName = size?.size ?? p.containerType ?? null;
     if (!sizeName) continue;
-    total += ratesBySize[sizeName] ?? size?.laborCost ?? 0;
+    total += book.laborRates[sizeName] ?? 0;
   }
   for (const area of design.hardscapeAreas ?? []) {
     const style = surfaceStyle(area.style);
-    if (style) total += surfaceSqFt(area) * style.laborPerSqFt;
+    if (style) total += surfaceSqFt(area) * surfaceRates(style, book).labor;
   }
   return Math.round(total * 100) / 100;
 }
@@ -93,21 +90,13 @@ export async function rebuildPlantRows(
     .maybeSingle();
   const orgId = (project as { org_id?: string | null } | null)?.org_id ?? null;
 
-  // No org on the project means no overrides — catalog prices. Falling back
-  // to an unfiltered read would be the exact leak this is closing, and a bid
-  // at list price is a recoverable kind of wrong; one carrying a competitor's
-  // numbers is not.
-  const { data: priceRows } = orgId
-    ? await supabase
-        .from("price_items")
-        .select("name, price")
-        .eq("category", "plant")
-        .eq("org_id", orgId)
-    : { data: [] };
-  const overrides: Record<string, number> = {};
-  for (const row of priceRows ?? []) {
-    overrides[String(row.name).toLowerCase()] = Number(row.price);
-  }
+  // The Plant Prices / Hardscape Prices grids, scoped to this org (see
+  // loadPriceBook). Until Oct 4 2026 this read the legacy name-only
+  // price_items and fell back to catalog prices, so a price typed in the
+  // grid never reached the estimate. No org means an empty book: $0, never
+  // an unfiltered read — a bid carrying a competitor's numbers is the one
+  // kind of wrong that can't be walked back.
+  const book = await loadPriceBook(supabase, orgId);
 
   // Group identical plant-and-size pairs into one line, the way a bid reads.
   type Group = { description: string; qty: number; price: number };
@@ -125,7 +114,7 @@ export async function rebuildPlantRows(
       groups.set(key, {
         description: `(${sizeName}) ${plant.name}`,
         qty: 1,
-        price: unitPrice(p as PlacedPlantJSON, overrides) ?? 0,
+        price: unitPrice(p as PlacedPlantJSON, book.prices) ?? 0,
       });
     }
   }
@@ -171,8 +160,8 @@ export async function rebuildPlantRows(
     await supabase.from("estimate_items").delete().in("id", stale);
   }
 
-  await syncSurfaceRows(supabase, projectId, design);
-  await syncLaborRow(supabase, projectId, orgId, design);
+  await syncSurfaceRows(supabase, projectId, design, book);
+  await syncLaborRow(supabase, projectId, design, book);
 
   const { data: allRows } = await supabase
     .from("estimate_items")
@@ -203,8 +192,8 @@ export async function rebuildPlantRows(
 /**
  * One row per traced surface — pavers, turf, decomposed granite — keyed by
  * the area's id (the 'hardscape:<area id>' that migration 016 reserved).
- * Quantity is its square footage and the price its style's per-sq-ft rate,
- * both exactly as the headset quotes them.
+ * Quantity is its square footage and the price the org's per-ft² price for
+ * its style ($0 if blank), both exactly as the headset quotes them.
  *
  * Same contract as a plant row: the footage follows the design and a price
  * someone typed over survives. Except across a change of material — a price
@@ -214,7 +203,8 @@ export async function rebuildPlantRows(
 async function syncSurfaceRows(
   supabase: DbClient,
   projectId: string,
-  design: ProjectFileJSON
+  design: ProjectFileJSON,
+  book: PriceBook
 ): Promise<void> {
   type Wanted = { description: string; sqFt: number; price: number };
   const wanted = new Map<string, Wanted>();
@@ -225,7 +215,7 @@ async function syncSurfaceRows(
     wanted.set(`hardscape:${area.id}`, {
       description: `${style.style} surface`,
       sqFt,
-      price: style.pricePerSqFt,
+      price: surfaceRates(style, book).price,
     });
   }
 
@@ -283,8 +273,8 @@ async function syncSurfaceRows(
 async function syncLaborRow(
   supabase: DbClient,
   projectId: string,
-  orgId: string | null,
-  design: ProjectFileJSON
+  design: ProjectFileJSON,
+  book: PriceBook
 ): Promise<void> {
   const { data: existingRows } = await supabase
     .from("estimate_items")
@@ -308,18 +298,7 @@ async function syncLaborRow(
     return;
   }
 
-  // Scoped by hand for the same reason as price_items above: the ingest route
-  // calls this with the service role. No org, or no labor_rates table yet
-  // (migration 005), reads as no rates — catalog labor, as on the headset.
-  const { data: rateRows } = orgId
-    ? await supabase.from("labor_rates").select("size, rate").eq("org_id", orgId)
-    : { data: [] };
-  const rates: Record<string, number> = {};
-  for (const row of rateRows ?? []) {
-    const rate = Number(row.rate);
-    if (Number.isFinite(rate)) rates[String(row.size)] = rate;
-  }
-  const amount = designLabor(design, rates);
+  const amount = designLabor(design, book);
 
   if (existing) {
     if (!existing.price_overridden) {
