@@ -78,20 +78,34 @@ function MarkerColumn({
       if (uploadError) throw new Error(uploadError.message);
 
       // anchor_paths is a map keyed by step; merge rather than replace so
-      // uploading one photo does not forget the other two.
+      // uploading one photo does not forget the other two. The times map
+      // (migration 022) merges the same way, and is what lets this photo
+      // REPLACE the one on a headset rather than only filling an empty slot.
       const { data: current } = await supabase
         .from("projects")
-        .select("anchor_paths")
+        .select("anchor_paths, anchor_photo_times")
         .eq("id", projectId)
         .maybeSingle();
       const merged = {
         ...((current?.anchor_paths as Record<string, string> | null) ?? {}),
         [marker.step]: path,
       };
-      const { error: updateError } = await supabase
+      const mergedTimes = {
+        ...((current?.anchor_photo_times as Record<string, string> | null) ?? {}),
+        [marker.step]: new Date().toISOString(),
+      };
+      let { error: updateError } = await supabase
         .from("projects")
-        .update({ anchor_paths: merged })
+        .update({ anchor_paths: merged, anchor_photo_times: mergedTimes })
         .eq("id", projectId);
+      if (updateError && /anchor_photo_times/.test(updateError.message)) {
+        // Pre-022. The photo still belongs on the project; it just lands on
+        // headsets that have no photo for this plate rather than all of them.
+        ({ error: updateError } = await supabase
+          .from("projects")
+          .update({ anchor_paths: merged })
+          .eq("id", projectId));
+      }
       if (updateError) throw new Error(updateError.message);
       router.refresh();
     } catch (err) {
