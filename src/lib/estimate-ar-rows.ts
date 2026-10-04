@@ -77,12 +77,26 @@ type ExistingRow = {
 };
 
 /**
+ * A line's price is set ONCE (Oct 4 2026). Changing a plant price or a labor
+ * rate on the Prices pages must never reprice a bid that already exists —
+ * it applies to lines added from then on: a new plant, a new size, a new
+ * surface. The one exception: a line still at $0 because its grid cell was
+ * blank picks the price up once one is entered. That's filling a gap, not
+ * changing a price — without it, every estimate synced before the grid was
+ * filled in would sit at $0 forever.
+ */
+const unpricedNumber = (value: number | string | null | undefined) =>
+  value == null || Number(value) === 0;
+
+/**
  * The labor columns a design row should be written with.
  *
  *   • Labor off for this project → no labor on any design line, and any
  *     override is cleared: "labor off" means none, not "none unless typed".
  *   • Labor on, someone typed over this line's labor → leave it alone.
- *   • Otherwise → the rate the design implies.
+ *   • Labor on, the line already has labor → leave it alone: a rate changed
+ *     on the Prices page doesn't reach a line that's already priced.
+ *   • Otherwise (a new line, or one still at $0) → the current rate.
  *
  * Empty before migration 023 — writing a column the table doesn't have would
  * fail the whole row, so until it runs the design simply writes no labor.
@@ -91,11 +105,12 @@ function laborFields(
   perLine: boolean,
   includeLabor: boolean,
   rate: number,
-  existing: { labor_overridden?: boolean | null } | null
+  existing: { labor_overridden?: boolean | null; labor_unit_price?: number | string | null } | null
 ): Record<string, unknown> {
   if (!perLine) return {};
   if (!includeLabor) return { labor_unit_price: 0, labor_overridden: false };
   if (existing?.labor_overridden) return {};
+  if (existing && !unpricedNumber(existing.labor_unit_price)) return {};
   return { labor_unit_price: rate };
 }
 
@@ -105,8 +120,9 @@ function laborFields(
  * Only `source='ar'` rows are touched — `plant:…` and one `hardscape:<area
  * id>` per traced surface, each carrying its own labor beside its price when
  * the project has labor switched on. Every manual row is left completely
- * alone. A price or labor a designer typed over survives too: quantity
- * follows the design, the numbers stay theirs.
+ * alone. Quantity follows the design; price and labor are set once, when a
+ * line first appears (or first gets a price), and never move after that —
+ * not for a price-book change, and not over anything a designer typed.
  *
  * Returns how many plant rows the design produced, so a caller can tell
  * "the design has no plants we recognise" apart from "the design is empty".
@@ -196,12 +212,13 @@ export async function rebuildPlantRows(
     const existing = byKey.get(arKey) ?? null;
     const labor = laborFields(perLine, includeLabor, group.labor, existing);
     if (existing) {
-      // A price a designer typed over survives: quantity follows the design,
-      // the price stays theirs.
+      // Quantity follows the design. The price is the line's own once set —
+      // only a line still at $0 (its grid cell was blank) takes one now.
+      const fillPrice = !existing.price_overridden && unpricedNumber(existing.unit_price);
       const patch = changedFields(existing, {
         quantity: group.qty,
         ...labor,
-        ...(existing.price_overridden ? {} : { unit_price: group.price }),
+        ...(fillPrice ? { unit_price: group.price } : {}),
       });
       if (Object.keys(patch).length > 0) {
         await supabase.from("estimate_items").update(patch).eq("id", existing.id);
@@ -330,11 +347,13 @@ async function syncSurfaceRows(
         ...laborFields(perLine, includeLabor, row.labor, restyled ? null : existing),
       };
       if (restyled) {
+        // A different material is a different line: today's prices.
         wanted.description = row.description;
         wanted.unit_price = row.price;
         wanted.price_overridden = false;
         if (perLine) wanted.labor_overridden = false;
-      } else if (!existing.price_overridden) {
+      } else if (!existing.price_overridden && unpricedNumber(existing.unit_price)) {
+        // Same rule as a plant line: only a $0 line takes a price now.
         wanted.unit_price = row.price;
       }
       const patch = changedFields(existing, wanted);
