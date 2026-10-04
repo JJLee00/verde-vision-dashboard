@@ -61,42 +61,52 @@ export function LaborRates({ sizes, initial }: Props) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3">
-        {sizes.map((size) => (
-          <div key={size} className="text-center">
-            <label
-              htmlFor={`labor-${size}`}
-              className="block text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted"
-            >
-              {size}
-            </label>
-            <div className="relative mt-1.5">
-              <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-faint">
-                $
-              </span>
-              <input
-                id={`labor-${size}`}
-                type="number"
-                min="0"
-                step="0.01"
-                value={draft[size] ?? ""}
-                onChange={(e) => setDraft({ ...draft, [size]: e.target.value })}
-                onBlur={() => commit(size)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") e.currentTarget.blur();
-                }}
-                aria-label={`${size} labor rate`}
-                className={`no-spinner w-24 rounded-lg border bg-card-hover py-2 pl-6 pr-2 text-right text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft ${
-                  washSize === size ? "save-wash " : ""
-                }${
-                  (saved[size] ?? "") !== ""
-                    ? "border-accent/50 font-semibold text-accent-dim"
-                    : "border-edge text-body"
-                }`}
-              />
-            </div>
-          </div>
-        ))}
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-sm tabular-nums">
+          <thead>
+            <tr>
+              {sizes.map((size) => (
+                <th
+                  key={size}
+                  className="w-28 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted"
+                >
+                  <label htmlFor={`labor-${size}`}>{size}</label>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              {sizes.map((size) => (
+                <td key={size} className="relative border border-ink/20 p-0">
+                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-faint">
+                    $
+                  </span>
+                  <input
+                    id={`labor-${size}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={draft[size] ?? ""}
+                    onChange={(e) => setDraft({ ...draft, [size]: e.target.value })}
+                    onBlur={() => commit(size)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    aria-label={`${size} labor rate`}
+                    className={`no-spinner block h-9 w-full bg-transparent pl-6 pr-2.5 text-right text-sm outline-none focus:bg-card-hover focus:outline-2 focus:-outline-offset-2 focus:outline-accent ${
+                      washSize === size ? "save-wash " : ""
+                    }${
+                      (saved[size] ?? "") !== ""
+                        ? "font-semibold text-accent-dim"
+                        : "text-body"
+                    }`}
+                  />
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
       {error && <p className="mt-2 text-sm text-clay">{error}</p>}
     </div>

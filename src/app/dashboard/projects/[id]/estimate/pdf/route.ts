@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
-import { fromRow, type EstimateSettings } from "@/lib/estimate";
+import {
+  ESTIMATE_ITEM_COLUMNS,
+  ESTIMATE_ITEM_COLUMNS_PRE_023,
+  fromRow,
+  isMissingColumn,
+  type EstimateSettings,
+} from "@/lib/estimate";
 import { renderEstimatePDF } from "@/lib/pdf/estimate-pdf";
 import type { OrgBrand } from "@/lib/pdf/doc";
 import {
@@ -111,10 +117,17 @@ async function loadProject(id: string): Promise<Loaded | { error: string; status
       .single(),
     supabase
       .from("estimate_items")
-      .select(
-        "id, sort_order, description, category, quantity, unit, unit_price, total, taxable, note, source, ar_key, price_overridden"
-      )
-      .eq("project_id", id),
+      .select(ESTIMATE_ITEM_COLUMNS)
+      .eq("project_id", id)
+      .then(async (res) =>
+        // Before migration 023 there are no labor columns; print without them.
+        isMissingColumn(res.error?.code)
+          ? await supabase
+              .from("estimate_items")
+              .select(ESTIMATE_ITEM_COLUMNS_PRE_023)
+              .eq("project_id", id)
+          : res
+      ),
     getMembership(supabase, user.id),
   ]);
 

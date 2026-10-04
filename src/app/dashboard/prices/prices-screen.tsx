@@ -44,7 +44,7 @@ export function PricesScreen({
       </header>
 
       {setupNote && (
-        <p className="mt-4 rounded-[10px] border border-edge bg-card px-4 py-3 text-sm text-clay">
+        <p className="mt-4 border border-ink/20 bg-card px-4 py-3 text-sm text-clay">
           One-time setup needed: run{" "}
           <code className="font-mono text-xs">{setupNote}</code> in the
           Supabase SQL editor.
@@ -68,12 +68,12 @@ export function PricesScreen({
         {tiles.map((tile) => (
           <div
             key={tile.label}
-            className="rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]"
+            className="border border-ink/20 bg-card p-4"
           >
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-faint">
               {tile.label}
             </p>
-            <p className="mt-1.5 font-serif text-2xl text-ink">{tile.value}</p>
+            <p className="mt-1 text-xl font-semibold text-ink">{tile.value}</p>
           </div>
         ))}
       </div>
@@ -83,8 +83,8 @@ export function PricesScreen({
         </p>
       )}
 
-      <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
-        <h2 className="font-serif text-2xl text-ink">Labor rates</h2>
+      <section className="mt-7 border border-ink/20 bg-card p-5">
+        <h2 className="text-base font-semibold text-ink">Labor rates</h2>
         <p className="mt-1 text-sm text-muted">
           {laborNote} A blank rate is $0.
         </p>
@@ -93,8 +93,8 @@ export function PricesScreen({
         </div>
       </section>
 
-      <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
-        <h2 className="font-serif text-2xl text-ink">
+      <section className="mt-7 border border-ink/20 bg-card p-5">
+        <h2 className="text-base font-semibold text-ink">
           {title === "Plant Prices" ? "Plant prices" : "Item prices"}
         </h2>
         <p className="mt-1 text-sm text-muted">

@@ -84,12 +84,12 @@ export function SurfacePrices({ initial }: Props) {
   return (
     <div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[420px] border-collapse text-left">
+        <table className="w-full min-w-[420px] border-collapse text-left text-sm">
           <thead>
-            <tr className="border-b border-rule text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-              <th className="py-2 pr-3">Surface</th>
+            <tr className="text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+              <th className="border border-ink/20 bg-paper-deep px-2.5 py-2">Surface</th>
               {COLUMNS.map(({ size, label }) => (
-                <th key={size} className="px-1.5 py-2 text-right">
+                <th key={size} className="w-36 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right">
                   {label}
                 </th>
               ))}
@@ -99,15 +99,15 @@ export function SurfacePrices({ initial }: Props) {
             {STYLES.map((style) => {
               const plantKey = surfacePriceKey(style);
               return (
-                <tr key={style.case} className="border-b border-rule/60">
-                  <td className="py-2 pr-3 text-body">{style.style}</td>
+                <tr key={style.case}>
+                  <td className="border border-ink/20 px-2.5 py-2 text-body">{style.style}</td>
                   {COLUMNS.map(({ size, label }) => {
                     const key = priceCell(plantKey, size);
                     const isSet = (saved[key] ?? "") !== "";
                     return (
-                      <td key={size} className="px-1.5 py-2 text-right">
-                        <span className="relative inline-block">
-                          <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-faint">
+                      <td key={size} className="border border-ink/20 p-0 text-right">
+                        <span className="relative block">
+                          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-faint">
                             $
                           </span>
                           <input
@@ -123,13 +123,9 @@ export function SurfacePrices({ initial }: Props) {
                               if (e.key === "Enter") e.currentTarget.blur();
                             }}
                             aria-label={`${style.style} ${label}`}
-                            className={`no-spinner w-24 rounded-md border bg-card-hover py-1.5 pl-5 pr-2 text-right text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft ${
+                            className={`no-spinner block h-9 w-full bg-transparent pl-6 pr-2.5 text-right text-sm tabular-nums outline-none focus:bg-card-hover focus:outline-2 focus:-outline-offset-2 focus:outline-accent ${
                               washKey === key ? "save-wash " : ""
-                            }${
-                              isSet
-                                ? "border-accent/50 font-semibold text-accent-dim"
-                                : "border-edge text-body"
-                            }`}
+                            }${isSet ? "font-semibold text-accent-dim" : "text-body"}`}
                           />
                         </span>
                       </td>

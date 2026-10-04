@@ -1,9 +1,11 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
 import {
+  ESTIMATE_ITEM_COLUMNS,
+  ESTIMATE_ITEM_COLUMNS_PRE_023,
   fromRow,
+  isMissingColumn,
   sortItems,
   type EstimateItem,
   type EstimateSettings,
@@ -17,6 +19,11 @@ import {
 import { EstimateBuilder, type SavedItem } from "./estimate-builder";
 
 // The estimate builder: the one screen where a bid gets finished.
+//
+// Full screen (Oct 4 2026), like the 3D viewer — the dashboard's menu is
+// hidden on this route (see ../../../chrome.tsx). A 40-row bid needs the
+// width, and the people finishing it live in QuickBooks: the builder is a
+// plain ruled grid on purpose.
 //
 // The headset can only ever quote what was placed in AR, which is a fraction
 // of a landscape job — no irrigation, demolition, delivery, dump fees or
@@ -43,6 +50,8 @@ type PageData = {
   // False until migration-016 has been run: no estimate_items table, no
   // estimate settings columns.
   schemaReady: boolean;
+  // False until migration-023: no per-line labor. The bid shows, read-only.
+  laborReady: boolean;
   readOnly: boolean; // dev fixture
 };
 
@@ -64,6 +73,7 @@ function buildFixtureData(): PageData {
     canEdit: false,
     isOwner: true,
     schemaReady: true,
+    laborReady: true,
     readOnly: true,
   };
 }
@@ -79,7 +89,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
   // themselves arrive with migration-016, so they get their own selects and
   // are read tolerantly. Saved Items is the org price book (migration 003,
   // org-scoped by 007, widened past 'plant'/'labor' by 016).
-  const [baseRes, settingsRes, itemsRes, savedRes, membership] =
+  const [baseRes, settingsRes, { res: itemsRes, laborReady }, savedRes, membership] =
     await Promise.all([
       supabase
         .from("projects")
@@ -93,10 +103,17 @@ async function loadPageData(id: string): Promise<PageData | null> {
         .single(),
       supabase
         .from("estimate_items")
-        .select(
-          "id, sort_order, description, category, quantity, unit, unit_price, total, taxable, note, source, ar_key, price_overridden"
-        )
-        .eq("project_id", id),
+        .select(ESTIMATE_ITEM_COLUMNS)
+        .eq("project_id", id)
+        .then(async (res) => ({
+          res: isMissingColumn(res.error?.code)
+            ? await supabase
+                .from("estimate_items")
+                .select(ESTIMATE_ITEM_COLUMNS_PRE_023)
+                .eq("project_id", id)
+            : res,
+          laborReady: !isMissingColumn(res.error?.code),
+        })),
       supabase
         .from("price_items")
         .select("id, name, category, price, unit")
@@ -137,9 +154,11 @@ async function loadPageData(id: string): Promise<PageData | null> {
     })),
     canEdit:
       schemaReady &&
+      laborReady &&
       (base.client_id === user.id || membership?.role === "owner"),
     isOwner: membership?.role === "owner",
     schemaReady,
+    laborReady,
     readOnly: false,
   };
 }
@@ -156,62 +175,42 @@ export default async function EstimatePage({
       : await loadPageData(id);
   if (!data) notFound();
 
+  const notice = !data.schemaReady
+    ? {
+        title: "Waiting on migration 016",
+        file: "supabase/migration-016-estimate-builder.sql",
+        body: "The estimate tables aren't in this database yet.",
+      }
+    : !data.laborReady
+      ? {
+          title: "Waiting on migration 023",
+          file: "supabase/migration-023-labor-per-line.sql",
+          body: "Lines can't carry their own labor yet, so the estimate is read-only.",
+        }
+      : null;
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-12 lg:py-10">
-      <Link
-        href={`/dashboard/projects/${data.id}`}
-        className="text-[0.72rem] font-semibold uppercase tracking-[0.16em] text-muted transition hover:text-accent"
-      >
-        ← {data.name}
-      </Link>
-
-      <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-serif text-4xl text-ink">Estimate</h1>
-          <p className="mt-1.5 max-w-xl text-sm text-muted">
-            Plants and surfaces come from the design, and so does
-            installation labor when it&apos;s switched on for this project in
-            the headset. Everything else — irrigation, demolition, delivery,
-            dump fees — you add here.
-          </p>
-        </div>
-        {data.readOnly && (
-          <span className="rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-gold">
-            Sample — read only
-          </span>
-        )}
-      </div>
-
-      {!data.schemaReady && (
-        <div className="mt-6 rounded-[14px] border border-gold/40 bg-gold/[0.07] p-5">
-          <h2 className="font-serif text-lg text-ink">
-            Waiting on migration 016
-          </h2>
-          <p className="mt-1.5 text-sm text-muted">
-            The estimate tables aren&apos;t in this database yet. Run{" "}
-            <code className="rounded bg-ink/[0.07] px-1.5 py-0.5 font-mono text-[0.78rem]">
-              supabase/migration-016-estimate-builder.sql
-            </code>{" "}
-            in the Supabase SQL editor and reload — the screen below is live the
-            moment it lands.
-          </p>
+    <EstimateBuilder
+      projectId={data.id}
+      projectName={data.name}
+      initialItems={data.items}
+      initialSettings={data.settings}
+      initialTerms={data.terms}
+      savedItems={data.savedItems}
+      canEdit={data.canEdit}
+      isOwner={data.isOwner}
+      sample={data.readOnly}
+    >
+      {notice && (
+        <div className="border border-gold/50 bg-gold/[0.07] px-4 py-3 text-sm text-body">
+          <span className="font-semibold text-ink">{notice.title}.</span>{" "}
+          {notice.body} Run{" "}
+          <code className="bg-ink/[0.07] px-1.5 py-0.5 font-mono text-[0.78rem]">
+            {notice.file}
+          </code>{" "}
+          in the Supabase SQL editor and reload.
         </div>
       )}
-
-      <EstimateBuilder
-        projectId={data.id}
-        initialItems={data.items}
-        initialSettings={data.settings}
-        initialTerms={data.terms}
-        savedItems={data.savedItems}
-        canEdit={data.canEdit}
-        isOwner={data.isOwner}
-      />
-
-      <p className="mt-8 text-xs text-faint">
-        The grand total syncs back to the project record, so the dashboard card
-        and this bid always agree.
-      </p>
-    </div>
+    </EstimateBuilder>
   );
 }

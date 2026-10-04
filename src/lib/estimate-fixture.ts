@@ -9,15 +9,18 @@ import type { EstimateItem, EstimateSettings } from "@/lib/estimate";
 type Seed = Partial<EstimateItem> & { id: string; sortOrder: number };
 
 const SEEDS: Seed[] = [
-  { id: "f1", sortOrder: 10, description: "(15g) Green Hopseed", category: "plant", quantity: 9, unit: "each", unitPrice: 118, source: "ar", arKey: "plant:green hopseed:15g" },
-  { id: "f2", sortOrder: 20, description: "(5g) Regal Mist", category: "plant", quantity: 14, unit: "each", unitPrice: 42, source: "ar", arKey: "plant:regal mist:5g" },
-  { id: "f3", sortOrder: 30, description: '(24" Box) Texas Ebony', category: "plant", quantity: 2, unit: "each", unitPrice: 385, source: "ar", arKey: "plant:texas ebony:24in box" },
-  { id: "f4", sortOrder: 40, description: "Sierra paver patio", category: "hardscape", quantity: 340, unit: "ft²", unitPrice: 14.25, source: "ar", arKey: "hardscape:a41f" },
+  { id: "f1", sortOrder: 10, description: "(15g) Green Hopseed", category: "plant", quantity: 9, unit: "each", unitPrice: 118, laborUnitPrice: 85, source: "ar", arKey: "plant:green hopseed:15g" },
+  { id: "f2", sortOrder: 20, description: "(5g) Regal Mist", category: "plant", quantity: 14, unit: "each", unitPrice: 42, laborUnitPrice: 45, source: "ar", arKey: "plant:regal mist:5g" },
+  { id: "f3", sortOrder: 30, description: '(24" Box) Texas Ebony', category: "plant", quantity: 2, unit: "each", unitPrice: 385, laborUnitPrice: 240, source: "ar", arKey: "plant:texas ebony:24in box" },
+  // Left unpriced on purpose: a blank grid cell is $0, and the builder flags it.
+  { id: "f3b", sortOrder: 35, description: "(1g) White Dawn Lantana", category: "plant", quantity: 6, unit: "each", unitPrice: 0, laborUnitPrice: 18, source: "ar", arKey: "plant:white dawn lantana:1g" },
+  { id: "f4", sortOrder: 40, description: "Sierra Blend Cobble surface", category: "hardscape", quantity: 340, unit: "ft²", unitPrice: 14.25, laborUnitPrice: 5.75, source: "ar", arKey: "hardscape:a41f" },
   { id: "f5", sortOrder: 50, description: "Irrigation system modification", category: "irrigation", quantity: 1, unit: "ls", unitPrice: 1200, note: "Includes 2 valves; excludes trenching under the drive." },
   { id: "f6", sortOrder: 60, description: "Remove 3 oleanders + stump grind", category: "demolition", quantity: 1, unit: "ls", unitPrice: 850 },
   { id: "f7", sortOrder: 70, description: "Dump fees", category: "fee", quantity: 2, unit: "load", unitPrice: 225 },
   { id: "f8", sortOrder: 80, description: "Delivery", category: "delivery", quantity: 1, unit: "trip", unitPrice: 185 },
-  { id: "f9", sortOrder: 90, description: "Install labor", category: "labor", quantity: 36, unit: "hr", unitPrice: 62.5, taxable: false },
+  // Labor-only work typed by hand: no material, so nothing on it is taxed.
+  { id: "f9", sortOrder: 90, description: "Trench for new drip line", category: "irrigation", quantity: 6, unit: "hr", unitPrice: 0, laborUnitPrice: 62.5 },
 ];
 
 export const FIXTURE_ITEMS: EstimateItem[] = SEEDS.map((seed) => {
@@ -29,17 +32,20 @@ export const FIXTURE_ITEMS: EstimateItem[] = SEEDS.map((seed) => {
     quantity: 1,
     unit: "each",
     unitPrice: 0,
+    laborUnitPrice: 0,
     total: 0,
     taxable: true,
     note: null,
     source: "manual",
     arKey: null,
     priceOverridden: false,
+    laborOverridden: false,
   };
   const merged = { ...base, ...seed };
   return {
     ...merged,
-    total: Math.round(merged.quantity * merged.unitPrice * 100) / 100,
+    total:
+      Math.round(merged.quantity * (merged.unitPrice + merged.laborUnitPrice) * 100) / 100,
   };
 });
 

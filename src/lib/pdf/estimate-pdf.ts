@@ -24,6 +24,7 @@ import {
 } from "./doc";
 import {
   computeTotals,
+  qtyLabel,
   groupByCategory,
   sortItems,
   type EstimateItem,
@@ -32,8 +33,11 @@ import {
 
 // The proposal. Two shapes off the same rows, chosen per estimate:
 //
-//   itemized — every line with its quantity and unit price. Maximum
-//              transparency, and the client can price-shop line by line.
+//   itemized — every line with its quantity and its INSTALLED price —
+//              material and labor as one number, the way a homeowner reads
+//              a bid. Per-line labor stays internal to the estimate builder
+//              (migration 023); a client who sees "$45 to plant a 5-gallon"
+//              haggles over the labor, not the job.
 //   grouped  — rows rolled up by category into one line each, label and
 //              total only. Quantities and unit prices stay internal.
 //
@@ -56,12 +60,13 @@ export type EstimateDocInput = {
 };
 
 // Column geometry for the itemized table, measured from the left margin.
+// No Unit column (Oct 4 2026): a unit that says something rides in the
+// quantity — "538.19 ft²" — via qtyLabel.
 const COL = {
-  item: { x: 0, w: 234 },
-  qty: { x: 240, w: 40 },
-  unit: { x: 286, w: 44 },
-  price: { x: 334, w: 76 },
-  total: { x: 416, w: 88 },
+  item: { x: 0, w: 266 },
+  qty: { x: 272, w: 70 },
+  price: { x: 348, w: 74 },
+  total: { x: 428, w: 76 },
 } as const;
 
 const x = (c: { x: number }) => PAGE.margin + c.x;
@@ -156,8 +161,7 @@ function tableHead(doc: Doc, y: number): number {
     .fontSize(7)
     .fillColor(FAINT)
     .text("QTY", x(COL.qty), y, { width: COL.qty.w, align: "right", characterSpacing: 1.1 })
-    .text("UNIT", x(COL.unit), y, { width: COL.unit.w, characterSpacing: 1.1 })
-    .text("UNIT PRICE", x(COL.price), y, { width: COL.price.w, align: "right", characterSpacing: 1.1 })
+    .text("PRICE", x(COL.price), y, { width: COL.price.w, align: "right", characterSpacing: 1.1 })
     .text("TOTAL", x(COL.total), y, { width: COL.total.w, align: "right", characterSpacing: 1.1 });
   rule(doc, y + 12, RULE);
   return y + 19;
@@ -192,13 +196,13 @@ function drawItemized(doc: Doc, items: EstimateItem[], startY: number): number {
       .font(FONT.sans)
       .fontSize(9.5)
       .fillColor(TEXT)
-      .text(trimNumber(item.quantity), x(COL.qty), y, {
+      .text(qtyLabel(item), x(COL.qty), y, {
         width: COL.qty.w,
         align: "right",
       })
-      .text(item.unit, x(COL.unit), y, { width: COL.unit.w })
       .fillColor(MUTED)
-      .text(money.format(item.unitPrice), x(COL.price), y, {
+      // Installed price: material + labor, one number for the client.
+      .text(money.format(item.unitPrice + item.laborUnitPrice), x(COL.price), y, {
         width: COL.price.w,
         align: "right",
       });
