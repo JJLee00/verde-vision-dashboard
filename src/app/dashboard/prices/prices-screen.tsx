@@ -99,7 +99,8 @@ export function PricesScreen({
         </h2>
         <p className="mt-1 text-sm text-muted">
           Your price per item, per size. Changes save as you go. A blank cell
-          is $0 — on estimates and in the headset.
+          is $0 — on estimates and in the headset. A change prices new lines;
+          lines already on an estimate keep the price they were given.
         </p>
         <div className="mt-5">
           <PlantPriceGrid

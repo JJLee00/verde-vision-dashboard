@@ -84,6 +84,62 @@ const BUTTON_PRIMARY =
 /** A design line still at $0 — its plant or surface has no price in the grid. */
 const isUnpriced = (i: EstimateItem) => i.source === "ar" && i.unitPrice === 0;
 
+// ── Undo ───────────────────────────────────────────────────────────────────
+// One step back at a time, for everything typed or clicked on this page, for
+// as long as it stays open. No redo — the same shape as the headset's undo
+// (session-scoped, by design). Each entry is what it takes to reverse one
+// write, recorded only once that write has landed.
+
+type SettingColumn = "tax_rate" | "deposit_percent";
+type UndoEntry =
+  | { kind: "fields"; id: string; before: Partial<EstimateItem>; label: string }
+  | { kind: "add"; id: string; label: string }
+  | { kind: "remove"; row: EstimateItem; label: string }
+  | { kind: "order"; before: { id: string; sortOrder: number }[]; label: string }
+  | { kind: "setting"; column: SettingColumn; before: number; label: string };
+
+const UNDO_LIMIT = 50;
+
+// The estimate_items column behind each editable field.
+const COLUMN_OF: Partial<Record<keyof EstimateItem, string>> = {
+  description: "description",
+  category: "category",
+  quantity: "quantity",
+  unitPrice: "unit_price",
+  laborUnitPrice: "labor_unit_price",
+  taxable: "taxable",
+  note: "note",
+  sortOrder: "sort_order",
+  priceOverridden: "price_overridden",
+  laborOverridden: "labor_overridden",
+};
+
+function undoLabel(changes: Partial<EstimateItem>): string {
+  if ("unitPrice" in changes) return "price change";
+  if ("laborUnitPrice" in changes) return "labor change";
+  if ("quantity" in changes) return "quantity change";
+  if ("note" in changes) return "description change";
+  if ("description" in changes) return "item name change";
+  if ("taxable" in changes) return "tax change";
+  if ("sortOrder" in changes) return "move";
+  return "change";
+}
+
+// Bringing a deleted line back gives it a new id; earlier entries that named
+// the old one must follow it.
+function remapEntry(entry: UndoEntry, from: string, to: string): UndoEntry {
+  if ((entry.kind === "fields" || entry.kind === "add") && entry.id === from) {
+    return { ...entry, id: to };
+  }
+  if (entry.kind === "order") {
+    return {
+      ...entry,
+      before: entry.before.map((o) => (o.id === from ? { ...o, id: to } : o)),
+    };
+  }
+  return entry;
+}
+
 export function EstimateBuilder({
   projectId,
   projectName,
@@ -127,6 +183,10 @@ export function EstimateBuilder({
   // moment it mounts. Done in the ref callback, not an effect: the input
   // doesn't exist yet when the row is created.
   const pendingFocus = useRef<string | null>(null);
+  const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  const [undoing, setUndoing] = useState(false);
+  const pushUndo = (entry: UndoEntry) =>
+    setUndoStack((stack) => [...stack.slice(-(UNDO_LIMIT - 1)), entry]);
 
   const totals = computeTotals(items, settings);
   const unpriced = items.filter(isUnpriced).length;
@@ -149,65 +209,69 @@ export function EstimateBuilder({
       .eq("id", projectId);
   }
 
-  async function patch(item: EstimateItem, changes: Partial<EstimateItem>) {
+  /**
+   * Writes exactly these fields to one line and nothing else — no override
+   * flags, no price-book offer. A designer's edit (patch) and undo both land
+   * here, so an undo can put back the override flags an edit set.
+   */
+  async function writeFields(id: string, fields: Partial<EstimateItem>): Promise<boolean> {
+    const current = items.find((i) => i.id === id);
+    if (!current) return false;
     const before = items;
-    const merged: EstimateItem = { ...item, ...changes };
-    const payload: Record<string, unknown> = {};
-    if ("description" in changes) payload.description = merged.description;
-    if ("category" in changes) payload.category = merged.category;
-    if ("quantity" in changes) payload.quantity = merged.quantity;
-    if ("unitPrice" in changes) {
-      payload.unit_price = merged.unitPrice;
-      // An AR row whose price a human typed must survive the next resync.
-      if (merged.source === "ar" && !merged.priceOverridden) {
-        payload.price_overridden = true;
-        merged.priceOverridden = true;
-      }
-      // Only owners can write the price book, so only they are offered it.
-      if (merged.source === "ar" && isOwner) {
-        // A plant row's key is plant:<catalog key>:<size> — the grid cell.
-        const [kind, plantKey, ...sizeParts] = (merged.arKey ?? "").split(":");
-        const plant = kind === "plant" ? plantForKey(plantKey ?? "") : null;
-        const size = sizeParts.join(":");
-        if (plant && size && merged.unitPrice > 0) {
-          setPriceOffer({
-            itemId: merged.id,
-            plantName: plant.name,
-            plantKey: plant.key,
-            size,
-            price: merged.unitPrice,
-          });
-        }
-      }
-    }
-    if ("laborUnitPrice" in changes) {
-      payload.labor_unit_price = merged.laborUnitPrice;
-      // Same contract as the price: typed labor survives a resync.
-      if (merged.source === "ar" && !merged.laborOverridden) {
-        payload.labor_overridden = true;
-        merged.laborOverridden = true;
-      }
-    }
-    if ("taxable" in changes) payload.taxable = merged.taxable;
-    if ("note" in changes) payload.note = merged.note;
-    if ("sortOrder" in changes) payload.sort_order = merged.sortOrder;
-
+    const merged: EstimateItem = { ...current, ...fields };
     merged.total = lineTotal(merged);
-    const next = items.map((i) => (i.id === item.id ? merged : i));
+    const next = items.map((i) => (i.id === id ? merged : i));
     setItems(next);
     setError(null);
 
+    const payload: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      const column = COLUMN_OF[key as keyof EstimateItem];
+      if (column) payload[column] = value;
+    }
     const { error: err } = await createClient()
       .from("estimate_items")
       .update(payload)
-      .eq("id", item.id);
+      .eq("id", id);
     if (err) {
       setItems(before);
       setError("Could not save that change.");
-      return;
+      return false;
     }
-    flash(item.id);
+    flash(id);
     syncProjectTotal(next, settings);
+    return true;
+  }
+
+  async function patch(item: EstimateItem, changes: Partial<EstimateItem>) {
+    const fields: Partial<EstimateItem> = { ...changes };
+    if ("unitPrice" in changes) {
+      // An AR row whose price a human typed must survive the next resync.
+      if (item.source === "ar" && !item.priceOverridden) fields.priceOverridden = true;
+      // Only owners can write the price book, so only they are offered it.
+      const price = changes.unitPrice ?? 0;
+      if (item.source === "ar" && isOwner && price > 0) {
+        // A plant row's key is plant:<catalog key>:<size> — the grid cell.
+        const [kind, plantKey, ...sizeParts] = (item.arKey ?? "").split(":");
+        const plant = kind === "plant" ? plantForKey(plantKey ?? "") : null;
+        const size = sizeParts.join(":");
+        if (plant && size) {
+          setPriceOffer({ itemId: item.id, plantName: plant.name, plantKey: plant.key, size, price });
+        }
+      }
+    }
+    // Same contract as the price: typed labor survives a resync.
+    if ("laborUnitPrice" in changes && item.source === "ar" && !item.laborOverridden) {
+      fields.laborOverridden = true;
+    }
+
+    const before: Partial<EstimateItem> = {};
+    for (const key of Object.keys(fields) as (keyof EstimateItem)[]) {
+      (before as Record<string, unknown>)[key] = item[key];
+    }
+    if (await writeFields(item.id, fields)) {
+      pushUndo({ kind: "fields", id: item.id, before, label: undoLabel(changes) });
+    }
   }
 
   async function addRow(seed?: Partial<EstimateItem>) {
@@ -242,23 +306,59 @@ export function EstimateBuilder({
     setItems(next);
     pendingFocus.current = row.id;
     syncProjectTotal(next, settings);
+    pushUndo({ kind: "add", id: row.id, label: "new line" });
   }
 
-  async function removeRow(item: EstimateItem) {
+  async function deleteLine(id: string): Promise<boolean> {
     const before = items;
-    const next = items.filter((i) => i.id !== item.id);
+    const next = items.filter((i) => i.id !== id);
     setItems(next);
     setError(null);
     const { error: err } = await createClient()
       .from("estimate_items")
       .delete()
-      .eq("id", item.id);
+      .eq("id", id);
     if (err) {
       setItems(before);
       setError("Could not delete that line.");
-      return;
+      return false;
     }
     syncProjectTotal(next, settings);
+    return true;
+  }
+
+  async function removeRow(item: EstimateItem) {
+    if (await deleteLine(item.id)) pushUndo({ kind: "remove", row: item, label: "delete" });
+  }
+
+  /** Puts a deleted hand-typed line back, where it was. Returns its new id. */
+  async function restoreLine(row: EstimateItem): Promise<string | null> {
+    const { data, error: err } = await createClient()
+      .from("estimate_items")
+      .insert({
+        project_id: projectId,
+        sort_order: row.sortOrder,
+        description: row.description,
+        category: row.category,
+        quantity: row.quantity,
+        unit: row.unit,
+        unit_price: row.unitPrice,
+        labor_unit_price: row.laborUnitPrice,
+        taxable: row.taxable,
+        note: row.note,
+        source: "manual",
+      })
+      .select(ESTIMATE_ITEM_COLUMNS)
+      .single();
+    if (err || !data) {
+      setError("Could not bring that line back.");
+      return null;
+    }
+    const restored = fromRow(data);
+    const next = sortItems([...items, restored]);
+    setItems(next);
+    syncProjectTotal(next, settings);
+    return restored.id;
   }
 
   // Moving a row is one UPDATE to a midpoint sort_order. When the gap between
@@ -276,33 +376,33 @@ export function EstimateBuilder({
         : midpointSortOrder(neighbour.sortOrder, beyond?.sortOrder ?? null);
 
     if (target == null) {
-      await respace(ordered);
+      const before = ordered.map((i) => ({ id: i.id, sortOrder: i.sortOrder }));
+      const renumbered = ordered.map((i, idx) => ({ id: i.id, sortOrder: (idx + 1) * 10 }));
+      if (await writeOrder(renumbered)) pushUndo({ kind: "order", before, label: "move" });
       return;
     }
     await patch(item, { sortOrder: target });
   }
 
-  async function respace(rows: EstimateItem[]) {
+  async function writeOrder(order: { id: string; sortOrder: number }[]): Promise<boolean> {
     setBusy(true);
     const supabase = createClient();
-    const renumbered = rows.map((i, idx) => ({ ...i, sortOrder: (idx + 1) * 10 }));
     const results = await Promise.all(
-      renumbered.map((i) =>
-        supabase
-          .from("estimate_items")
-          .update({ sort_order: i.sortOrder })
-          .eq("id", i.id)
+      order.map((o) =>
+        supabase.from("estimate_items").update({ sort_order: o.sortOrder }).eq("id", o.id)
       )
     );
     setBusy(false);
     if (results.some((r) => r.error)) {
       setError("Could not reorder — reload and try again.");
-      return;
+      return false;
     }
-    setItems(renumbered);
+    const byId = new Map(order.map((o) => [o.id, o.sortOrder]));
+    setItems(items.map((i) => (byId.has(i.id) ? { ...i, sortOrder: byId.get(i.id)! } : i)));
+    return true;
   }
 
-  async function saveSetting(column: "tax_rate" | "deposit_percent", value: number) {
+  async function writeSetting(column: SettingColumn, value: number): Promise<boolean> {
     const before = settings;
     const next: EstimateSettings = {
       ...settings,
@@ -318,11 +418,77 @@ export function EstimateBuilder({
     if (err) {
       setSettings(before);
       setError("Could not save that setting.");
-      return;
+      return false;
     }
     flash(column);
     syncProjectTotal(items, next);
+    return true;
   }
+
+  async function saveSetting(column: SettingColumn, value: number) {
+    const previous = column === "tax_rate" ? settings.taxRate : settings.depositPercent;
+    if (await writeSetting(column, value)) {
+      pushUndo({
+        kind: "setting",
+        column,
+        before: previous,
+        label: column === "tax_rate" ? "tax rate change" : "deposit change",
+      });
+    }
+  }
+
+  async function undo() {
+    const entry = undoStack[undoStack.length - 1];
+    if (!entry || undoing) return;
+    setUndoing(true);
+    let done = false;
+    let renamed: [string, string] | null = null;
+    if (entry.kind === "fields") {
+      // The line may be gone (a resync removed its plant): nothing to put back.
+      done = items.some((i) => i.id === entry.id)
+        ? await writeFields(entry.id, entry.before)
+        : true;
+    } else if (entry.kind === "add") {
+      done = items.some((i) => i.id === entry.id) ? await deleteLine(entry.id) : true;
+    } else if (entry.kind === "remove") {
+      const id = await restoreLine(entry.row);
+      done = id != null;
+      if (id) renamed = [entry.row.id, id];
+    } else if (entry.kind === "order") {
+      done = await writeOrder(entry.before.filter((o) => items.some((i) => i.id === o.id)));
+    } else {
+      done = await writeSetting(entry.column, entry.before);
+    }
+    if (done) {
+      setUndoStack((stack) => {
+        const rest = stack.slice(0, -1);
+        return renamed ? rest.map((e) => remapEntry(e, renamed![0], renamed![1])) : rest;
+      });
+    }
+    setUndoing(false);
+  }
+
+  // ⌘Z / Ctrl+Z steps back — except inside a cell, where it stays the
+  // browser's own text undo for what's being typed.
+  const undoRef = useRef(undo);
+  useEffect(() => {
+    undoRef.current = undo;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== "z") return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      void undoRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const lastUndo = undoStack[undoStack.length - 1];
 
   /**
    * Push a price typed on an estimate up into the price book — the very grid
@@ -431,6 +597,15 @@ export function EstimateBuilder({
             Line items
           </h2>
           <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void undo()}
+              disabled={readOnly || undoing || !lastUndo}
+              title={lastUndo ? `Undo ${lastUndo.label} (⌘Z)` : "Nothing to undo"}
+              className={BUTTON}
+            >
+              ↶ Undo
+            </button>
             <button
               type="button"
               onClick={() => setPickerOpen((o) => !o)}
