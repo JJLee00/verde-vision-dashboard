@@ -76,6 +76,10 @@ export type ProjectFileJSON = {
   // Cumulative seconds spent in each mode across all sessions, keyed
   // "design" | "blueprint" | "night" | "clientView" (presenting).
   modeSeconds?: Record<string, number> | null;
+  // The headset estimate's Labor switch, saved per project (Oct 4 2026).
+  // true → rebuildPlantRows keeps a Labor line on this project's estimate.
+  // Absent on every project saved before the switch moved onto the project.
+  includeLabor?: boolean | null;
 };
 
 export const METERS_TO_FEET = 3.28084;
