@@ -6,8 +6,9 @@
 // call these functions.
 //
 // An estimate is ONE FLAT LIST of rows (decided Sep 25 2026). `category` is a
-// tag, not structure: it drives the Saved Items picker and lets the client PDF
-// roll rows up into lump sums without the editor nesting anything.
+// tag, not structure — and since Oct 4 2026 not even shown: the Category
+// column and the lump-sum proposal it fed are gone. It still tells the Saved
+// Items picker which items are labor.
 
 export const CATEGORIES = [
   "plant",
@@ -25,8 +26,8 @@ export const CATEGORIES = [
 
 export type EstimateCategory = (typeof CATEGORIES)[number];
 
-// What each tag is called on screen, and the heading it becomes when the
-// client PDF is set to grouped lump sums.
+// What each tag is called, wherever one is still named (the category picker
+// for a hand-typed line is gone, but rows keep the tag).
 export const CATEGORY_LABELS: Record<EstimateCategory, string> = {
   plant: "Planting",
   hardscape: "Hardscape",
@@ -87,7 +88,6 @@ export type EstimateSettings = {
   // Percent, e.g. 8.6 — not a fraction.
   taxRate: number;
   depositPercent: number;
-  detail: "itemized" | "grouped";
 };
 
 export type EstimateTotals = {
@@ -142,31 +142,6 @@ export function computeTotals(
     deposit,
     balance: round2(total - deposit),
   };
-}
-
-export type CategoryGroup = {
-  category: EstimateCategory;
-  label: string;
-  total: number;
-  lineCount: number;
-};
-
-// The grouped (lump-sum) view of the same rows, in CATEGORIES order with
-// empty categories dropped. Its totals sum to computeTotals().subtotal by
-// construction — the two PDF modes must never disagree on the bottom line.
-export function groupByCategory(items: EstimateItem[]): CategoryGroup[] {
-  return CATEGORIES.flatMap((category) => {
-    const rows = items.filter((i) => i.category === category);
-    if (rows.length === 0) return [];
-    return [
-      {
-        category,
-        label: CATEGORY_LABELS[category],
-        total: round2(rows.reduce((sum, i) => sum + i.total, 0)),
-        lineCount: rows.length,
-      },
-    ];
-  });
 }
 
 // Rows are spaced by 10 so moving one is a single UPDATE to a midpoint

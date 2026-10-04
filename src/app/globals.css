@@ -16,6 +16,8 @@
   --accent-dim: #234a35;
   --accent-soft: rgba(46, 93, 67, 0.22);
   --clay: #b0552f;
+  /* Text on a clay fill — the website's pricing band uses the same pair. */
+  --on-clay: #f7efe0;
   --gold: #a87b2f;
   --rule: rgba(28, 42, 33, 0.14);
   --rule-strong: rgba(28, 42, 33, 0.3);
@@ -36,6 +38,7 @@
   --color-accent-dim: var(--accent-dim);
   --color-accent-soft: var(--accent-soft);
   --color-clay: var(--clay);
+  --color-on-clay: var(--on-clay);
   --color-gold: var(--gold);
   --color-rule: var(--rule);
   --color-rule-strong: var(--rule-strong);

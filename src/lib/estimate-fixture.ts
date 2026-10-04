@@ -11,7 +11,7 @@ type Seed = Partial<EstimateItem> & { id: string; sortOrder: number };
 const SEEDS: Seed[] = [
   { id: "f1", sortOrder: 10, description: "(15g) Green Hopseed", category: "plant", quantity: 9, unit: "each", unitPrice: 118, laborUnitPrice: 85, source: "ar", arKey: "plant:green hopseed:15g" },
   { id: "f2", sortOrder: 20, description: "(5g) Regal Mist", category: "plant", quantity: 14, unit: "each", unitPrice: 42, laborUnitPrice: 45, source: "ar", arKey: "plant:regal mist:5g" },
-  { id: "f3", sortOrder: 30, description: '(24" Box) Texas Ebony', category: "plant", quantity: 2, unit: "each", unitPrice: 385, laborUnitPrice: 240, source: "ar", arKey: "plant:texas ebony:24in box" },
+  { id: "f3", sortOrder: 30, description: '(24" Box) Texas Ebony', category: "plant", quantity: 2, unit: "each", unitPrice: 385, laborUnitPrice: 240, note: "Flanking the front walk", source: "ar", arKey: "plant:texas ebony:24in box" },
   // Left unpriced on purpose: a blank grid cell is $0, and the builder flags it.
   { id: "f3b", sortOrder: 35, description: "(1g) White Dawn Lantana", category: "plant", quantity: 6, unit: "each", unitPrice: 0, laborUnitPrice: 18, source: "ar", arKey: "plant:white dawn lantana:1g" },
   { id: "f4", sortOrder: 40, description: "Sierra Blend Cobble surface", category: "hardscape", quantity: 340, unit: "ft²", unitPrice: 14.25, laborUnitPrice: 5.75, source: "ar", arKey: "hardscape:a41f" },
@@ -52,7 +52,6 @@ export const FIXTURE_ITEMS: EstimateItem[] = SEEDS.map((seed) => {
 export const FIXTURE_SETTINGS: EstimateSettings = {
   taxRate: 8.6,
   depositPercent: 30,
-  detail: "itemized",
 };
 
 export const FIXTURE_SAVED_ITEMS = [

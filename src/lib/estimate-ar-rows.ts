@@ -46,6 +46,37 @@ export function placementLaborRate(placement: PlacedPlantJSON, book: PriceBook):
 type DbClient = SupabaseClient;
 
 /**
+ * Only the fields that would actually change. The estimate page rebuilds the
+ * design rows every time it opens (so a price changed on the Prices pages
+ * shows at once), and rewriting forty unchanged rows on every look is forty
+ * round trips for nothing. numeric columns arrive as strings ("60.00").
+ */
+function changedFields(
+  existing: Record<string, unknown>,
+  wanted: Record<string, unknown>
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(wanted)) {
+    const current = existing[key];
+    const same =
+      typeof value === "number" ? Number(current) === value : current === value;
+    if (!same) patch[key] = value;
+  }
+  return patch;
+}
+
+type ExistingRow = {
+  id: string;
+  ar_key: string | null;
+  description: string;
+  quantity: number | string;
+  unit_price: number | string;
+  price_overridden: boolean;
+  labor_unit_price?: number | string | null;
+  labor_overridden?: boolean | null;
+};
+
+/**
  * The labor columns a design row should be written with.
  *
  *   • Labor off for this project → no labor on any design line, and any
@@ -124,8 +155,8 @@ export async function rebuildPlantRows(
   const perLine = !isMissingColumn(probeError?.code);
   const includeLabor = design.includeLabor === true;
   const rowColumns = perLine
-    ? "id, ar_key, description, price_overridden, labor_overridden"
-    : "id, ar_key, description, price_overridden";
+    ? "id, ar_key, description, quantity, unit_price, price_overridden, labor_unit_price, labor_overridden"
+    : "id, ar_key, description, quantity, unit_price, price_overridden";
 
   // Group identical plant-and-size pairs into one line, the way a bid reads.
   type Group = { description: string; qty: number; price: number; labor: number };
@@ -149,13 +180,6 @@ export async function rebuildPlantRows(
     }
   }
 
-  type ExistingRow = {
-    id: string;
-    ar_key: string | null;
-    description: string;
-    price_overridden: boolean;
-    labor_overridden?: boolean | null;
-  };
   const { data: existingRows } = await supabase
     .from("estimate_items")
     .select(rowColumns)
@@ -174,9 +198,14 @@ export async function rebuildPlantRows(
     if (existing) {
       // A price a designer typed over survives: quantity follows the design,
       // the price stays theirs.
-      const patch: Record<string, unknown> = { quantity: group.qty, ...labor };
-      if (!existing.price_overridden) patch.unit_price = group.price;
-      await supabase.from("estimate_items").update(patch).eq("id", existing.id);
+      const patch = changedFields(existing, {
+        quantity: group.qty,
+        ...labor,
+        ...(existing.price_overridden ? {} : { unit_price: group.price }),
+      });
+      if (Object.keys(patch).length > 0) {
+        await supabase.from("estimate_items").update(patch).eq("id", existing.id);
+      }
       byKey.delete(arKey);
     } else {
       await supabase.from("estimate_items").insert({
@@ -223,7 +252,7 @@ export async function rebuildPlantRows(
   if (allRows) {
     const { data: settings } = await supabase
       .from("projects")
-      .select("tax_rate")
+      .select("tax_rate, estimate_amount")
       .eq("id", projectId)
       .maybeSingle();
     const subtotal = allRows.reduce((s, r) => s + Number(r.total ?? 0), 0);
@@ -234,10 +263,12 @@ export async function rebuildPlantRows(
     );
     const rate = Number(settings?.tax_rate ?? 0);
     const total = round2(round2(subtotal) + round2((round2(taxable) * rate) / 100));
-    await supabase
-      .from("projects")
-      .update({ estimate_amount: total })
-      .eq("id", projectId);
+    if (settings?.estimate_amount == null || Number(settings.estimate_amount) !== total) {
+      await supabase
+        .from("projects")
+        .update({ estimate_amount: total })
+        .eq("id", projectId);
+    }
   }
 
   return groups.size;
@@ -278,13 +309,6 @@ async function syncSurfaceRows(
     });
   }
 
-  type ExistingRow = {
-    id: string;
-    ar_key: string | null;
-    description: string;
-    price_overridden: boolean;
-    labor_overridden?: boolean | null;
-  };
   const { data: existingRows } = await supabase
     .from("estimate_items")
     .select(rowColumns)
@@ -300,20 +324,23 @@ async function syncSurfaceRows(
     const existing = byKey.get(arKey) ?? null;
     if (existing) {
       const restyled = existing.description !== row.description;
-      const patch: Record<string, unknown> = {
+      const wanted: Record<string, unknown> = {
         quantity: row.sqFt,
         // A new material starts from its own labor, override or not.
         ...laborFields(perLine, includeLabor, row.labor, restyled ? null : existing),
       };
       if (restyled) {
-        patch.description = row.description;
-        patch.unit_price = row.price;
-        patch.price_overridden = false;
-        if (perLine) patch.labor_overridden = false;
+        wanted.description = row.description;
+        wanted.unit_price = row.price;
+        wanted.price_overridden = false;
+        if (perLine) wanted.labor_overridden = false;
       } else if (!existing.price_overridden) {
-        patch.unit_price = row.price;
+        wanted.unit_price = row.price;
       }
-      await supabase.from("estimate_items").update(patch).eq("id", existing.id);
+      const patch = changedFields(existing, wanted);
+      if (Object.keys(patch).length > 0) {
+        await supabase.from("estimate_items").update(patch).eq("id", existing.id);
+      }
       byKey.delete(arKey);
     } else {
       await supabase.from("estimate_items").insert({

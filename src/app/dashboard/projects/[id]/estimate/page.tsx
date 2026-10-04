@@ -16,6 +16,8 @@ import {
   FIXTURE_SAVED_ITEMS,
   FIXTURE_SETTINGS,
 } from "@/lib/estimate-fixture";
+import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
+import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { EstimateBuilder, type SavedItem } from "./estimate-builder";
 
 // The estimate builder: the one screen where a bid gets finished.
@@ -43,7 +45,6 @@ type PageData = {
   clientId: string;
   items: EstimateItem[];
   settings: EstimateSettings;
-  terms: string;
   savedItems: SavedItem[];
   canEdit: boolean;
   isOwner: boolean;
@@ -58,7 +59,6 @@ type PageData = {
 const DEFAULT_SETTINGS: EstimateSettings = {
   taxRate: 0,
   depositPercent: 0,
-  detail: "itemized",
 };
 
 function buildFixtureData(): PageData {
@@ -68,7 +68,6 @@ function buildFixtureData(): PageData {
     clientId: "fixture",
     items: FIXTURE_ITEMS,
     settings: FIXTURE_SETTINGS,
-    terms: "",
     savedItems: FIXTURE_SAVED_ITEMS,
     canEdit: false,
     isOwner: true,
@@ -85,20 +84,43 @@ async function loadPageData(id: string): Promise<PageData | null> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // The base row predates everything; the settings columns and the rows
-  // themselves arrive with migration-016, so they get their own selects and
-  // are read tolerantly. Saved Items is the org price book (migration 003,
-  // org-scoped by 007, widened past 'plant'/'labor' by 016).
-  const [baseRes, settingsRes, { res: itemsRes, laborReady }, savedRes, membership] =
+  const [baseRes, designRes, membership] = await Promise.all([
+    supabase.from("projects").select("id, name, client_id").eq("id", id).single(),
+    // A migration-008 column, read on its own so the page opens without it.
+    supabase.from("projects").select("project_json").eq("id", id).maybeSingle(),
+    getMembership(supabase, user.id),
+  ]);
+
+  const base = baseRes.data;
+  if (baseRes.error || !base) return null;
+  const mayEdit = base.client_id === user.id || membership?.role === "owner";
+
+  // Refresh the design's lines BEFORE reading them (Oct 4 2026). They used to
+  // move only when the headset synced or the office published, so a price
+  // changed on the Prices pages — a labor rate, a surface price — sat stale on
+  // every open estimate until somebody walked a yard. Rebuilt from the design
+  // the dashboard already holds; anything typed over survives, exactly as on
+  // every sync, and unchanged lines aren't rewritten. Only someone who may
+  // edit the estimate triggers it, and a failure costs freshness, not the page.
+  const design = (designRes.data as { project_json?: ProjectFileJSON | null } | null)
+    ?.project_json;
+  if (mayEdit && design) {
+    try {
+      await rebuildPlantRows(supabase, id, design);
+    } catch (err) {
+      console.error("[estimate] refreshing the design lines failed", err);
+    }
+  }
+
+  // The settings columns and the rows arrive with migration-016, so they get
+  // their own selects and are read tolerantly. Saved Items is the org price
+  // book (migration 003, org-scoped by 007, widened past 'plant'/'labor' by
+  // 016).
+  const [settingsRes, { res: itemsRes, laborReady }, savedRes] =
     await Promise.all([
       supabase
         .from("projects")
-        .select("id, name, client_id")
-        .eq("id", id)
-        .single(),
-      supabase
-        .from("projects")
-        .select("tax_rate, deposit_percent, estimate_detail, estimate_terms")
+        .select("tax_rate, deposit_percent")
         .eq("id", id)
         .single(),
       supabase
@@ -118,11 +140,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
         .from("price_items")
         .select("id, name, category, price, unit")
         .order("name"),
-      getMembership(supabase, user.id),
     ]);
-
-  const base = baseRes.data;
-  if (baseRes.error || !base) return null;
 
   const schemaReady = !settingsRes.error && !itemsRes.error;
 
@@ -130,10 +148,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
     ? {
         taxRate: Number(settingsRes.data.tax_rate ?? 0),
         depositPercent: Number(settingsRes.data.deposit_percent ?? 0),
-        detail:
-          settingsRes.data.estimate_detail === "grouped"
-            ? "grouped"
-            : "itemized",
       }
     : DEFAULT_SETTINGS;
 
@@ -143,7 +157,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
     clientId: base.client_id,
     items: sortItems((itemsRes.data ?? []).map(fromRow)),
     settings,
-    terms: settingsRes.data?.estimate_terms ?? "",
     // Pre-016 the price book still answers, just without the new categories.
     savedItems: (savedRes.data ?? []).map((r) => ({
       id: r.id as string,
@@ -152,10 +165,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
       price: Number(r.price),
       unit: (r.unit as string) ?? "each",
     })),
-    canEdit:
-      schemaReady &&
-      laborReady &&
-      (base.client_id === user.id || membership?.role === "owner"),
+    canEdit: schemaReady && laborReady && mayEdit,
     isOwner: membership?.role === "owner",
     schemaReady,
     laborReady,
@@ -195,7 +205,6 @@ export default async function EstimatePage({
       projectName={data.name}
       initialItems={data.items}
       initialSettings={data.settings}
-      initialTerms={data.terms}
       savedItems={data.savedItems}
       canEdit={data.canEdit}
       isOwner={data.isOwner}

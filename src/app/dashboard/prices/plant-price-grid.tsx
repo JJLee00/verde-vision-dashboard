@@ -144,13 +144,13 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
         >
           <thead className="sticky top-0 z-10 bg-card">
             <tr>
-              <th className="border border-ink/20 bg-paper-deep px-2.5 py-2 text-left text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+              <th className="border border-ink/20 bg-clay px-2.5 py-2 text-left text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-on-clay">
                 Plant
               </th>
               {sizes.map((size) => (
                 <th
                   key={size}
-                  className="w-28 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted"
+                  className="w-28 border border-ink/20 bg-clay px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-on-clay"
                 >
                   {size}
                 </th>
