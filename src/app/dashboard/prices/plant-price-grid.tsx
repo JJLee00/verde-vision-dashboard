@@ -113,7 +113,7 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           aria-label="Filter by plant type"
-          className="rounded-lg border border-edge bg-card-hover px-3 py-2 text-sm text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+          className="border border-ink/25 bg-card-hover px-3 py-1.5 text-sm text-body outline-none focus:outline-2 focus:-outline-offset-2 focus:outline-accent"
         >
           <option value="All">All types</option>
           {categories.map((cat) => (
@@ -128,23 +128,29 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search plants"
           aria-label="Search plants"
-          className="w-52 rounded-lg border border-edge bg-card-hover px-3 py-2 text-sm text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
+          className="w-52 border border-ink/25 bg-card-hover px-3 py-1.5 text-sm text-body outline-none focus:outline-2 focus:-outline-offset-2 focus:outline-accent"
         />
       </div>
 
       {error && <p className="mt-2 text-sm text-clay">{error}</p>}
 
-      <div className="mt-4 overflow-x-auto lg:overflow-x-visible">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
+      {/* Scrolls sideways below xl. From xl up the grid always fits, and
+          overflow stays visible so the sticky header row can stick to the
+          page rather than to this box. */}
+      <div className="mt-4 overflow-x-auto xl:overflow-x-visible">
+        <table
+          className="w-full border-collapse text-sm"
+          style={{ minWidth: 220 + sizes.length * 112 }}
+        >
           <thead className="sticky top-0 z-10 bg-card">
-            <tr className="border-b border-rule">
-              <th className="py-2 pr-3 text-left text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted">
+            <tr>
+              <th className="border border-ink/20 bg-paper-deep px-2.5 py-2 text-left text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
                 Plant
               </th>
               {sizes.map((size) => (
                 <th
                   key={size}
-                  className="px-1.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-muted"
+                  className="w-28 border border-ink/20 bg-paper-deep px-2.5 py-2 text-right text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted"
                 >
                   {size}
                 </th>
@@ -153,8 +159,8 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
           </thead>
           <tbody>
             {visiblePlants.map((plant) => (
-              <tr key={plant.key} className="border-b border-rule/60">
-                <td className="py-2 pr-3">
+              <tr key={plant.key}>
+                <td className="border border-ink/20 px-2.5 py-2">
                   <span className="text-body">{plant.name}</span>
                   {plant.botanicalName && (
                     <span className="ml-2 hidden text-xs italic text-faint xl:inline">
@@ -165,14 +171,16 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
                 {sizes.map((size) => {
                   const available = plant.sizes.some((s) => s.size === size);
                   if (!available) {
-                    return <td key={size} className="px-1.5 py-2" />;
+                    // Not sold in this size: shaded, the way a spreadsheet
+                    // greys out a cell that doesn't apply.
+                    return <td key={size} className="border border-ink/20 bg-ink/[0.05]" />;
                   }
                   const key = cellKey(plant.key, size);
                   const overridden = (saved[key] ?? "") !== "";
                   return (
-                    <td key={size} className="relative px-1.5 py-2 text-right">
-                      <span className="relative inline-block">
-                        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-faint">
+                    <td key={size} className="relative border border-ink/20 p-0 text-right">
+                      <span className="relative block">
+                        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-faint">
                           $
                         </span>
                         <input
@@ -191,13 +199,9 @@ export function PlantPriceGrid({ plants, sizes, initial }: Props) {
                             if (e.key === "Enter") e.currentTarget.blur();
                           }}
                           aria-label={`${plant.name} ${size} price`}
-                          className={`no-spinner w-24 rounded-md border bg-card-hover py-1.5 pl-5 pr-2 text-right text-sm outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft ${
+                          className={`no-spinner block h-9 w-full bg-transparent pl-6 pr-2.5 text-right text-sm tabular-nums outline-none focus:bg-card-hover focus:outline-2 focus:-outline-offset-2 focus:outline-accent ${
                             flashKey === key ? "save-wash " : ""
-                          }${
-                            overridden
-                              ? "border-accent/50 font-semibold text-accent-dim"
-                              : "border-edge text-body"
-                          }`}
+                          }${overridden ? "font-semibold text-accent-dim" : "text-body"}`}
                         />
                       </span>
                     </td>

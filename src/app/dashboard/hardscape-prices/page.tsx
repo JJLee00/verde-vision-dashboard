@@ -39,8 +39,8 @@ export default async function HardscapePricesPage() {
       sizes={hardscapeSizes}
       pricesInitial={data.plantPrices}
     >
-      <section className="mt-7 rounded-[14px] border border-edge bg-card p-6 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)] md:p-7">
-        <h2 className="font-serif text-2xl text-ink">Surfaces</h2>
+      <section className="mt-7 border border-ink/20 bg-card p-5">
+        <h2 className="text-base font-semibold text-ink">Surfaces</h2>
         <p className="mt-1 text-sm text-muted">
           Traced areas — pavers, turf, decomposed granite — priced per square
           foot. A blank is $0 on estimates and in the headset.

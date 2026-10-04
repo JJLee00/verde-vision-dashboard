@@ -1,30 +1,42 @@
 "use client";
 
-// The estimate row table. Same editing grammar as the Prices tab and the
-// project record: commit on blur, optimistic update, roll back and explain on
-// error, green wash on success. No drag-and-drop library — rows move with
-// ↑/↓ buttons, which are keyboard- and touch-reachable and don't fight the
-// inputs for pointer events.
+// The estimate builder — a full-screen, ruled grid (Oct 4 2026).
+//
+// Landscape designers finish bids in QuickBooks and spreadsheets, and a page
+// that reads like a ledger reads as safe. So: square corners, a line around
+// every cell, a shaded header row, money right-aligned in even-width digits
+// with no $ on every cell, and cells you click straight into — Tab moves
+// across, Enter moves down, Enter on the last row starts a new line. The
+// editorial cards this replaced were right for the client's proposal and
+// wrong for the place the money gets built.
+//
+// Same editing grammar as before: commit on blur, optimistic update, roll
+// back and explain on error, green wash on success.
 //
 // Two row kinds, and the difference is the whole feature:
 //   • source 'ar'     — written by the design. A headset resync rewrites
-//                       these, so description/category/unit are fixed here.
-//                       Editing the price sets price_overridden, which tells
-//                       the resync to update the QUANTITY and leave the price
-//                       alone.
+//                       these, so description/category/quantity are fixed
+//                       here. Typing over the price sets price_overridden and
+//                       typing over the labor sets labor_overridden; a resync
+//                       then updates the QUANTITY and leaves those alone.
 //   • source 'manual' — typed here. A resync never touches them.
+//
+// Every line carries its own Labor beside its Price (migration 023); Amount
+// is quantity × (price + labor), and tax applies to the material part only.
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { plantForKey } from "@/lib/design-edit";
 import {
   CATEGORIES,
   CATEGORY_LABELS,
-  UNITS,
+  ESTIMATE_ITEM_COLUMNS,
   computeTotals,
   lineTotal,
   midpointSortOrder,
   nextSortOrder,
+  qtyLabel,
   round2,
   sortItems,
   fromRow,
@@ -45,35 +57,57 @@ const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
+// Ledger convention: two decimals, separators, and the $ only on the Total.
+const amount = new Intl.NumberFormat("en-US", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
-const SELECT_COLUMNS =
-  "id, sort_order, description, category, quantity, unit, unit_price, total, taxable, note, source, ar_key, price_overridden";
-
-// What a brand-new manual line is called before the designer names it. The
-// editor was written for a row that starts empty — the input still carries a
-// "Describe the work…" placeholder — but estimate_items forbids an empty
-// description, so the row is born named and the name is selected for typing.
+// What a brand-new manual line is called before the designer names it.
+// estimate_items forbids an empty description, so the row is born named and
+// the name is selected for typing.
 const NEW_LINE_DESCRIPTION = "New line";
 
-const cell =
-  "w-full rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-sm text-body outline-none transition placeholder:text-faint hover:border-rule focus:border-accent focus:bg-card-hover focus:ring-2 focus:ring-accent-soft disabled:cursor-default disabled:hover:border-transparent";
+// ── The grid's look, in one place ──────────────────────────────────────────
+const GRID = "border border-ink/20";
+const TH = `${GRID} bg-paper-deep px-2.5 py-2 text-left text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted`;
+const TD = `${GRID} p-0 align-middle`;
+const TEXT_CELL = "block px-2.5 py-2 text-sm";
+// An input that IS the cell: no box, no radius, until it has focus.
+const INPUT =
+  "block h-9 w-full bg-transparent px-2.5 text-sm text-body outline-none placeholder:text-faint focus:bg-card-hover focus:outline-2 focus:-outline-offset-2 focus:outline-accent";
+const BUTTON =
+  "border border-ink/25 bg-card px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card-hover disabled:opacity-50";
+const BUTTON_PRIMARY =
+  "border border-accent bg-accent px-3 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50";
+
+/** A design line still at $0 — its plant or surface has no price in the grid. */
+const isUnpriced = (i: EstimateItem) => i.source === "ar" && i.unitPrice === 0;
 
 export function EstimateBuilder({
   projectId,
+  projectName,
   initialItems,
   initialSettings,
   initialTerms,
   savedItems,
   canEdit,
   isOwner,
+  sample = false,
+  children,
 }: {
   projectId: string;
+  projectName: string;
   initialItems: EstimateItem[];
   initialSettings: EstimateSettings;
   initialTerms: string;
   savedItems: SavedItem[];
   canEdit: boolean;
   isOwner: boolean;
+  /** The dev fixture: shown, never written. */
+  sample?: boolean;
+  /** Notices (a migration not yet run) shown under the top bar. */
+  children?: React.ReactNode;
 }) {
   const [items, setItems] = useState(initialItems);
   const [settings, setSettings] = useState(initialSettings);
@@ -93,12 +127,14 @@ export function EstimateBuilder({
   } | null>(null);
   const [notesOpen, setNotesOpen] = useState<Set<string>>(new Set());
   // Named after adding a row so the new description input takes focus the
-  // moment it mounts — the difference between "add a line" and actually
-  // typing a 40-row bid. Done in the ref callback, not an effect: the input
+  // moment it mounts. Done in the ref callback, not an effect: the input
   // doesn't exist yet when the row is created.
   const pendingFocus = useRef<string | null>(null);
 
   const totals = computeTotals(items, settings);
+  const unpriced = items.filter(isUnpriced).length;
+  const ordered = sortItems(items);
+  const readOnly = !canEdit;
 
   function flash(key: string) {
     setWash(key);
@@ -109,26 +145,20 @@ export function EstimateBuilder({
   // project card and the bid can never disagree. Fire-and-forget: a failure
   // here is a stale card, not lost work, and the next edit retries it.
   function syncProjectTotal(nextItems: EstimateItem[], next: EstimateSettings) {
-    const amount = computeTotals(nextItems, next).total;
+    const total = computeTotals(nextItems, next).total;
     void createClient()
       .from("projects")
-      .update({ estimate_amount: amount })
+      .update({ estimate_amount: total })
       .eq("id", projectId);
   }
 
   async function patch(item: EstimateItem, changes: Partial<EstimateItem>) {
     const before = items;
     const merged: EstimateItem = { ...item, ...changes };
-    merged.total = lineTotal(merged);
-    const next = items.map((i) => (i.id === item.id ? merged : i));
-    setItems(next);
-    setError(null);
-
     const payload: Record<string, unknown> = {};
     if ("description" in changes) payload.description = merged.description;
     if ("category" in changes) payload.category = merged.category;
     if ("quantity" in changes) payload.quantity = merged.quantity;
-    if ("unit" in changes) payload.unit = merged.unit;
     if ("unitPrice" in changes) {
       payload.unit_price = merged.unitPrice;
       // An AR row whose price a human typed must survive the next resync.
@@ -153,9 +183,22 @@ export function EstimateBuilder({
         }
       }
     }
+    if ("laborUnitPrice" in changes) {
+      payload.labor_unit_price = merged.laborUnitPrice;
+      // Same contract as the price: typed labor survives a resync.
+      if (merged.source === "ar" && !merged.laborOverridden) {
+        payload.labor_overridden = true;
+        merged.laborOverridden = true;
+      }
+    }
     if ("taxable" in changes) payload.taxable = merged.taxable;
     if ("note" in changes) payload.note = merged.note;
     if ("sortOrder" in changes) payload.sort_order = merged.sortOrder;
+
+    merged.total = lineTotal(merged);
+    const next = items.map((i) => (i.id === item.id ? merged : i));
+    setItems(next);
+    setError(null);
 
     const { error: err } = await createClient()
       .from("estimate_items")
@@ -178,19 +221,17 @@ export function EstimateBuilder({
       .insert({
         project_id: projectId,
         sort_order: nextSortOrder(items),
-        // Not "" — estimate_items requires length(trim(description)) > 0,
-        // so a blank new line is rejected outright by the database and the
-        // button silently did nothing. The row is created named instead, and
-        // the input selects this text on focus so typing replaces it.
+        // Not "" — estimate_items requires length(trim(description)) > 0.
         description: seed?.description ?? NEW_LINE_DESCRIPTION,
         category: seed?.category ?? "other",
         quantity: seed?.quantity ?? 1,
         unit: seed?.unit ?? "each",
         unit_price: seed?.unitPrice ?? 0,
+        labor_unit_price: seed?.laborUnitPrice ?? 0,
         taxable: seed?.taxable ?? true,
         source: "manual",
       })
-      .select(SELECT_COLUMNS)
+      .select(ESTIMATE_ITEM_COLUMNS)
       .single();
     setBusy(false);
     if (err || !data) {
@@ -226,7 +267,6 @@ export function EstimateBuilder({
   // Moving a row is one UPDATE to a midpoint sort_order. When the gap between
   // two neighbours has closed, respace the whole project by 10s first.
   async function move(item: EstimateItem, dir: -1 | 1) {
-    const ordered = sortItems(items);
     const at = ordered.findIndex((i) => i.id === item.id);
     const swapAt = at + dir;
     if (swapAt < 0 || swapAt >= ordered.length) return;
@@ -245,13 +285,10 @@ export function EstimateBuilder({
     await patch(item, { sortOrder: target });
   }
 
-  async function respace(ordered: EstimateItem[]) {
+  async function respace(rows: EstimateItem[]) {
     setBusy(true);
     const supabase = createClient();
-    const renumbered = ordered.map((i, idx) => ({
-      ...i,
-      sortOrder: (idx + 1) * 10,
-    }));
+    const renumbered = rows.map((i, idx) => ({ ...i, sortOrder: (idx + 1) * 10 }));
     const results = await Promise.all(
       renumbered.map((i) =>
         supabase
@@ -289,9 +326,7 @@ export function EstimateBuilder({
     const next: EstimateSettings = {
       ...settings,
       ...(column === "tax_rate" ? { taxRate: Number(value) } : {}),
-      ...(column === "deposit_percent"
-        ? { depositPercent: Number(value) }
-        : {}),
+      ...(column === "deposit_percent" ? { depositPercent: Number(value) } : {}),
       ...(column === "estimate_detail"
         ? { detail: value === "grouped" ? "grouped" : "itemized" }
         : {}),
@@ -311,13 +346,11 @@ export function EstimateBuilder({
     syncProjectTotal(items, next);
   }
 
-  // Owners keep the price book (migration 007), so only they can add to it.
   /**
    * Push a price typed on an estimate up into the price book — the very grid
-   * cell (plant and size) the Plant Prices page shows, which is what
-   * rebuildPlantRows and the headset both read. It wrote the legacy
-   * name-only price_items until Oct 4 2026, which nothing priced from any
-   * more, so the offer saved a price no estimate would ever use.
+   * cell (plant and size) the Plant Prices page shows, which is what the
+   * estimate and the headset both read. Owners keep the price book
+   * (migration 007), so only they are offered it.
    */
   async function savePlantPrice(plantKey: string, size: string, price: number) {
     setError(null);
@@ -333,48 +366,109 @@ export function EstimateBuilder({
 
   async function saveToPriceBook(item: EstimateItem) {
     setError(null);
+    // A labor-only line is saved as what it charges for.
+    const labor = item.unitPrice === 0 && item.laborUnitPrice > 0;
     const { error: err } = await createClient().from("price_items").insert({
       name: item.description,
-      category: item.category,
-      price: item.unitPrice,
+      category: labor ? "labor" : item.category,
+      price: labor ? item.laborUnitPrice : item.unitPrice,
       unit: item.unit,
     });
-    setError(
-      err ? "Could not save to Saved Items." : null
-    );
+    setError(err ? "Could not save to Saved Items." : null);
     if (!err) flash(`book-${item.id}`);
   }
 
-  const readOnly = !canEdit;
+  // Enter moves to the same column on the next row that has it, the way a
+  // spreadsheet does. Below the last row there is nothing to move to, so a
+  // new line starts instead.
+  function enterDown(el: HTMLElement, rowIndex: number) {
+    const col = el.dataset.col;
+    el.blur();
+    for (let r = rowIndex + 1; r < ordered.length; r++) {
+      const next = document.querySelector<HTMLInputElement>(
+        `[data-row="${r}"][data-col="${col}"]`
+      );
+      if (next) {
+        next.focus();
+        next.select?.();
+        return;
+      }
+    }
+    if (rowIndex === ordered.length - 1 && !readOnly) void addRow();
+  }
 
   return (
-    <div className="mt-7">
-      {error && (
-        <p className="mb-4 rounded-lg border border-clay/40 bg-clay/[0.08] px-4 py-2.5 text-sm text-clay">
-          {error}
-        </p>
-      )}
+    <div className="flex min-h-screen flex-col bg-paper text-body">
+      {/* ── Top bar ── */}
+      <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-ink/20 bg-card px-4 py-2.5 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href={`/dashboard/projects/${projectId}`}
+            className="truncate text-sm text-muted transition hover:text-accent"
+          >
+            ← {projectName}
+          </Link>
+          <span className="h-4 w-px bg-ink/20" aria-hidden />
+          <h1 className="text-sm font-semibold text-ink">Estimate</h1>
+          {sample && (
+            <span className="border border-gold/50 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-gold">
+              Sample — read only
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {unpriced > 0 && (
+            <span className="mr-1 text-[13px] font-semibold text-gold">
+              {unpriced} {unpriced === 1 ? "line has" : "lines have"} no price
+            </span>
+          )}
+          <a
+            href={`/dashboard/projects/${projectId}/estimate/pdf?download=1`}
+            className={BUTTON}
+          >
+            Download PDF
+          </a>
+          <a
+            href={`/dashboard/projects/${projectId}/estimate/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={BUTTON_PRIMARY}
+          >
+            Preview proposal
+          </a>
+        </div>
+      </header>
 
-      <section className="rounded-[14px] border border-edge bg-card shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rule px-5 py-4">
-          <h2 className="font-serif text-2xl text-ink">Line items</h2>
-          <div className="flex flex-wrap items-center gap-2">
+      <main className="flex-1 space-y-4 px-4 py-5 sm:px-6">
+        {children}
+        {error && (
+          <p className="border border-clay/50 bg-clay/[0.08] px-3 py-2 text-sm text-clay">
+            {error}
+          </p>
+        )}
+
+        {/* ── Line items ── */}
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h2 className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted">
+            Line items
+          </h2>
+          <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setPickerOpen((o) => !o)}
               disabled={readOnly}
               aria-expanded={pickerOpen}
-              className="rounded-lg border border-rule-strong bg-paper-deep px-3 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-card-hover disabled:opacity-50"
+              className={BUTTON}
             >
-              From Saved Items
+              From saved items
             </button>
             <button
               type="button"
               onClick={() => void addRow()}
               disabled={readOnly || busy}
-              className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
+              className={BUTTON}
             >
-              + Add line
+              Add line
             </button>
           </div>
         </div>
@@ -389,47 +483,49 @@ export function EstimateBuilder({
                   ? (s.category as EstimateCategory)
                   : "other",
                 unit: s.unit,
-                unitPrice: s.price,
-                taxable: s.category !== "labor",
+                // A saved labor item charges labor, not material.
+                ...(s.category === "labor"
+                  ? { unitPrice: 0, laborUnitPrice: s.price }
+                  : { unitPrice: s.price }),
               })
             }
           />
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] border-collapse text-left">
+          <table className="w-full min-w-[980px] border-collapse bg-card tabular-nums">
             <thead>
-              <tr className="border-b border-rule text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-                <th className="w-8 px-2 py-2.5" aria-label="Order" />
-                <th className="px-2 py-2.5">Item</th>
-                <th className="w-[11.5rem] px-2 py-2.5">Category</th>
-                <th className="w-20 px-2 py-2.5 text-right">Qty</th>
-                <th className="w-24 px-2 py-2.5">Unit</th>
-                <th className="w-28 px-2 py-2.5 text-right">Unit price</th>
-                <th className="w-28 px-2 py-2.5 text-right">Total</th>
-                <th className="w-12 px-2 py-2.5 text-center" title="Taxable">
+              <tr>
+                <th className={`${TH} w-12 text-center`}>#</th>
+                <th className={TH}>Item</th>
+                <th className={`${TH} w-40`}>Category</th>
+                <th className={`${TH} w-32 text-right`}>Qty</th>
+                <th className={`${TH} w-28 text-right`}>Price</th>
+                <th className={`${TH} w-28 text-right`}>Labor</th>
+                <th className={`${TH} w-32 text-right`}>Amount</th>
+                <th className={`${TH} w-14 text-center`} title="Taxes the material part only">
                   Tax
                 </th>
-                <th className="w-24 px-2 py-2.5" aria-label="Actions" />
+                <th className={`${TH} w-28`}>
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {items.length === 0 && (
+              {ordered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-5 py-12 text-center">
-                    <p className="text-sm text-muted">
-                      No line items yet. Sync a design from the headset, or add
-                      the first line by hand.
-                    </p>
+                  <td colSpan={9} className={`${GRID} px-5 py-10 text-center text-sm text-muted`}>
+                    No lines yet. Sync a design from the headset, or add the
+                    first line by hand.
                   </td>
                 </tr>
               )}
-              {sortItems(items).map((item, idx) => (
+              {ordered.map((item, idx) => (
                 <Row
                   key={item.id}
                   item={item}
                   index={idx}
-                  count={items.length}
+                  count={ordered.length}
                   readOnly={readOnly}
                   isOwner={isOwner}
                   washing={wash === item.id}
@@ -438,10 +534,8 @@ export function EstimateBuilder({
                     if (el && pendingFocus.current === item.id) {
                       pendingFocus.current = null;
                       el.focus();
-                      // A new row arrives carrying NEW_LINE_DESCRIPTION
-                      // rather than "", so select it: the designer types
-                      // straight over it exactly as they would an empty
-                      // field, instead of clearing it first.
+                      // A new row arrives named NEW_LINE_DESCRIPTION; select
+                      // it so the designer types straight over it.
                       if (el.value === NEW_LINE_DESCRIPTION) el.select();
                     }
                   }}
@@ -457,73 +551,85 @@ export function EstimateBuilder({
                     })
                   }
                   onSaveToBook={() => void saveToPriceBook(item)}
-                  onEnterAtEnd={() => void addRow()}
+                  onEnterDown={(el) => enterDown(el, idx)}
                 />
               ))}
+              {!readOnly && (
+                <tr>
+                  <td className={`${GRID} text-center text-xs text-faint`}>
+                    {ordered.length + 1}
+                  </td>
+                  <td colSpan={8} className={TD}>
+                    <button
+                      type="button"
+                      onClick={() => void addRow()}
+                      disabled={busy}
+                      className="block w-full px-2.5 py-2 text-left text-sm text-faint transition hover:bg-card-hover hover:text-accent"
+                    >
+                      Add a line
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
         {priceOffer && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-rule px-5 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border border-ink/20 bg-card px-4 py-2.5">
             <p className="text-sm text-body">
               Save{" "}
-              <span className="font-mono font-semibold">
+              <span className="font-semibold tabular-nums">
                 {currency.format(priceOffer.price)}
               </span>{" "}
               as your price for{" "}
               <span className="font-semibold">
                 {priceOffer.plantName} ({priceOffer.size})
               </span>
-              ?
-              <span className="text-muted"> It will apply to new estimates.</span>
+              ?<span className="text-muted"> It will apply to new estimates.</span>
             </p>
             <span className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPriceOffer(null)}
-                className="rounded-lg border border-edge px-3 py-1.5 text-[13px] font-semibold text-body transition hover:bg-paper-deep"
-              >
+              <button type="button" onClick={() => setPriceOffer(null)} className={BUTTON}>
                 Not now
               </button>
               <button
                 type="button"
                 onClick={() =>
-                  void savePlantPrice(
-                    priceOffer.plantKey,
-                    priceOffer.size,
-                    priceOffer.price
-                  )
+                  void savePlantPrice(priceOffer.plantKey, priceOffer.size, priceOffer.price)
                 }
-                className="rounded-lg bg-accent px-3.5 py-1.5 text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
+                className={BUTTON_PRIMARY}
               >
                 Save to price book
               </button>
             </span>
           </div>
         )}
-      </section>
 
-      {/* The "What the client sees" and Terms cards are gone — two panels of
-          explanation for two controls. The controls themselves moved into
-          Totals, which is where every other decision about the printed
-          proposal already lives. */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <div />
-        <Totals
-          detail={settings.detail}
-          onDetailChange={(d) => void saveSetting("estimate_detail", d)}
-          terms={initialTerms}
-          onTermsSave={(v) => void saveTerms(v)}
-          projectId={projectId}
-          settings={settings}
-          totals={totals}
-          readOnly={readOnly}
-          washing={wash}
-          onRate={(v) => void saveSetting("tax_rate", v)}
-          onDeposit={(v) => void saveSetting("deposit_percent", v)}
-        />
-      </div>
+        {/* ── Proposal settings (left) and totals (right), QuickBooks-style ── */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
+          <Proposal
+            detail={settings.detail}
+            onDetailChange={(d) => void saveSetting("estimate_detail", d)}
+            terms={initialTerms}
+            onTermsSave={(v) => void saveTerms(v)}
+            readOnly={readOnly}
+            washing={wash === "estimate_terms"}
+          />
+          <Totals
+            settings={settings}
+            totals={totals}
+            readOnly={readOnly}
+            washing={wash}
+            onRate={(v) => void saveSetting("tax_rate", v)}
+            onDeposit={(v) => void saveSetting("deposit_percent", v)}
+          />
+        </div>
+
+        <p className="text-xs text-faint">
+          The total syncs back to the project, so the dashboard card and this
+          bid always agree.
+        </p>
+      </main>
     </div>
   );
 }
@@ -535,22 +641,39 @@ type Draft = {
   description: string;
   quantity: string;
   price: string;
+  labor: string;
   note: string;
 };
 
 // Identity of a row's committed values. When this changes, the drafts below
 // are stale and get reseeded.
 const stampOf = (i: EstimateItem) =>
-  [i.description, i.quantity, i.unitPrice, i.note ?? ""].join("\u0000");
+  [i.description, i.quantity, i.unitPrice, i.laborUnitPrice, i.note ?? ""].join("\u0000");
 
+// A manual line with no labor shows a blank Labor cell rather than 0.00 —
+// most hand-typed lines are pure material, and a column of zeros is noise.
 const seedDraft = (i: EstimateItem): Draft => ({
   stamp: stampOf(i),
   description: i.description,
   quantity: String(i.quantity),
   price: i.unitPrice.toFixed(2),
+  labor: i.source === "manual" && i.laborUnitPrice === 0 ? "" : i.laborUnitPrice.toFixed(2),
   note: i.note ?? "",
 });
 
+function CubeMark() {
+  return (
+    <svg viewBox="0 0 16 16" className="mx-auto h-3.5 w-3.5 text-accent" aria-hidden>
+      <path
+        d="M8 1.5 14 4.75v6.5L8 14.5 2 11.25v-6.5L8 1.5Zm0 0v6.25m0 0 6-3m-6 3-6-3m6 3v6.75"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function Row({
   item,
@@ -566,7 +689,7 @@ function Row({
   onMove,
   onToggleNote,
   onSaveToBook,
-  onEnterAtEnd,
+  onEnterDown,
 }: {
   item: EstimateItem;
   index: number;
@@ -581,86 +704,78 @@ function Row({
   onMove: (dir: -1 | 1) => void;
   onToggleNote: () => void;
   onSaveToBook: () => void;
-  onEnterAtEnd: () => void;
+  onEnterDown: (el: HTMLElement) => void;
 }) {
   const fromDesign = item.source === "ar";
+  const unpriced = isUnpriced(item);
 
   // Text lives in local drafts while it's being typed and commits on blur, so
   // a slow round-trip never eats a keystroke. When the committed row changes
   // underneath — an optimistic patch landing, or a failed save rolling back —
-  // the drafts resync during render. Resetting all four together is safe
-  // because only one cell can be focused at a time and blur commits it first.
+  // the drafts resync during render.
   const [draft, setDraft] = useState(() => seedDraft(item));
   const stamp = stampOf(item);
   if (draft.stamp !== stamp) setDraft(seedDraft(item));
-  const { description: desc, quantity: qty, price, note } = draft;
   const edit = (changes: Partial<Omit<Draft, "stamp">>) =>
     setDraft((d) => ({ ...d, ...changes }));
 
-  const isLast = index === count - 1;
-  // Enter commits the cell; on the last row it also starts the next line, so
-  // a long bid can be typed without reaching for the mouse.
-  const onKey = (e: React.KeyboardEvent<HTMLElement>) => {
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    (e.currentTarget as HTMLElement).blur();
-    if (isLast) onEnterAtEnd();
+    onEnterDown(e.currentTarget);
   };
+  // Lets Enter find this row's cell in the same column on the next row.
+  const cellProps = (col: string) => ({
+    "data-row": index,
+    "data-col": col,
+    onKeyDown: onKey,
+  });
 
-  const commitNumber = (
+  // Money cells: blank or invalid snaps back, except Labor, where blank is 0.
+  const commitMoney = (
     raw: string,
     current: number,
-    reset: (v: string) => void,
-    apply: (n: number) => void
+    reset: () => void,
+    apply: (n: number) => void,
+    blankIsZero = false
   ) => {
-    const n = Number(raw);
-    if (raw.trim() === "" || Number.isNaN(n) || n < 0) {
-      reset(current.toString());
+    const text = raw.trim();
+    const n = text === "" && blankIsZero ? 0 : Number(text);
+    if ((text === "" && !blankIsZero) || Number.isNaN(n) || n < 0) {
+      reset();
       return;
     }
-    if (round2(n) === round2(current)) return;
+    if (round2(n) === round2(current)) {
+      reset();
+      return;
+    }
     apply(round2(n));
   };
 
+  const rowTint = unpriced ? "bg-gold/[0.07]" : "";
+
   return (
     <>
-      <tr
-        className={`border-b border-rule/60 align-middle ${
-          washing ? "save-wash" : ""
-        } ${index % 2 === 0 ? "" : "bg-ink/[0.015]"}`}
-      >
-        <td className="px-1 py-1.5">
-          <div className="flex flex-col">
-            <button
-              type="button"
-              onClick={() => onMove(-1)}
-              disabled={readOnly || index === 0}
-              aria-label="Move line up"
-              className="h-4 leading-none text-faint transition hover:text-accent disabled:opacity-25"
-            >
-              ▲
-            </button>
-            <button
-              type="button"
-              onClick={() => onMove(1)}
-              disabled={readOnly || index === count - 1}
-              aria-label="Move line down"
-              className="h-4 leading-none text-faint transition hover:text-accent disabled:opacity-25"
-            >
-              ▼
-            </button>
-          </div>
+      <tr className={`group ${washing ? "save-wash" : rowTint}`}>
+        <td
+          className={`${GRID} text-center text-xs text-faint`}
+          title={fromDesign ? "From the design — a headset resync rewrites this line" : undefined}
+        >
+          {fromDesign ? <CubeMark /> : index + 1}
         </td>
 
-        <td className="px-2 py-1.5">
-          <div className="flex items-center gap-2">
+        <td className={TD}>
+          {fromDesign ? (
+            <span className={`${TEXT_CELL} truncate text-ink`}>{item.description}</span>
+          ) : (
             <input
               ref={registerRef}
-              value={desc}
-              disabled={readOnly || fromDesign}
+              {...cellProps("desc")}
+              value={draft.description}
+              disabled={readOnly}
               onChange={(e) => edit({ description: e.target.value })}
               onBlur={() => {
-                const v = desc.trim();
+                const v = draft.description.trim();
                 if (v === item.description) return;
                 if (v === "") {
                   edit({ description: item.description });
@@ -668,131 +783,142 @@ function Row({
                 }
                 onPatch({ description: v });
               }}
-              onKeyDown={onKey}
-              placeholder="Describe the work…"
-              aria-label="Item description"
-              className={`${cell} ${fromDesign ? "font-medium text-ink" : ""}`}
+              placeholder="Describe the work"
+              aria-label="Item"
+              className={INPUT}
             />
-            {fromDesign && (
-              <span
-                title="Written by the AR design. A headset resync rewrites this line."
-                className="shrink-0 rounded-full border border-accent/30 bg-accent-soft/40 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-accent-dim"
-              >
-                design
-              </span>
-            )}
-          </div>
+          )}
         </td>
 
-        <td className="px-2 py-1.5">
-          <select
-            value={item.category}
-            disabled={readOnly || fromDesign}
-            onChange={(e) =>
-              onPatch({ category: e.target.value as EstimateCategory })
-            }
-            aria-label="Category"
-            className={`${cell} cursor-pointer appearance-none disabled:cursor-default`}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {CATEGORY_LABELS[c]}
-              </option>
-            ))}
-          </select>
+        <td className={TD}>
+          {fromDesign ? (
+            <span className={`${TEXT_CELL} text-muted`}>{CATEGORY_LABELS[item.category]}</span>
+          ) : (
+            <select
+              value={item.category}
+              disabled={readOnly}
+              onChange={(e) => onPatch({ category: e.target.value as EstimateCategory })}
+              aria-label="Category"
+              className={`${INPUT} cursor-pointer appearance-none disabled:cursor-default`}
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          )}
         </td>
 
-        <td className="px-2 py-1.5">
+        <td className={TD}>
+          {fromDesign ? (
+            // The design owns the count — change it in the headset or the 3D
+            // viewer, which is what rebuilds these rows.
+            <span
+              className={`${TEXT_CELL} text-right`}
+              title="Set by the design — change it in the headset or the 3D viewer"
+            >
+              {qtyLabel(item)}
+            </span>
+          ) : (
+            <div className="flex items-center">
+              <input
+                {...cellProps("qty")}
+                type="number"
+                min="0"
+                step="0.01"
+                value={draft.quantity}
+                disabled={readOnly}
+                onChange={(e) => edit({ quantity: e.target.value })}
+                onBlur={() =>
+                  commitMoney(
+                    draft.quantity,
+                    item.quantity,
+                    () => edit({ quantity: String(item.quantity) }),
+                    (n) => onPatch({ quantity: n })
+                  )
+                }
+                aria-label="Quantity"
+                className={`${INPUT} no-spinner text-right`}
+              />
+              {item.unit && item.unit !== "each" && item.unit !== "ls" && (
+                <span className="pr-2.5 text-xs text-muted">{item.unit}</span>
+              )}
+            </div>
+          )}
+        </td>
+
+        <td className={TD}>
           <input
+            {...cellProps("price")}
             type="number"
             min="0"
             step="0.01"
-            value={qty}
-            // Locked on a design row. rebuildPlantRows sets `quantity`
-            // unconditionally on every resync — only the PRICE is protected,
-            // by price_overridden — so an edit here was accepted and then
-            // silently thrown away the next time the headset synced or the
-            // office published. The design owns the count; change it in the
-            // headset or the 3D viewer, which is what rebuilds these rows.
-            disabled={readOnly || fromDesign}
-            title={
-              fromDesign
-                ? "Set by the design — change it in the headset or the 3D viewer"
-                : undefined
-            }
-            onChange={(e) => edit({ quantity: e.target.value })}
+            value={draft.price}
+            disabled={readOnly}
+            onChange={(e) => edit({ price: e.target.value })}
             onBlur={() =>
-              commitNumber(
-                qty,
-                item.quantity,
-                (v) => edit({ quantity: v }),
-                (n) => onPatch({ quantity: n })
+              commitMoney(
+                draft.price,
+                item.unitPrice,
+                () => edit({ price: item.unitPrice.toFixed(2) }),
+                (n) => onPatch({ unitPrice: n })
               )
             }
-            onKeyDown={onKey}
-            aria-label="Quantity"
-            className={`${cell} no-spinner text-right tabular-nums`}
+            aria-label="Price"
+            title={
+              unpriced
+                ? "No price in your Prices grid — this line is $0 until you add one"
+                : item.priceOverridden
+                  ? "Typed over the price book — a resync keeps this price"
+                  : undefined
+            }
+            className={`${INPUT} no-spinner text-right ${
+              unpriced
+                ? "font-semibold text-gold"
+                : item.priceOverridden
+                  ? "font-semibold text-accent-dim"
+                  : ""
+            }`}
           />
         </td>
 
-        <td className="px-2 py-1.5">
-          <select
-            value={item.unit}
-            disabled={readOnly || fromDesign}
-            onChange={(e) => onPatch({ unit: e.target.value })}
-            aria-label="Unit"
-            className={`${cell} cursor-pointer appearance-none disabled:cursor-default`}
-          >
-            {(UNITS as readonly string[]).includes(item.unit) ? null : (
-              <option value={item.unit}>{item.unit}</option>
-            )}
-            {UNITS.map((u) => (
-              <option key={u} value={u}>
-                {u}
-              </option>
-            ))}
-          </select>
+        <td className={TD}>
+          <input
+            {...cellProps("labor")}
+            type="number"
+            min="0"
+            step="0.01"
+            value={draft.labor}
+            disabled={readOnly}
+            onChange={(e) => edit({ labor: e.target.value })}
+            onBlur={() =>
+              commitMoney(
+                draft.labor,
+                item.laborUnitPrice,
+                () => edit({ labor: seedDraft(item).labor }),
+                (n) => onPatch({ laborUnitPrice: n }),
+                true
+              )
+            }
+            placeholder={fromDesign ? "0.00" : "—"}
+            aria-label="Labor"
+            title={
+              item.laborOverridden
+                ? "Typed over your labor rate — a resync keeps this labor"
+                : undefined
+            }
+            className={`${INPUT} no-spinner text-right ${
+              item.laborOverridden ? "font-semibold text-accent-dim" : ""
+            }`}
+          />
         </td>
 
-        <td className="px-2 py-1.5">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-1.5 top-1/2 -translate-y-1/2 text-sm text-faint">
-              $
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={price}
-              disabled={readOnly}
-              onChange={(e) => edit({ price: e.target.value })}
-              onBlur={() =>
-                commitNumber(
-                  price,
-                  item.unitPrice,
-                  (v) => edit({ price: v }),
-                  (n) => onPatch({ unitPrice: n })
-                )
-              }
-              onKeyDown={onKey}
-              aria-label="Unit price"
-              title={
-                item.priceOverridden
-                  ? "Typed over the price book — a resync keeps this price."
-                  : undefined
-              }
-              className={`${cell} no-spinner pl-4 text-right tabular-nums ${
-                item.priceOverridden ? "font-semibold text-accent-dim" : ""
-              }`}
-            />
-          </div>
+        <td className={`${GRID} px-2.5 py-2 text-right text-sm font-semibold text-ink`}>
+          {amount.format(item.total)}
         </td>
 
-        <td className="px-2 py-1.5 text-right font-mono text-sm font-semibold tabular-nums text-ink">
-          {currency.format(item.total)}
-        </td>
-
-        <td className="px-2 py-1.5 text-center">
+        <td className={`${GRID} text-center`}>
           <input
             type="checkbox"
             checked={item.taxable}
@@ -803,72 +929,102 @@ function Row({
           />
         </td>
 
-        <td className="px-2 py-1.5">
-          <div className="flex items-center justify-end gap-1">
-            <button
-              type="button"
+        <td className={`${GRID} px-1.5`}>
+          {/* Out of the way until the row is pointed at — the grid stays a
+              grid, and every control is still a Tab away. */}
+          <div className="flex items-center justify-end gap-0.5 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+            <IconButton
+              label="Move line up"
+              onClick={() => onMove(-1)}
+              disabled={readOnly || index === 0}
+            >
+              ↑
+            </IconButton>
+            <IconButton
+              label="Move line down"
+              onClick={() => onMove(1)}
+              disabled={readOnly || index === count - 1}
+            >
+              ↓
+            </IconButton>
+            <IconButton
+              label={noteOpen ? "Hide note" : "Add a note"}
               onClick={onToggleNote}
               disabled={readOnly}
-              aria-label={noteOpen ? "Hide note" : "Add a note"}
-              title="Scope note — prints under this line"
-              className="rounded px-1.5 py-0.5 text-xs text-muted transition hover:text-accent disabled:opacity-30"
             >
-              note
-            </button>
+              ✎
+            </IconButton>
             {isOwner && !fromDesign && (
-              <button
-                type="button"
+              <IconButton
+                label="Save to Saved Items"
                 onClick={onSaveToBook}
                 disabled={readOnly || item.description.trim() === ""}
-                aria-label="Save to Saved Items"
-                title="Save to Saved Items so it's one click next time"
-                className="rounded px-1 py-0.5 text-xs text-muted transition hover:text-accent disabled:opacity-30"
               >
                 ★
-              </button>
+              </IconButton>
             )}
-            <button
-              type="button"
-              onClick={onRemove}
-              // AR rows belong to the design: removing a plant is a design
-              // change, made in the headset (or, later, the dashboard editor).
-              disabled={readOnly || fromDesign}
-              aria-label="Delete line"
-              title={
-                fromDesign
-                  ? "Comes from the design — remove the plant in the headset"
-                  : "Delete this line"
-              }
-              className="rounded px-1 py-0.5 text-xs text-muted transition hover:text-clay disabled:opacity-25"
-            >
-              ✕
-            </button>
+            {!fromDesign && (
+              <IconButton label="Delete line" onClick={onRemove} disabled={readOnly} danger>
+                ✕
+              </IconButton>
+            )}
           </div>
         </td>
       </tr>
 
       {noteOpen && (
-        <tr className={index % 2 === 0 ? "" : "bg-ink/[0.015]"}>
-          <td />
-          <td colSpan={8} className="px-2 pb-2.5">
+        <tr className={rowTint}>
+          <td className={GRID} />
+          <td colSpan={8} className={TD}>
             <input
-              value={note}
+              value={draft.note}
               disabled={readOnly}
               onChange={(e) => edit({ note: e.target.value })}
               onBlur={() => {
-                const v = note.trim();
+                const v = draft.note.trim();
                 if (v === (item.note ?? "")) return;
                 onPatch({ note: v === "" ? null : v });
               }}
-              onKeyDown={onKey}
-              placeholder="Scope note — prints under this line on the itemized PDF"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+              placeholder="Scope note — prints under this line on the itemized proposal"
               aria-label="Line note"
-              className={`${cell} border-rule/60 bg-card-hover/60 text-[0.82rem] italic text-muted`}
+              className={`${INPUT} h-8 text-[0.82rem] italic text-muted`}
             />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  danger = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={`h-6 w-6 text-xs text-muted transition disabled:opacity-25 ${
+        danger ? "hover:text-clay" : "hover:text-accent"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -885,19 +1041,18 @@ function SavedItemsPicker({
   const q = query.trim().toLowerCase();
   const shown = q
     ? savedItems.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)
+        (s) => s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q)
       )
     : savedItems;
 
   return (
-    <div className="border-b border-rule bg-paper-deep/50 px-5 py-4">
+    <div className="border border-ink/20 bg-card px-4 py-3">
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search saved items…"
+        placeholder="Search saved items"
         aria-label="Search saved items"
-        className="w-full max-w-sm rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm text-body outline-none transition placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent-soft"
+        className="w-full max-w-sm border border-ink/25 bg-card-hover px-3 py-1.5 text-sm text-body outline-none placeholder:text-faint focus:outline-2 focus:-outline-offset-2 focus:outline-accent"
       />
       {savedItems.length === 0 ? (
         <p className="mt-3 max-w-lg text-sm text-muted">
@@ -911,10 +1066,10 @@ function SavedItemsPicker({
               <button
                 type="button"
                 onClick={() => onPick(s)}
-                className="rounded-lg border border-rule bg-card px-3 py-1.5 text-left text-[13px] text-body transition hover:border-accent hover:bg-card-hover"
+                className="border border-ink/20 bg-card px-3 py-1.5 text-left text-[13px] text-body transition hover:border-accent hover:bg-card-hover"
               >
                 <span className="font-medium text-ink">{s.name}</span>
-                <span className="ml-2 font-mono text-xs tabular-nums text-muted">
+                <span className="ml-2 text-xs tabular-nums text-muted">
                   {currency.format(s.price)}/{s.unit}
                 </span>
               </button>
@@ -929,41 +1084,97 @@ function SavedItemsPicker({
   );
 }
 
+/* ── Proposal: what the client sees, and the terms that print with it ──── */
+
+function Proposal({
+  detail,
+  onDetailChange,
+  terms,
+  onTermsSave,
+  readOnly,
+  washing,
+}: {
+  detail: EstimateSettings["detail"];
+  onDetailChange: (d: EstimateSettings["detail"]) => void;
+  terms: string | null;
+  onTermsSave: (value: string) => void;
+  readOnly: boolean;
+  washing: boolean;
+}) {
+  return (
+    <section className="border border-ink/20 bg-card">
+      <h2 className="border-b border-ink/20 bg-paper-deep px-2.5 py-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
+        Proposal
+      </h2>
+      <div className="space-y-3 p-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-muted">The client sees</span>
+          <div role="group" aria-label="Client PDF detail" className="flex border border-ink/25">
+            {(
+              [
+                ["itemized", "Itemized"],
+                ["grouped", "Lump sums"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                disabled={readOnly}
+                aria-pressed={detail === value}
+                onClick={() => onDetailChange(value)}
+                className={`px-3 py-1 text-[13px] font-semibold transition ${
+                  detail === value ? "bg-accent text-paper" : "text-muted hover:text-ink"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-faint">
+            {detail === "itemized"
+              ? "Every line, priced installed (material and labor together)."
+              : "Category totals only — lines and prices stay internal."}
+          </span>
+        </div>
+        <label className="block">
+          <span className="text-sm text-muted">Terms for this estimate</span>
+          <textarea
+            defaultValue={terms ?? ""}
+            disabled={readOnly}
+            onBlur={(e) => onTermsSave(e.target.value)}
+            rows={4}
+            placeholder="Leave blank to print your company terms."
+            className={`mt-1 block w-full border border-ink/25 bg-card-hover px-2.5 py-2 text-sm text-body outline-none placeholder:text-faint focus:outline-2 focus:-outline-offset-2 focus:outline-accent ${
+              washing ? "save-wash" : ""
+            }`}
+          />
+        </label>
+        <p className="text-xs text-faint">Prints under your company&apos;s letterhead.</p>
+      </div>
+    </section>
+  );
+}
 
 /* ── Totals ───────────────────────────────────────────────────────────── */
 
 function Totals({
-  projectId,
   settings,
   totals,
   readOnly,
   washing,
   onRate,
   onDeposit,
-  detail,
-  onDetailChange,
-  terms,
-  onTermsSave,
 }: {
-  projectId: string;
   settings: EstimateSettings;
   totals: ReturnType<typeof computeTotals>;
   readOnly: boolean;
   washing: string | null;
   onRate: (v: number) => void;
   onDeposit: (v: number) => void;
-  // Moved in from the two cards that used to sit beside this one: both are
-  // decisions about the printed proposal, and this is where the proposal is
-  // generated.
-  detail: EstimateSettings["detail"];
-  onDetailChange: (d: EstimateSettings["detail"]) => void;
-  terms: string | null;
-  onTermsSave: (value: string) => void;
 }) {
-  const [termsOpen, setTermsOpen] = useState(false);
   // Same draft-resync-during-render pattern as the rows: the percentage
   // fields are text while they're being typed and follow the saved settings
-  // whenever those change (a save landing, or a failed save rolling back).
+  // whenever those change.
   const stamp = `${settings.taxRate}\u0000${settings.depositPercent}`;
   const [pcts, setPcts] = useState(() => ({
     stamp,
@@ -971,11 +1182,7 @@ function Totals({
     dep: String(settings.depositPercent),
   }));
   if (pcts.stamp !== stamp) {
-    setPcts({
-      stamp,
-      rate: String(settings.taxRate),
-      dep: String(settings.depositPercent),
-    });
+    setPcts({ stamp, rate: String(settings.taxRate), dep: String(settings.depositPercent) });
   }
   const { rate, dep } = pcts;
   const setRate = (v: string) => setPcts((p) => ({ ...p, rate: v }));
@@ -991,172 +1198,77 @@ function Totals({
     apply(n);
   };
 
-  const pctField =
-    "no-spinner w-16 rounded-lg border border-edge bg-card-hover px-2 py-1 text-right text-sm tabular-nums text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft disabled:opacity-60";
+  const pctInput =
+    "no-spinner w-16 border border-ink/25 bg-card-hover px-1.5 py-0.5 text-right text-sm tabular-nums text-body outline-none focus:outline-2 focus:-outline-offset-2 focus:outline-accent disabled:opacity-60";
+  const nameCell = `${GRID} px-2.5 py-2 text-sm text-muted`;
+  const valueCell = `${GRID} px-2.5 py-2 text-right text-sm text-body`;
 
   return (
-    <section className="h-fit rounded-[14px] border border-edge bg-card p-5 shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-      <h2 className="font-serif text-xl text-ink">Totals</h2>
-
-      <dl className="mt-4 space-y-2.5 text-sm">
-        <div className="flex items-baseline justify-between">
-          <dt className="text-muted">Subtotal</dt>
-          <dd className="font-mono tabular-nums text-body">
-            {currency.format(totals.subtotal)}
-          </dd>
-        </div>
-
-        <div
-          className={`flex items-center justify-between gap-2 rounded ${
-            washing === "tax_rate" ? "save-wash" : ""
-          }`}
-        >
-          <dt className="flex items-center gap-1.5 text-muted">
-            <label htmlFor="tax-rate">Tax</label>
-            <input
-              id="tax-rate"
-              type="number"
-              min="0"
-              max="100"
-              step="0.001"
-              value={rate}
-              disabled={readOnly}
-              onChange={(e) => setRate(e.target.value)}
-              onBlur={() => pct(rate, settings.taxRate, setRate, onRate)}
-              className={pctField}
-            />
-            <span className="text-faint">%</span>
-          </dt>
-          <dd className="font-mono tabular-nums text-body">
-            {currency.format(totals.tax)}
-          </dd>
-        </div>
-        {totals.taxableSubtotal !== totals.subtotal && (
-          <p className="text-xs text-faint">
-            On {currency.format(totals.taxableSubtotal)} of taxable lines.
-          </p>
+    <table className="h-fit w-full border-collapse bg-card tabular-nums">
+      <tbody>
+        <tr>
+          <td className={nameCell}>Subtotal</td>
+          <td className={valueCell}>{amount.format(totals.subtotal)}</td>
+        </tr>
+        {totals.laborSubtotal > 0 && (
+          <tr>
+            <td className={`${nameCell} pl-6 text-xs text-faint`}>includes labor</td>
+            <td className={`${valueCell} text-xs text-faint`}>{amount.format(totals.laborSubtotal)}</td>
+          </tr>
         )}
-
-        <div className="flex items-baseline justify-between border-t border-rule pt-3">
-          <dt className="font-semibold text-ink">Total</dt>
-          <dd className="font-mono text-xl font-semibold tabular-nums text-ink">
+        <tr className={washing === "tax_rate" ? "save-wash" : ""}>
+          <td className={nameCell}>
+            <span className="flex items-center gap-1.5">
+              <label htmlFor="tax-rate">Tax</label>
+              <input
+                id="tax-rate"
+                type="number"
+                min="0"
+                max="100"
+                step="0.001"
+                value={rate}
+                disabled={readOnly}
+                onChange={(e) => setRate(e.target.value)}
+                onBlur={() => pct(rate, settings.taxRate, setRate, onRate)}
+                className={pctInput}
+              />
+              <span className="text-faint">% on materials</span>
+            </span>
+          </td>
+          <td className={valueCell}>{amount.format(totals.tax)}</td>
+        </tr>
+        <tr className="bg-paper-deep">
+          <td className={`${GRID} px-2.5 py-2.5 text-sm font-semibold text-ink`}>Total</td>
+          <td className={`${GRID} px-2.5 py-2.5 text-right text-base font-semibold text-ink`}>
             {currency.format(totals.total)}
-          </dd>
-        </div>
-
-        <div
-          className={`flex items-center justify-between gap-2 rounded pt-1 ${
-            washing === "deposit_percent" ? "save-wash" : ""
-          }`}
-        >
-          <dt className="flex items-center gap-1.5 text-muted">
-            <label htmlFor="deposit-pct">Deposit</label>
-            <input
-              id="deposit-pct"
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={dep}
-              disabled={readOnly}
-              onChange={(e) => setDep(e.target.value)}
-              onBlur={() =>
-                pct(dep, settings.depositPercent, setDep, onDeposit)
-              }
-              className={pctField}
-            />
-            <span className="text-faint">%</span>
-          </dt>
-          <dd className="font-mono tabular-nums text-body">
-            {currency.format(totals.deposit)}
-          </dd>
-        </div>
-        <div className="flex items-baseline justify-between">
-          <dt className="text-muted">Balance on completion</dt>
-          <dd className="font-mono tabular-nums text-body">
-            {currency.format(totals.balance)}
-          </dd>
-        </div>
-      </dl>
-
-      {/* How the proposal prints, next to the button that prints it. */}
-      <div className="mt-5 border-t border-rule pt-4">
-        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-faint">
-          The client sees
-        </p>
-        <div
-          role="group"
-          aria-label="Client PDF detail"
-          className="mt-2 flex gap-1 rounded-xl border border-rule bg-paper-deep p-1"
-        >
-          {(
-            [
-              ["itemized", "Itemized"],
-              ["grouped", "Lump sums"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              disabled={readOnly}
-              aria-pressed={detail === value}
-              onClick={() => onDetailChange(value)}
-              className={`flex-1 rounded-lg px-3 py-1.5 text-[13px] font-semibold transition ${
-                detail === value
-                  ? "bg-accent text-paper"
-                  : "text-muted hover:text-ink"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[0.68rem] leading-relaxed text-faint">
-          {detail === "itemized"
-            ? "Every line with its quantity and unit price."
-            : "Category totals only — quantities and unit prices stay internal."}
-        </p>
-      </div>
-
-      <a
-        href={`/dashboard/projects/${projectId}/estimate/pdf`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="mt-4 block w-full rounded-lg bg-accent px-4 py-2.5 text-center text-[13px] font-semibold text-paper transition hover:bg-accent-bright"
-      >
-        Generate Proposal
-      </a>
-      <a
-        href={`/dashboard/projects/${projectId}/estimate/pdf?download=1`}
-        className="mt-2 block text-center text-xs font-semibold text-muted transition hover:text-accent"
-      >
-        Download PDF
-      </a>
-      {/* Kept as a link rather than deleted with its card: overriding terms
-          for one job was built deliberately, it is just not something that
-          earns a panel of its own. */}
-      <button
-        type="button"
-        disabled={readOnly}
-        onClick={() => setTermsOpen((v) => !v)}
-        className="mt-3 block w-full text-center text-xs font-semibold text-muted transition hover:text-accent disabled:opacity-50"
-      >
-        {termsOpen ? "Use company terms" : "Override terms for this estimate"}
-      </button>
-      {termsOpen && (
-        <textarea
-          defaultValue={terms ?? ""}
-          onBlur={(e) => onTermsSave(e.target.value)}
-          rows={5}
-          placeholder="Terms for this estimate only…"
-          className="mt-2 w-full rounded-lg border border-rule bg-card-hover px-3 py-2 text-sm text-body outline-none transition focus:border-accent focus:ring-2 focus:ring-accent-soft"
-        />
-      )}
-
-      <p className="mt-3 text-center text-[0.68rem] leading-relaxed text-faint">
-        Prints under your company&apos;s letterhead.
-      </p>
-    </section>
+          </td>
+        </tr>
+        <tr className={washing === "deposit_percent" ? "save-wash" : ""}>
+          <td className={nameCell}>
+            <span className="flex items-center gap-1.5">
+              <label htmlFor="deposit-pct">Deposit</label>
+              <input
+                id="deposit-pct"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={dep}
+                disabled={readOnly}
+                onChange={(e) => setDep(e.target.value)}
+                onBlur={() => pct(dep, settings.depositPercent, setDep, onDeposit)}
+                className={pctInput}
+              />
+              <span className="text-faint">%</span>
+            </span>
+          </td>
+          <td className={valueCell}>{amount.format(totals.deposit)}</td>
+        </tr>
+        <tr>
+          <td className={nameCell}>Balance on completion</td>
+          <td className={valueCell}>{amount.format(totals.balance)}</td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
-

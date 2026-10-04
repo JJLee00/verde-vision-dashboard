@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardNav } from "./nav";
 import { SignOutButton } from "./sign-out-button";
+import { DashboardChrome } from "./chrome";
 
 function Brand({ stacked = false }: { stacked?: boolean }) {
   if (stacked) {
@@ -43,29 +44,31 @@ export default function DashboardLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="min-h-screen lg:flex">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-rule bg-card/50 px-4 py-6 lg:flex">
-        <div className="flex-1 pt-3">
-          <p className="mb-3 px-3.5 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-faint">
-            Menu
-          </p>
-          <DashboardNav />
-        </div>
-        <div className="border-t border-rule pt-3">
-          <SignOutButton />
-        </div>
-      </aside>
-
-      <header className="sticky top-0 z-20 border-b border-rule bg-paper/95 backdrop-blur lg:hidden">
-        <div className="flex items-center justify-between px-4 pt-4">
-          <Brand />
-        </div>
-        <div className="relative">
-          <div className="overflow-x-auto px-3 py-2">
-            <DashboardNav horizontal />
+      <DashboardChrome>
+        <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-rule bg-card/50 px-4 py-6 lg:flex">
+          <div className="flex-1 pt-3">
+            <p className="mb-3 px-3.5 text-[0.62rem] font-semibold uppercase tracking-[0.2em] text-faint">
+              Menu
+            </p>
+            <DashboardNav />
           </div>
-          <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-paper to-transparent" />
-        </div>
-      </header>
+          <div className="border-t border-rule pt-3">
+            <SignOutButton />
+          </div>
+        </aside>
+
+        <header className="sticky top-0 z-20 border-b border-rule bg-paper/95 backdrop-blur lg:hidden">
+          <div className="flex items-center justify-between px-4 pt-4">
+            <Brand />
+          </div>
+          <div className="relative">
+            <div className="overflow-x-auto px-3 py-2">
+              <DashboardNav horizontal />
+            </div>
+            <div className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-paper to-transparent" />
+          </div>
+        </header>
+      </DashboardChrome>
 
       <main className="min-w-0 flex-1">{children}</main>
     </div>

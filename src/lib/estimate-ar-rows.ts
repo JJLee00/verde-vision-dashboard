@@ -13,38 +13,31 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { currentSize, plantForModel, unitPrice } from "@/lib/design-edit";
+import { isMissingColumn, round2 } from "@/lib/estimate";
 import { loadPriceBook, type PriceBook } from "@/lib/price-book";
 import { surfaceRates, surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
-/** The one estimate row a design's labor lands in, like the headset's line. */
-export const LABOR_AR_KEY = "labor:install";
+/**
+ * The single "Installation labor" line a design's labor used to land in,
+ * before every line carried its own (migration 023). Removed on the first
+ * rebuild that can write labor per line.
+ */
+const LEGACY_LABOR_AR_KEY = "labor:install";
 
 /**
- * Installation labor for a design: every placement at the org's labor rate
- * for its container size, plus every surface at the org's labor per ft² for
- * its style. A blank rate is $0 — the same rule the headset applies
- * (InventoryStore.laborCost and surfaceLabor), which is the only reason the
- * two agree.
+ * Labor per item for a placement: the org's rate for its container size, or
+ * $0 — the rule the headset applies too (InventoryStore.laborCost).
  *
  * A placement the catalog doesn't know (a placeholder plant) still has a
  * container size, and "a 5-gallon plant takes the same work no matter the
- * species", so the org's rate applies to it too.
+ * species", so the org's rate applies to it as well.
  */
-export function designLabor(design: ProjectFileJSON, book: PriceBook): number {
-  let total = 0;
-  for (const p of design.placements ?? []) {
-    const plant = plantForModel(p.plantModelName);
-    const size = plant ? currentSize(plant, p as PlacedPlantJSON) : null;
-    const sizeName = size?.size ?? p.containerType ?? null;
-    if (!sizeName) continue;
-    total += book.laborRates[sizeName] ?? 0;
-  }
-  for (const area of design.hardscapeAreas ?? []) {
-    const style = surfaceStyle(area.style);
-    if (style) total += surfaceSqFt(area) * surfaceRates(style, book).labor;
-  }
-  return Math.round(total * 100) / 100;
+export function placementLaborRate(placement: PlacedPlantJSON, book: PriceBook): number {
+  const plant = plantForModel(placement.plantModelName);
+  const size = plant ? currentSize(plant, placement) : null;
+  const sizeName = size?.size ?? placement.containerType ?? null;
+  return sizeName ? (book.laborRates[sizeName] ?? 0) : 0;
 }
 
 // Both the service-role client (the Vision Pro ingest route) and the
@@ -53,12 +46,36 @@ export function designLabor(design: ProjectFileJSON, book: PriceBook): number {
 type DbClient = SupabaseClient;
 
 /**
- * Rewrites the estimate's plant rows to match the design.
+ * The labor columns a design row should be written with.
  *
- * Only `source='ar'` rows are touched — `plant:…`, one `hardscape:<area id>`
- * per traced surface, and the one `labor:install` row when the design has
- * labor switched on. Every manual row is left completely alone. A price a designer typed over survives too: quantity follows the
- * design, the price stays theirs.
+ *   • Labor off for this project → no labor on any design line, and any
+ *     override is cleared: "labor off" means none, not "none unless typed".
+ *   • Labor on, someone typed over this line's labor → leave it alone.
+ *   • Otherwise → the rate the design implies.
+ *
+ * Empty before migration 023 — writing a column the table doesn't have would
+ * fail the whole row, so until it runs the design simply writes no labor.
+ */
+function laborFields(
+  perLine: boolean,
+  includeLabor: boolean,
+  rate: number,
+  existing: { labor_overridden?: boolean | null } | null
+): Record<string, unknown> {
+  if (!perLine) return {};
+  if (!includeLabor) return { labor_unit_price: 0, labor_overridden: false };
+  if (existing?.labor_overridden) return {};
+  return { labor_unit_price: rate };
+}
+
+/**
+ * Rewrites the estimate's design rows to match the design.
+ *
+ * Only `source='ar'` rows are touched — `plant:…` and one `hardscape:<area
+ * id>` per traced surface, each carrying its own labor beside its price when
+ * the project has labor switched on. Every manual row is left completely
+ * alone. A price or labor a designer typed over survives too: quantity
+ * follows the design, the numbers stay theirs.
  *
  * Returns how many plant rows the design produced, so a caller can tell
  * "the design has no plants we recognise" apart from "the design is empty".
@@ -98,8 +115,20 @@ export async function rebuildPlantRows(
   // kind of wrong that can't be walked back.
   const book = await loadPriceBook(supabase, orgId);
 
+  // Can lines carry their own labor yet? (migration 023)
+  const { error: probeError } = await supabase
+    .from("estimate_items")
+    .select("labor_unit_price")
+    .eq("project_id", projectId)
+    .limit(1);
+  const perLine = !isMissingColumn(probeError?.code);
+  const includeLabor = design.includeLabor === true;
+  const rowColumns = perLine
+    ? "id, ar_key, description, price_overridden, labor_overridden"
+    : "id, ar_key, description, price_overridden";
+
   // Group identical plant-and-size pairs into one line, the way a bid reads.
-  type Group = { description: string; qty: number; price: number };
+  type Group = { description: string; qty: number; price: number; labor: number };
   const groups = new Map<string, Group>();
   for (const p of design.placements ?? []) {
     const plant = plantForModel(p.plantModelName);
@@ -115,27 +144,37 @@ export async function rebuildPlantRows(
         description: `(${sizeName}) ${plant.name}`,
         qty: 1,
         price: unitPrice(p as PlacedPlantJSON, book.prices) ?? 0,
+        labor: placementLaborRate(p as PlacedPlantJSON, book),
       });
     }
   }
 
+  type ExistingRow = {
+    id: string;
+    ar_key: string | null;
+    description: string;
+    price_overridden: boolean;
+    labor_overridden?: boolean | null;
+  };
   const { data: existingRows } = await supabase
     .from("estimate_items")
-    .select("id, ar_key, price_overridden")
+    .select(rowColumns)
     .eq("project_id", projectId)
     .eq("source", "ar")
-    .like("ar_key", "plant:%");
+    .like("ar_key", "plant:%")
+    .returns<ExistingRow[]>();
 
   const byKey = new Map(
     (existingRows ?? []).map((r) => [String(r.ar_key), r])
   );
 
   for (const [arKey, group] of groups) {
-    const existing = byKey.get(arKey);
+    const existing = byKey.get(arKey) ?? null;
+    const labor = laborFields(perLine, includeLabor, group.labor, existing);
     if (existing) {
       // A price a designer typed over survives: quantity follows the design,
       // the price stays theirs.
-      const patch: Record<string, unknown> = { quantity: group.qty };
+      const patch: Record<string, unknown> = { quantity: group.qty, ...labor };
       if (!existing.price_overridden) patch.unit_price = group.price;
       await supabase.from("estimate_items").update(patch).eq("id", existing.id);
       byKey.delete(arKey);
@@ -147,6 +186,7 @@ export async function rebuildPlantRows(
         quantity: group.qty,
         unit: "each",
         unit_price: group.price,
+        ...labor,
         taxable: true,
         source: "ar",
         ar_key: arKey,
@@ -160,12 +200,25 @@ export async function rebuildPlantRows(
     await supabase.from("estimate_items").delete().in("id", stale);
   }
 
-  await syncSurfaceRows(supabase, projectId, design, book);
-  await syncLaborRow(supabase, projectId, design, book);
+  await syncSurfaceRows(supabase, projectId, design, book, perLine, rowColumns);
 
+  // Labor lives on the lines now, so the old single labor line goes — but
+  // only once the lines can carry it, or labor would vanish from the bid.
+  if (perLine) {
+    await supabase
+      .from("estimate_items")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("source", "ar")
+      .eq("ar_key", LEGACY_LABOR_AR_KEY);
+  }
+
+  // The same arithmetic as computeTotals in src/lib/estimate.ts: every line's
+  // total, plus tax on the MATERIAL part of the taxable ones (labor is never
+  // taxed).
   const { data: allRows } = await supabase
     .from("estimate_items")
-    .select("total, taxable")
+    .select("quantity, unit_price, total, taxable")
     .eq("project_id", projectId);
   if (allRows) {
     const { data: settings } = await supabase
@@ -175,11 +228,12 @@ export async function rebuildPlantRows(
       .maybeSingle();
     const subtotal = allRows.reduce((s, r) => s + Number(r.total ?? 0), 0);
     const taxable = allRows.reduce(
-      (s, r) => s + (r.taxable ? Number(r.total ?? 0) : 0),
+      (s, r) =>
+        s + (r.taxable ? round2(Number(r.quantity) * Number(r.unit_price)) : 0),
       0
     );
     const rate = Number(settings?.tax_rate ?? 0);
-    const total = Math.round((subtotal + (taxable * rate) / 100) * 100) / 100;
+    const total = round2(round2(subtotal) + round2((round2(taxable) * rate) / 100));
     await supabase
       .from("projects")
       .update({ estimate_amount: total })
@@ -192,51 +246,70 @@ export async function rebuildPlantRows(
 /**
  * One row per traced surface — pavers, turf, decomposed granite — keyed by
  * the area's id (the 'hardscape:<area id>' that migration 016 reserved).
- * Quantity is its square footage and the price the org's per-ft² price for
- * its style ($0 if blank), both exactly as the headset quotes them.
+ * Quantity is its square footage; price and labor are the org's per-ft²
+ * numbers for its style ($0 if blank), exactly as the headset quotes them.
  *
  * Same contract as a plant row: the footage follows the design and a price
- * someone typed over survives. Except across a change of material — a price
- * typed for pavers says nothing about turf — so a re-styled area takes the
- * new style's description and price, and loses the override.
+ * or labor someone typed over survives. Except across a change of material —
+ * a price typed for pavers says nothing about turf — so a re-styled area
+ * takes the new style's description and numbers, and loses its overrides.
  */
 async function syncSurfaceRows(
   supabase: DbClient,
   projectId: string,
   design: ProjectFileJSON,
-  book: PriceBook
+  book: PriceBook,
+  perLine: boolean,
+  rowColumns: string
 ): Promise<void> {
-  type Wanted = { description: string; sqFt: number; price: number };
+  const includeLabor = design.includeLabor === true;
+  type Wanted = { description: string; sqFt: number; price: number; labor: number };
   const wanted = new Map<string, Wanted>();
   for (const area of design.hardscapeAreas ?? []) {
     const style = surfaceStyle(area.style);
     const sqFt = Math.round(surfaceSqFt(area) * 100) / 100;
     if (!style || sqFt <= 0) continue;
+    const rates = surfaceRates(style, book);
     wanted.set(`hardscape:${area.id}`, {
       description: `${style.style} surface`,
       sqFt,
-      price: surfaceRates(style, book).price,
+      price: rates.price,
+      labor: rates.labor,
     });
   }
 
+  type ExistingRow = {
+    id: string;
+    ar_key: string | null;
+    description: string;
+    price_overridden: boolean;
+    labor_overridden?: boolean | null;
+  };
   const { data: existingRows } = await supabase
     .from("estimate_items")
-    .select("id, ar_key, description, price_overridden")
+    .select(rowColumns)
     .eq("project_id", projectId)
     .eq("source", "ar")
-    .like("ar_key", "hardscape:%");
+    .like("ar_key", "hardscape:%")
+    .returns<ExistingRow[]>();
   const byKey = new Map(
     (existingRows ?? []).map((r) => [String(r.ar_key), r])
   );
 
   for (const [arKey, row] of wanted) {
-    const existing = byKey.get(arKey);
+    const existing = byKey.get(arKey) ?? null;
     if (existing) {
-      const patch: Record<string, unknown> = { quantity: row.sqFt };
-      if (existing.description !== row.description) {
+      const restyled = existing.description !== row.description;
+      const patch: Record<string, unknown> = {
+        quantity: row.sqFt,
+        // A new material starts from its own labor, override or not.
+        ...laborFields(perLine, includeLabor, row.labor, restyled ? null : existing),
+      };
+      if (restyled) {
         patch.description = row.description;
         patch.unit_price = row.price;
         patch.price_overridden = false;
+        if (perLine) patch.labor_overridden = false;
       } else if (!existing.price_overridden) {
         patch.unit_price = row.price;
       }
@@ -250,6 +323,7 @@ async function syncSurfaceRows(
         quantity: row.sqFt,
         unit: "ft²",
         unit_price: row.price,
+        ...laborFields(perLine, includeLabor, row.labor, null),
         taxable: true,
         source: "ar",
         ar_key: arKey,
@@ -262,64 +336,4 @@ async function syncSurfaceRows(
   if (stale.length > 0) {
     await supabase.from("estimate_items").delete().in("id", stale);
   }
-}
-
-/**
- * Keeps the Labor line in step with the design: there while the project has
- * labor switched on, gone when it doesn't. Same contract as a plant row — the
- * amount follows the design until someone types over the price, and then the
- * price is theirs. Manual labor lines are never touched.
- */
-async function syncLaborRow(
-  supabase: DbClient,
-  projectId: string,
-  design: ProjectFileJSON,
-  book: PriceBook
-): Promise<void> {
-  const { data: existingRows } = await supabase
-    .from("estimate_items")
-    .select("id, price_overridden")
-    .eq("project_id", projectId)
-    .eq("source", "ar")
-    .eq("ar_key", LABOR_AR_KEY);
-  const [existing, ...duplicates] = existingRows ?? [];
-  // Two syncs landing together could each have inserted one. Keep the first.
-  if (duplicates.length > 0) {
-    await supabase
-      .from("estimate_items")
-      .delete()
-      .in("id", duplicates.map((r) => r.id));
-  }
-
-  if (design.includeLabor !== true) {
-    if (existing) {
-      await supabase.from("estimate_items").delete().eq("id", existing.id);
-    }
-    return;
-  }
-
-  const amount = designLabor(design, book);
-
-  if (existing) {
-    if (!existing.price_overridden) {
-      await supabase
-        .from("estimate_items")
-        .update({ unit_price: amount })
-        .eq("id", existing.id);
-    }
-    return;
-  }
-  await supabase.from("estimate_items").insert({
-    project_id: projectId,
-    description: "Installation labor",
-    category: "labor",
-    quantity: 1,
-    unit: "ls",
-    unit_price: amount,
-    // Labor is untaxed everywhere else on the dashboard (the Saved Items
-    // picker sets taxable = category !== "labor").
-    taxable: false,
-    source: "ar",
-    ar_key: LABOR_AR_KEY,
-  });
 }
