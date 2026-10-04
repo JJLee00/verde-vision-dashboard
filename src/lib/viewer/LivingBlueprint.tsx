@@ -48,6 +48,8 @@ export type LivingBlueprintProps = {
   project: ProjectFileJSON;
   projectName: string;
   estimateAmount?: number | null;
+  /** The org's grid prices, "plant_key|size" → price (PriceBook.prices). A
+   *  blank cell is $0, as on the estimate and the headset. */
   priceOverrides?: Record<string, number>;
   showPrices: boolean;
   backHref?: string | null;

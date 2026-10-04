@@ -24,6 +24,7 @@ import {
   type DesignEdit,
 } from "@/lib/design-edit";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
+import { gridPrice } from "@/lib/price-book";
 import { publishRevision } from "./actions";
 
 const currency = new Intl.NumberFormat("en-US", {
@@ -473,6 +474,7 @@ export function DesignEditor({ projectId, canEdit, ...viewer }: Props) {
           onBeforeLeave={() => guardLeave(viewer.backHref ?? "/dashboard")}
           editorPanel={
             <EditorPanel
+              prices={viewer.priceOverrides ?? {}}
               selected={selected}
               staged={deletedIds.has(selectedId ?? "")}
               changes={changes}
@@ -800,6 +802,7 @@ type ChangeRow = {
 };
 
 function EditorPanel({
+  prices,
   selected,
   staged,
   changes,
@@ -839,6 +842,8 @@ function EditorPanel({
   onResize: (size: string) => void;
   onDelete: () => void;
   onUndelete: () => void;
+  /** The org's grid prices (PriceBook.prices); a blank cell shows $0. */
+  prices: Record<string, number>;
 }) {
   if (!selected) {
     return (
@@ -879,6 +884,7 @@ function EditorPanel({
     return (
       <Picker
         current={plant}
+        prices={prices}
         currentSizeName={size?.size ?? null}
         onCancel={onCancelPick}
         onPick={onSwap}
@@ -943,7 +949,7 @@ function EditorPanel({
               >
                 {sz.size}
                 <span className="mt-0.5 block font-mono text-[0.68rem] tabular-nums">
-                  {currency.format(sz.price)}
+                  {currency.format(gridPrice(prices, plant.key, sz.size))}
                 </span>
               </button>
             );
@@ -1113,10 +1119,13 @@ function ChangeList({
 function Picker({
   current,
   currentSizeName,
+  prices,
   onCancel,
   onPick,
 }: {
   current: CatalogPlant;
+  /** The org's grid prices (PriceBook.prices); a blank cell shows $0. */
+  prices: Record<string, number>;
   onCancel: () => void;
   onPick: (plant: CatalogPlant, size: string) => void;
   /** The size the plant is on now — used to suggest one on the new plant. */
@@ -1172,7 +1181,7 @@ function Picker({
                   {p.sizes.length} size{p.sizes.length === 1 ? "" : "s"}
                   {p.sizes.length > 0 &&
                     ` · from ${currency.format(
-                      Math.min(...p.sizes.map((z) => z.price))
+                      Math.min(...p.sizes.map((z) => gridPrice(prices, p.key, z.size)))
                     )}`}
                   {p.key === current.key && " · current"}
                 </span>
@@ -1202,7 +1211,7 @@ function Picker({
                     >
                       <span className="block text-ink">{z.size}</span>
                       <span className="mt-0.5 block font-mono text-[0.68rem] tabular-nums">
-                        {currency.format(z.price)}
+                        {currency.format(gridPrice(prices, p.key, z.size))}
                       </span>
                     </button>
                   );

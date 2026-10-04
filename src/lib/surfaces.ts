@@ -1,25 +1,39 @@
 import catalog from "@/lib/catalog.json";
+import { gridPrice, type PriceBook } from "@/lib/price-book";
 import type { HardscapeAreaJSON } from "@/lib/viewer/types";
 
 // Surface pricing for the estimate — the traced areas (pavers, turf,
 // decomposed granite…), billed per square foot rather than per container.
 //
-// The styles and both per-sq-ft prices are GENERATED from the app's
-// HardscapeStyle (npm run gen:catalog reads HardscapeArea.swift), so a
-// surface here bills exactly what the headset quotes for it. The headset has
-// no surface price book yet; an office that wants a different number types
-// over the row, and the resync leaves that price alone.
+// The STYLES are generated from the app's HardscapeStyle (npm run
+// gen:catalog reads HardscapeArea.swift). Their PRICES are the org's, typed
+// in the Surfaces card on the Hardscape Prices page and stored in
+// plant_prices under "surface:<case>" — a blank is $0, here and on the
+// headset, which reads the same rows.
 
 export type SurfaceStyle = {
   /** HardscapeStyle case name, e.g. "paver". */
   case: string;
   /** Its raw value — what project_json carries, e.g. "Paving Stones 081". */
   style: string;
-  pricePerSqFt: number;
-  laborPerSqFt: number;
 };
 
-const STYLES = (catalog as unknown as { surfaces?: SurfaceStyle[] }).surfaces ?? [];
+/** plant_prices sizes a surface is priced under: material and labor per ft². */
+export const SURFACE_PRICE_SIZE = "sqft";
+export const SURFACE_LABOR_SIZE = "labor_sqft";
+export const surfacePriceKey = (style: SurfaceStyle) => `surface:${style.case}`;
+
+/** The org's material and labor price per ft² for a style; blanks are $0. */
+export function surfaceRates(style: SurfaceStyle, book: PriceBook) {
+  const key = surfacePriceKey(style);
+  return {
+    price: gridPrice(book.prices, key, SURFACE_PRICE_SIZE),
+    labor: gridPrice(book.prices, key, SURFACE_LABOR_SIZE),
+  };
+}
+
+export const STYLES: SurfaceStyle[] =
+  (catalog as unknown as { surfaces?: SurfaceStyle[] }).surfaces ?? [];
 const BY_RAW = new Map(STYLES.map((s) => [s.style, s]));
 const BY_CASE = new Map(STYLES.map((s) => [s.case, s]));
 

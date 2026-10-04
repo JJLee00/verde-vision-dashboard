@@ -1,4 +1,5 @@
 import catalog from "@/lib/catalog.json";
+import { gridPrice } from "@/lib/price-book";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
 // The rules behind a dashboard design edit.
@@ -216,25 +217,28 @@ export function applyEdits(
   return { ...project, placements };
 }
 
-/** Unit price for a placement, with the org's price book taking precedence. */
+/**
+ * Unit price for a placement: the org's grid price for its plant at its size
+ * (`prices` is PriceBook.prices), or $0 when that cell is blank — never the
+ * catalog's built-in number. null only for a plant the catalog doesn't know.
+ */
 export function unitPrice(
   placement: PlacedPlantJSON,
-  overridesByName: Record<string, number> = {}
+  prices: Record<string, number> = {}
 ): number | null {
   const plant = plantForModel(placement.plantModelName);
   if (!plant) return null;
-  const override = overridesByName[plant.name.toLowerCase()];
-  if (override != null) return override;
-  return currentSize(plant, placement)?.price ?? null;
+  const size = currentSize(plant, placement);
+  return size ? gridPrice(prices, plant.key, size.size) : 0;
 }
 
 /** What the plants in a design come to — the AR part of the estimate. */
 export function plantsSubtotal(
   project: ProjectFileJSON,
-  overridesByName: Record<string, number> = {}
+  prices: Record<string, number> = {}
 ): number {
   const total = (project.placements ?? []).reduce(
-    (sum, p) => sum + (unitPrice(p, overridesByName) ?? 0),
+    (sum, p) => sum + (unitPrice(p, prices) ?? 0),
     0
   );
   return Math.round(total * 100) / 100;

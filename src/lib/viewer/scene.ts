@@ -2,7 +2,8 @@
 // so both the client component (LivingBlueprint) and server pages (the
 // project page's plant summary) can share it.
 
-import type { ProjectFileJSON } from "./types";
+import { unitPrice } from "@/lib/design-edit";
+import type { PlacedPlantJSON, ProjectFileJSON } from "./types";
 import { METERS_TO_FEET } from "./types";
 import { speciesMeta, type SpeciesMeta } from "./catalog";
 
@@ -145,9 +146,15 @@ export type RailRow = {
   lineTotal: number | null;
 };
 
+/**
+ * The priced material list beside the plan. `prices` is PriceBook.prices —
+ * the org's grid — and a blank cell is $0, the same as the estimate and the
+ * headset. (This used to read the viewer's own hand-written catalog prices,
+ * a third set of numbers free to disagree with both.)
+ */
 export function buildRail(
   scene: Scene,
-  priceOverrides: Record<string, number>
+  prices: Record<string, number>
 ): { rows: RailRow[]; subtotal: number | null } {
   const groups = new Map<string, Instance[]>();
   for (const inst of scene.instances) {
@@ -159,13 +166,16 @@ export function buildRail(
   const rows: RailRow[] = [];
   for (const [model, list] of groups) {
     const meta = list[0].meta;
-    const override = priceOverrides[meta.name.toLowerCase()];
-    const unitFor = (inst: Instance): number | null => {
-      if (override != null) return override;
-      if (inst.containerType && meta.prices[inst.containerType] != null)
-        return meta.prices[inst.containerType];
-      return null;
-    };
+    // null = a species the catalog doesn't know, so there is no price to say.
+    const unitFor = (inst: Instance): number | null =>
+      unitPrice(
+        {
+          plantModelName: inst.model,
+          containerType: inst.containerType,
+          scaleX: inst.scale,
+        } as PlacedPlantJSON,
+        prices
+      );
     const units = list.map(unitFor);
     const lineTotal = units.every((u) => u != null)
       ? (units as number[]).reduce((s, u) => s + u, 0)
