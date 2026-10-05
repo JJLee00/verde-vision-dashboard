@@ -1,0 +1,340 @@
+{
+  "about": "Shared estimate-pricing cases. The dashboard (npm run check:estimate) and the headset app (EstimateParityTests) both run these against their own copy of the rules; keep this file identical in src/lib/estimate-parity.json (dashboard) and Test/TestTests/estimate-parity.json (app). Inputs are a design, the org's price book, and the bid the dashboard already holds; `expect` is the bid after the design syncs. Line keys: the design key, or manual:<description> for a hand-typed line.",
+  "cases": [
+    {
+      "name": "first sync — nothing on the dashboard yet",
+      "includeLabor": true,
+      "taxRate": 0,
+      "prices": {
+        "aloe vera|5g": 60,
+        "agave americana|5g": 40,
+        "surface:paver|sqft": 12,
+        "surface:paver|labor_sqft": 4
+      },
+      "laborRates": {
+        "5g": 50,
+        "15g": 80
+      },
+      "plants": [
+        {
+          "name": "Aloe Vera",
+          "modelName": "Aloe Vera",
+          "size": "5g",
+          "count": 2
+        },
+        {
+          "name": "Aloe Vera",
+          "modelName": "Aloe Vera",
+          "size": "15g",
+          "count": 1
+        },
+        {
+          "name": "Agave Americana",
+          "modelName": "AgaveAmericana",
+          "size": "5g",
+          "count": 1
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "A1111111-1111-4111-8111-111111111111",
+          "style": "Paving Stones 081",
+          "width": 10,
+          "depth": 5
+        }
+      ],
+      "bid": [],
+      "expect": {
+        "lines": [
+          {
+            "key": "hardscape:A1111111-1111-4111-8111-111111111111",
+            "quantity": 538.19,
+            "unitPrice": 12,
+            "laborUnitPrice": 4
+          },
+          {
+            "key": "plant:agave americana:5g",
+            "quantity": 1,
+            "unitPrice": 40,
+            "laborUnitPrice": 50
+          },
+          {
+            "key": "plant:aloe vera:15g",
+            "quantity": 1,
+            "unitPrice": 0,
+            "laborUnitPrice": 80
+          },
+          {
+            "key": "plant:aloe vera:5g",
+            "quantity": 2,
+            "unitPrice": 60,
+            "laborUnitPrice": 50
+          }
+        ],
+        "subtotal": 9001.04,
+        "laborSubtotal": 2382.76,
+        "tax": 0,
+        "total": 9001.04
+      }
+    },
+    {
+      "name": "a bid keeps the prices it was given",
+      "includeLabor": true,
+      "taxRate": 8.6,
+      "prices": {
+        "aloe vera|5g": 60,
+        "agave americana|5g": 40,
+        "surface:paver|sqft": 12,
+        "surface:paver|labor_sqft": 4
+      },
+      "laborRates": {
+        "5g": 50,
+        "15g": 80
+      },
+      "plants": [
+        {
+          "name": "Aloe Vera",
+          "modelName": "Aloe Vera",
+          "size": "5g",
+          "count": 3
+        },
+        {
+          "name": "Aloe Vera",
+          "modelName": "Aloe Vera",
+          "size": "15g",
+          "count": 1
+        },
+        {
+          "name": "Agave Americana",
+          "modelName": "AgaveAmericana",
+          "size": "5g",
+          "count": 1
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "A1111111-1111-4111-8111-111111111111",
+          "style": "Paving Stones 081",
+          "width": 10,
+          "depth": 6
+        }
+      ],
+      "bid": [
+        {
+          "ar_key": "labor:install",
+          "description": "Installation labor",
+          "source": "ar",
+          "quantity": 1,
+          "unit": "ls",
+          "unit_price": 300,
+          "labor_unit_price": 0,
+          "taxable": false,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 5
+        },
+        {
+          "ar_key": "plant:aloe vera:5g",
+          "description": "(5g) Aloe Vera",
+          "source": "ar",
+          "quantity": 2,
+          "unit": "each",
+          "unit_price": 55,
+          "labor_unit_price": 45,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 10
+        },
+        {
+          "ar_key": "plant:agave americana:5g",
+          "description": "(5g) Agave Americana",
+          "source": "ar",
+          "quantity": 1,
+          "unit": "each",
+          "unit_price": 70,
+          "labor_unit_price": 30,
+          "taxable": true,
+          "price_overridden": true,
+          "labor_overridden": true,
+          "sort_order": 20
+        },
+        {
+          "ar_key": "hardscape:A1111111-1111-4111-8111-111111111111",
+          "description": "Paving Stones 081 surface",
+          "source": "ar",
+          "quantity": 538.19,
+          "unit": "ft²",
+          "unit_price": 10,
+          "labor_unit_price": 3,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 30
+        },
+        {
+          "ar_key": null,
+          "description": "Drip irrigation, 2 valves",
+          "source": "manual",
+          "quantity": 1,
+          "unit": "ls",
+          "unit_price": 1200,
+          "labor_unit_price": 0,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 40
+        }
+      ],
+      "expect": {
+        "lines": [
+          {
+            "key": "hardscape:A1111111-1111-4111-8111-111111111111",
+            "quantity": 645.83,
+            "unitPrice": 10,
+            "laborUnitPrice": 3
+          },
+          {
+            "key": "manual:Drip irrigation, 2 valves",
+            "quantity": 1,
+            "unitPrice": 1200,
+            "laborUnitPrice": 0
+          },
+          {
+            "key": "plant:agave americana:5g",
+            "quantity": 1,
+            "unitPrice": 70,
+            "laborUnitPrice": 30
+          },
+          {
+            "key": "plant:aloe vera:15g",
+            "quantity": 1,
+            "unitPrice": 0,
+            "laborUnitPrice": 80
+          },
+          {
+            "key": "plant:aloe vera:5g",
+            "quantity": 3,
+            "unitPrice": 55,
+            "laborUnitPrice": 45
+          }
+        ],
+        "subtotal": 10075.79,
+        "laborSubtotal": 2182.49,
+        "tax": 678.82,
+        "total": 10754.61
+      }
+    },
+    {
+      "name": "fill-ins, labor off, a new material, a removed plant",
+      "includeLabor": false,
+      "taxRate": 8.6,
+      "prices": {
+        "aloe vera|5g": 60,
+        "surface:paver|sqft": 12,
+        "surface:paver|labor_sqft": 4,
+        "surface:turf|sqft": 9,
+        "surface:turf|labor_sqft": 3
+      },
+      "laborRates": {
+        "5g": 50
+      },
+      "plants": [
+        {
+          "name": "Aloe Vera",
+          "modelName": "Aloe Vera",
+          "size": "5g",
+          "count": 2
+        }
+      ],
+      "surfaces": [
+        {
+          "id": "A1111111-1111-4111-8111-111111111111",
+          "style": "Artificial Turf",
+          "width": 4,
+          "depth": 4
+        }
+      ],
+      "bid": [
+        {
+          "ar_key": "plant:aloe vera:5g",
+          "description": "(5g) Aloe Vera",
+          "source": "ar",
+          "quantity": 2,
+          "unit": "each",
+          "unit_price": 0,
+          "labor_unit_price": 45,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": true,
+          "sort_order": 10
+        },
+        {
+          "ar_key": "plant:agave americana:5g",
+          "description": "(5g) Agave Americana",
+          "source": "ar",
+          "quantity": 1,
+          "unit": "each",
+          "unit_price": 40,
+          "labor_unit_price": 50,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 20
+        },
+        {
+          "ar_key": "hardscape:A1111111-1111-4111-8111-111111111111",
+          "description": "Paving Stones 081 surface",
+          "source": "ar",
+          "quantity": 538.19,
+          "unit": "ft²",
+          "unit_price": 12,
+          "labor_unit_price": 4,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 30
+        },
+        {
+          "ar_key": null,
+          "description": "Haul-off",
+          "source": "manual",
+          "quantity": 2,
+          "unit": "load",
+          "unit_price": 225,
+          "labor_unit_price": 62.5,
+          "taxable": true,
+          "price_overridden": false,
+          "labor_overridden": false,
+          "sort_order": 40
+        }
+      ],
+      "expect": {
+        "lines": [
+          {
+            "key": "hardscape:A1111111-1111-4111-8111-111111111111",
+            "quantity": 172.22,
+            "unitPrice": 9,
+            "laborUnitPrice": 0
+          },
+          {
+            "key": "manual:Haul-off",
+            "quantity": 2,
+            "unitPrice": 225,
+            "laborUnitPrice": 62.5
+          },
+          {
+            "key": "plant:aloe vera:5g",
+            "quantity": 2,
+            "unitPrice": 60,
+            "laborUnitPrice": 0
+          }
+        ],
+        "subtotal": 2244.98,
+        "laborSubtotal": 125,
+        "tax": 182.32,
+        "total": 2427.3
+      }
+    }
+  ]
+}
