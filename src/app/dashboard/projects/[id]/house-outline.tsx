@@ -1,25 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
+import type { LatLng } from "@/lib/blueprint/types";
 import { sameAddress } from "@/lib/blueprint/stored";
+import { geocodeAddress, type GeocodeHit } from "@/lib/blueprint/esri";
 import {
-  findLots,
-  pickLot,
-  removeHouseOutline,
-  type LotChoice,
-} from "./house-outline-actions";
-import { LotThumbnail, OutlineMap } from "./outline-map";
+  ringAreaSqFt,
+  TRACE_PROVIDER,
+  tracedOutlineFrom,
+  type TracedOutline,
+} from "@/lib/blueprint/trace";
+import { removeHouseOutline, saveTracedOutline } from "./house-outline-actions";
+import { TraceMap, type MapView, type Shape, type ShapeKind, type Shapes } from "./trace-map";
 
 /**
- * The lot and house outline the headset will walk, picked at a desk.
+ * The house outline the headset will walk, traced by the designer on the
+ * aerial at a desk.
  *
- * This used to happen in the headset, in the driveway: confirm the address,
- * pick the lot, wait on the yard's connection while the aerial downloads.
- * Here it is one click in the common case — a single lot for the address goes
- * straight to tracing — and the headset receives the result with its project
- * list, so on site Blueprint opens directly on the corner walk.
+ * This used to be a county lookup plus an automatic trace of the roof from
+ * Solar imagery, which only ever covered Maricopa County. Tracing by hand
+ * works at any address with imagery, and the headset receives the same
+ * outline either way: on site, Blueprint opens on the corner walk — walk to
+ * two of these corners and the outline drops into the yard.
  */
 export function HouseOutline({
   projectId,
@@ -30,68 +34,21 @@ export function HouseOutline({
 }: {
   projectId: string;
   address: string | null;
-  outline: {
-    stored: StoredBlueprint;
-    fetchedAt: string | null;
-    orthoUrl: string | null;
-  } | null;
+  outline: { stored: StoredBlueprint; fetchedAt: string | null } | null;
   /** False until migration-020 has been run. */
   ready: boolean;
   disabled: boolean;
 }) {
   const router = useRouter();
-  const [lots, setLots] = useState<LotChoice[] | null>(null);
-  const [phase, setPhase] = useState<"idle" | "finding" | "tracing" | "removing">("idle");
+  const [editing, setEditing] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-  const busy = phase !== "idle";
-
-  async function trace(apn: string) {
-    setPhase("tracing");
-    setError(null);
-    const result = await pickLot(projectId, apn);
-    if (!result.ok) {
-      setError(result.error);
-      setPhase("idle");
-      return;
-    }
-    setLots(null);
-    startTransition(() => router.refresh());
-    setPhase("idle");
-  }
-
-  async function find() {
-    setPhase("finding");
-    setError(null);
-    const result = await findLots(projectId);
-    if (!result.ok) {
-      setError(result.error);
-      setPhase("idle");
-      return;
-    }
-    // One lot for the address is the normal case — there is nothing to
-    // choose, so go straight on to the part worth looking at: the house.
-    if (result.lots.length === 1) {
-      await trace(result.lots[0].apn);
-      return;
-    }
-    setLots(result.lots);
-    setPhase("idle");
-  }
-
-  async function remove() {
-    setPhase("removing");
-    setError(null);
-    const result = await removeHouseOutline(projectId);
-    if (!result.ok) setError(result.error);
-    else startTransition(() => router.refresh());
-    setPhase("idle");
-  }
 
   if (!ready) {
     return (
       <p className="text-sm text-muted">
-        Run migration-020 in Supabase and lot outlines can be looked up here.
+        Run migration-020 in Supabase and house outlines can be traced here.
       </p>
     );
   }
@@ -99,127 +56,85 @@ export function HouseOutline({
   const stored = outline?.stored ?? null;
   const addressChanged = stored != null && !sameAddress(stored.lookupAddress, address);
 
+  if (editing && address) {
+    return (
+      <TraceEditor
+        address={address}
+        initial={stored ? tracedOutlineFrom(stored) : null}
+        onCancel={() => setEditing(false)}
+        onSave={async (traced) => {
+          const result = await saveTracedOutline(projectId, traced);
+          if (result.ok) {
+            setEditing(false);
+            startTransition(() => router.refresh());
+          }
+          return result;
+        }}
+      />
+    );
+  }
+
+  async function remove() {
+    setRemoving(true);
+    setError(null);
+    const result = await removeHouseOutline(projectId);
+    if (!result.ok) setError(result.error);
+    else startTransition(() => router.refresh());
+    setRemoving(false);
+  }
+
   return (
     <div>
       {stored ? (
-        <PickedOutline
-          stored={stored}
-          fetchedAt={outline?.fetchedAt ?? null}
-          orthoUrl={outline?.orthoUrl ?? null}
-        />
+        <SavedOutline stored={stored} fetchedAt={outline?.fetchedAt ?? null} />
       ) : !address ? (
         <p className="text-sm text-muted">
           Add the property address with <span className="font-semibold">Edit details</span>{" "}
-          and the lot and house can be looked up here, so the headset arrives on
-          site with the outline already in hand.
+          and the house can be traced here, so the headset arrives on site with
+          the outline already in hand.
         </p>
       ) : (
-        !lots && (
-          <p className="text-sm text-muted">
-            Looks up <span className="text-body">{address}</span> with the county
-            and traces the house from the latest aerial. The headset picks it up
-            on its next sync — nothing to type on site.
-          </p>
-        )
-      )}
-
-      {addressChanged && !lots && (
-        <p className="mt-4 rounded-lg border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-sm text-gold">
-          Picked for “{stored!.lookupAddress}”. The project&apos;s address has
-          changed since — look it up again so the headset walks the right house.
+        <p className="text-sm text-muted">
+          Find <span className="text-body">{address}</span> on the aerial and
+          click around the roof, corner by corner. The headset picks the outline
+          up on its next sync — on site, walk to two of its corners and it drops
+          into the yard.
         </p>
       )}
 
-      {lots && (
-        <div className="mt-1">
-          <p className="text-sm text-muted">
-            {lots.length} lots share this address. Which one is the project?
-          </p>
-          <ul className="mt-3 flex flex-col gap-2.5">
-            {lots.map((lot) => (
-              <li key={lot.apn}>
-                <button
-                  type="button"
-                  disabled={busy || disabled}
-                  onClick={() => trace(lot.apn)}
-                  className="flex w-full items-center gap-4 rounded-[10px] border border-rule bg-card p-2.5 text-left transition hover:border-accent hover:bg-card-hover disabled:opacity-50"
-                >
-                  <LotThumbnail parcelXZ={lot.parcelXZ} />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold text-ink">
-                      {lot.address}
-                    </span>
-                    <span className="mt-0.5 block text-sm text-muted">
-                      {[
-                        lot.lotSizeSqFt != null && `${formatArea(lot.lotSizeSqFt)} lot`,
-                        lot.livableAreaSqFt != null &&
-                          `${formatArea(lot.livableAreaSqFt)} home`,
-                        lot.constructionYear != null && `built ${lot.constructionYear}`,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                    <span className="mt-0.5 block font-mono text-[11px] text-faint">
-                      APN {lot.apn}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {phase === "finding" && (
-        <p className="mt-4 text-sm text-muted">Finding the lot…</p>
-      )}
-      {phase === "tracing" && (
-        <p className="mt-4 text-sm text-muted">
-          Tracing the house from the aerial — about fifteen seconds.
+      {addressChanged && (
+        <p className="mt-4 rounded-lg border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-sm text-gold">
+          Traced for “{stored!.lookupAddress}”. The project&apos;s address has
+          changed since — check the outline is on the right house.
         </p>
       )}
       {error && <p className="mt-4 text-sm text-clay">{error}</p>}
 
       {!disabled && address && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          {(!stored || addressChanged) && !lots && (
+          <button
+            type="button"
+            disabled={removing}
+            onClick={() => {
+              setError(null);
+              setEditing(true);
+            }}
+            className={
+              stored
+                ? "rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
+                : "rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
+            }
+          >
+            {stored ? "Edit outline" : "Trace the house"}
+          </button>
+          {stored && (
             <button
               type="button"
-              disabled={busy}
-              onClick={find}
-              className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
-            >
-              {stored ? "Look up again" : "Find the house"}
-            </button>
-          )}
-          {stored && !addressChanged && !lots && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={find}
-              className="rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
-            >
-              Wrong lot? Pick again
-            </button>
-          )}
-          {lots && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setLots(null)}
-              className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
-            >
-              Cancel
-            </button>
-          )}
-          {stored && !lots && (
-            <button
-              type="button"
-              disabled={busy}
+              disabled={removing}
               onClick={remove}
               className="text-sm font-semibold text-muted transition hover:text-clay disabled:opacity-50"
             >
-              {phase === "removing" ? "Removing…" : "Remove"}
+              {removing ? "Removing…" : "Remove"}
             </button>
           )}
         </div>
@@ -228,55 +143,38 @@ export function HouseOutline({
   );
 }
 
-function PickedOutline({
+function SavedOutline({
   stored,
   fetchedAt,
-  orthoUrl,
 }: {
   stored: StoredBlueprint;
   fetchedAt: string | null;
-  orthoUrl: string | null;
 }) {
-  const c = stored.candidate;
-  const house = c.houseXZ ?? null;
-  const imagery = c.imagery ?? null;
-  // Shown wherever the imagery is: in this market tiles run years behind,
-  // and the date is how a designer knows to distrust a pool or patio.
-  const captured = imagery?.captureDate ? formatMonthYear(imagery.captureDate) : null;
-  // The headset reports its own trouble; this list is what the designer
-  // should know BEFORE driving out. The not-configured case never gets here
-  // (pickLot refuses it), so these are all about the property.
-  const warnings = (c.warnings ?? []).filter(
-    (w) => !(w.code === "footprint-unavailable" && house == null)
+  const traced = useMemo(() => tracedOutlineFrom(stored), [stored]);
+  const shapes = useMemo<Shapes>(
+    () => ({
+      house: { points: traced.house, closed: true },
+      boundary: { points: traced.boundary, closed: true },
+    }),
+    [traced]
   );
+  const view = useMemo<MapView>(
+    () => ({ kind: "fit", points: [...traced.house, ...traced.boundary] }),
+    [traced]
+  );
+  const fromCounty = stored.provider !== TRACE_PROVIDER;
 
   return (
     <div>
-      <div className="overflow-hidden rounded-[10px] border border-rule">
-        <OutlineMap candidate={c} orthoUrl={orthoUrl} className="block h-auto w-full max-h-[460px]" />
+      <div className="isolate overflow-hidden rounded-[10px] border border-rule">
+        <TraceMap shapes={shapes} editing={null} view={view} className="h-[400px] w-full" />
       </div>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-        <Fact label="House">
-          {house
-            ? `${house.length} corners${
-                c.houseAreaSqFt != null ? ` · ${formatArea(c.houseAreaSqFt)} roofed` : ""
-              }`
-            : "Not found in the aerial"}
-        </Fact>
-        <Fact label="Imagery">
-          {captured ? `${captured}${imagery?.quality ? ` · ${imagery.quality.toLowerCase()} detail` : ""}` : "None"}
-        </Fact>
-        <Fact label="Lot">
-          {[
-            c.attributes.lotSizeSqFt != null && formatArea(c.attributes.lotSizeSqFt),
-            `APN ${c.apn}`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </Fact>
+        <Fact label="House">{describeShape(traced.house, { area: true })}</Fact>
+        <Fact label="Boundary">{describeShape(traced.boundary)}</Fact>
         {fetchedAt && (
-          <Fact label="Picked">
+          <Fact label={fromCounty ? "Looked up" : "Traced"}>
             {new Date(fetchedAt).toLocaleDateString("en-US", {
               month: "short",
               day: "numeric",
@@ -286,34 +184,310 @@ function PickedOutline({
         )}
       </dl>
 
-      {!house && (
+      {fromCounty && (
         <p className="mt-3 text-sm text-muted">
-          No house could be traced on this lot, so the headset will align to
-          the lot corners instead — tax-map lines are only good to a few feet.
+          Found by the old county lookup. Open it with Edit outline to check the
+          corners against the aerial.
         </p>
       )}
-      {warnings.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1.5">
-          {warnings.map((w, i) => (
-            <li key={i} className="text-sm text-gold">
-              {w.message}
-            </li>
-          ))}
-        </ul>
-      )}
       <p className="mt-3 text-[11px] text-faint">
-        Corners follow the roofline, so expect them a foot or two outside the
-        walls. On site, the headset has you walk two of them to drop the
-        outline into the yard.
+        The aerial shows the roof, so the corners are the roof&apos;s — a foot
+        or two outside the walls. On site, stand the corner post under the
+        roof&apos;s corner, not the wall&apos;s.
       </p>
     </div>
+  );
+}
+
+type SearchState =
+  | { state: "idle" }
+  | { state: "searching" }
+  | { state: "found"; label: string; loose: boolean }
+  | { state: "missed"; query: string }
+  | { state: "failed"; message: string };
+
+/** What a finished search does to the map and the status line. */
+function afterSearch(query: string, hit: GeocodeHit | null): {
+  search: SearchState;
+  view: MapView | null;
+} {
+  if (!hit) return { search: { state: "missed", query }, view: null };
+  return {
+    // A street-level (not rooftop) match is the usual loose one: the map
+    // lands on the right road, and the house is the designer's to find.
+    search: { state: "found", label: hit.label, loose: hit.score < 95 },
+    view: { kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 },
+  };
+}
+
+function TraceEditor({
+  address,
+  initial,
+  onCancel,
+  onSave,
+}: {
+  address: string;
+  initial: TracedOutline | null;
+  onCancel: () => void;
+  onSave: (outline: TracedOutline) => Promise<{ ok: true } | { ok: false; error: string }>;
+}) {
+  const [shapes, setShapes] = useState<Shapes>(() => ({
+    house: { points: initial?.house ?? [], closed: (initial?.house.length ?? 0) >= 3 },
+    boundary: { points: initial?.boundary ?? [], closed: (initial?.boundary.length ?? 0) >= 3 },
+  }));
+  // Editing an outline opens on it; a first trace opens on the address.
+  const [startsEmpty] = useState(
+    () => (initial?.house.length ?? 0) + (initial?.boundary.length ?? 0) === 0
+  );
+  const [view, setView] = useState<MapView | null>(() =>
+    startsEmpty
+      ? null
+      : { kind: "fit", points: [...initial!.house, ...initial!.boundary] }
+  );
+  const [search, setSearch] = useState<SearchState>(() =>
+    startsEmpty ? { state: "searching" } : { state: "idle" }
+  );
+  const [query, setQuery] = useState(address);
+  const [tool, setTool] = useState<ShapeKind>("house");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!startsEmpty) return;
+    const controller = new AbortController();
+    geocodeAddress(address, controller.signal)
+      .then((hit) => {
+        const next = afterSearch(address, hit);
+        setSearch(next.search);
+        if (next.view) setView(next.view);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setSearch({ state: "failed", message: err instanceof Error ? err.message : String(err) });
+      });
+    return () => controller.abort();
+  }, [startsEmpty, address]);
+
+  async function find(text: string) {
+    const q = text.trim();
+    if (!q) return;
+    setSearch({ state: "searching" });
+    try {
+      const next = afterSearch(q, await geocodeAddress(q));
+      setSearch(next.search);
+      if (next.view) setView(next.view);
+    } catch (err) {
+      setSearch({ state: "failed", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  function update(kind: ShapeKind, shape: Shape) {
+    setShapes((s) => ({ ...s, [kind]: shape }));
+    setError(null);
+  }
+
+  function addCorner(kind: ShapeKind, point: LatLng) {
+    setShapes((s) =>
+      s[kind].closed ? s : { ...s, [kind]: { points: [...s[kind].points, point], closed: false } }
+    );
+    setError(null);
+  }
+
+  const active = shapes[tool];
+  const houseDone = shapes.house.closed && shapes.house.points.length >= 3;
+  const boundaryOpen = !shapes.boundary.closed && shapes.boundary.points.length > 0;
+  const blocker = !houseDone
+    ? "Close the house outline to save it."
+    : boundaryOpen
+      ? "Close the yard boundary, or clear it, to save."
+      : null;
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    const result = await onSave({
+      house: shapes.house.points,
+      boundary: shapes.boundary.closed ? shapes.boundary.points : [],
+    });
+    // On success the card closes the editor; only a failure lands here.
+    if (!result.ok) setError(result.error);
+    setSaving(false);
+  }
+
+  return (
+    <div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void find(query);
+        }}
+        className="flex gap-2"
+      >
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Find an address on the map"
+          className="min-w-0 flex-1 rounded-lg border border-rule-strong bg-card-hover px-3 py-2 text-sm text-ink outline-none transition focus:border-accent"
+        />
+        <button
+          type="submit"
+          disabled={search.state === "searching"}
+          className="rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
+        >
+          {search.state === "searching" ? "Finding…" : "Find"}
+        </button>
+      </form>
+      <SearchStatus search={search} />
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="tablist" className="inline-flex rounded-lg border border-rule p-0.5">
+          {(["house", "boundary"] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              role="tab"
+              aria-selected={tool === kind}
+              onClick={() => setTool(kind)}
+              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${
+                tool === kind ? "bg-accent text-paper" : "text-muted hover:text-ink"
+              }`}
+            >
+              {kind === "house" ? "House" : "Yard boundary"}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          {!active.closed && active.points.length > 0 && (
+            <ToolButton onClick={() => update(tool, { points: active.points.slice(0, -1), closed: false })}>
+              Undo corner
+            </ToolButton>
+          )}
+          {!active.closed && active.points.length >= 3 && (
+            <ToolButton onClick={() => update(tool, { points: active.points, closed: true })}>
+              Close outline
+            </ToolButton>
+          )}
+          {active.points.length > 0 && (
+            <ToolButton onClick={() => update(tool, { points: [], closed: false })}>
+              Start over
+            </ToolButton>
+          )}
+        </div>
+      </div>
+      <p className="mt-2 text-sm text-muted">{hint(tool, active)}</p>
+
+      <div className="isolate mt-3 overflow-hidden rounded-[10px] border border-rule">
+        <TraceMap
+          shapes={shapes}
+          editing={tool}
+          onChange={update}
+          onAddCorner={addCorner}
+          view={view}
+          className="h-[520px] w-full"
+        />
+      </div>
+
+      <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        <Fact label="House">{describeDraft(shapes.house, { area: true })}</Fact>
+        <Fact label="Boundary">{describeDraft(shapes.boundary)}</Fact>
+      </dl>
+
+      {error && <p className="mt-4 text-sm text-clay">{error}</p>}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          disabled={blocker != null || saving}
+          onClick={save}
+          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save outline"}
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onCancel}
+          className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        {blocker && <span className="text-sm text-faint">{blocker}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SearchStatus({ search }: { search: SearchState }) {
+  switch (search.state) {
+    case "found":
+      return search.loose ? (
+        <p className="mt-1.5 text-sm text-gold">
+          Closest match: {search.label}. Check the map is on the right house.
+        </p>
+      ) : null;
+    case "missed":
+      return (
+        <p className="mt-1.5 text-sm text-gold">
+          Couldn&apos;t find “{search.query}” on the map. Try another spelling,
+          or pan and zoom to the house.
+        </p>
+      );
+    case "failed":
+      return (
+        <p className="mt-1.5 text-sm text-clay">
+          Address search isn&apos;t answering ({search.message}). Pan and zoom
+          to the house instead.
+        </p>
+      );
+    default:
+      return null;
+  }
+}
+
+function hint(tool: ShapeKind, shape: Shape): string {
+  const n = shape.points.length;
+  if (shape.closed) {
+    return "Drag a corner to move it, or drag a midpoint to add one. Right-click a corner to remove it.";
+  }
+  if (n === 0) {
+    return tool === "house"
+      ? "Click each corner of the roof, in order around the house. Zoom in close — every corner is one the headset can walk to."
+      : "Optional. Click each corner of the yard — the property wall or fence line.";
+  }
+  if (n < 3) return "Keep clicking corners.";
+  return "Click the first corner (the white one) to close the outline.";
+}
+
+const corners = (n: number) => `${n} ${n === 1 ? "corner" : "corners"}`;
+
+function describeShape(points: LatLng[], { area = false } = {}): string {
+  if (points.length < 3) return "Not traced";
+  return area
+    ? `${corners(points.length)} · ${formatArea(ringAreaSqFt(points))} under roof`
+    : corners(points.length);
+}
+
+function describeDraft(shape: Shape, { area = false } = {}): string {
+  if (shape.points.length === 0) return "Not traced yet";
+  if (!shape.closed) return `${corners(shape.points.length)}, still open`;
+  return describeShape(shape.points, { area });
+}
+
+function ToolButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-sm font-semibold text-muted transition hover:text-ink"
+    >
+      {children}
+    </button>
   );
 }
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-2">
-      <dt className="w-16 shrink-0 text-faint">{label}</dt>
+      <dt className="w-20 shrink-0 text-faint">{label}</dt>
       <dd className="min-w-0 text-body">{children}</dd>
     </div>
   );
@@ -322,15 +496,4 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 function formatArea(sqFt: number): string {
   if (sqFt >= 43560 * 0.5) return `${(sqFt / 43560).toFixed(2)} ac`;
   return `${Math.round(sqFt).toLocaleString("en-US")} sq ft`;
-}
-
-function formatMonthYear(iso: string): string {
-  // Solar returns a bare date ("2022-03-14"); parse it as a calendar date so
-  // a UTC-midnight timestamp doesn't render as the previous month.
-  const [y, m] = iso.split("-").map(Number);
-  if (!y || !m) return iso;
-  return new Date(y, m - 1, 1).toLocaleDateString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
 }

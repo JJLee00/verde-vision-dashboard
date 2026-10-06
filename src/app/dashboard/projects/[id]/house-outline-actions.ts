@@ -3,43 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
-import {
-  BlueprintLookupError,
-  enrichCandidate,
-  findCandidates,
-} from "@/lib/blueprint/lookup";
-import { orthoPathFor, toStored } from "@/lib/blueprint/stored";
+import { buildTracedBlueprint, TraceError, type TracedOutline } from "@/lib/blueprint/trace";
 
-// The House outline card's server side: find the lot for the project's
-// address, then trace the house on the one the designer confirms and store
-// it on the project for the headset to pick up.
+// The House outline card's server side: store the outline the designer
+// traced on the aerial, or clear it. The headset picks it up with its next
+// project list and opens Blueprint on the corner walk.
 //
-// Server actions, not a call to /api/blueprint: that route is keyed with the
-// headset's API key, which must never reach a browser. These run as the
-// signed-in designer, so the project row and the storage folder are guarded
-// by the same RLS as every other edit on this page.
-
-export type LotChoice = {
-  apn: string;
-  address: string;
-  /** Parcel outline, metres from its centroid (x east, z south). */
-  parcelXZ: [number, number][];
-  lotSizeSqFt: number | null;
-  livableAreaSqFt: number | null;
-  constructionYear: number | null;
-};
+// Server actions rather than an API route: these run as the signed-in
+// designer, so the project row and the storage folder are guarded by the
+// same RLS as every other edit on this page.
 
 type Failure = { ok: false; error: string };
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-const MIGRATION_HINT = "Run migration-020 in Supabase before looking up lots.";
+const MIGRATION_HINT = "Run migration-020 in Supabase before saving outlines.";
 
 /**
- * The project, if this user may change it and it has an address to look up.
+ * The project, if this user may change it.
  *
- * Checked up front rather than left to RLS on the final write, because the
- * expensive part — the imagery fetch — happens before that write. A team
- * member who can see a project but not edit it should be told so, not spend
- * an imagery call and then fail.
+ * Checked up front rather than left to RLS on the write, so a team member
+ * who can see a project but not edit it is told why, instead of getting a
+ * row-level-security error after tracing a whole house.
  */
 async function editableProject(
   projectId: string,
@@ -69,108 +53,38 @@ async function editableProject(
   if (requireAddress && !address) {
     return { error: "Add the property address in Edit details first." } as const;
   }
-  return { supabase, project, address } as const;
-}
-
-function lookupFailure(err: unknown, address: string): Failure {
-  if (err instanceof BlueprintLookupError) {
-    if (err.status === 404) {
-      return {
-        ok: false,
-        error: `No lot found for “${address}”. Auto Blueprint only covers Maricopa County so far — check the street number and spelling.`,
-      };
-    }
-    return {
-      ok: false,
-      error: "The county parcel service didn't answer. Try again in a minute.",
-    };
-  }
-  return {
-    ok: false,
-    error: err instanceof Error ? err.message : "Lot lookup failed.",
-  };
-}
-
-/** Step 1: every lot matching the project's address. Fast, no imagery. */
-export async function findLots(
-  projectId: string
-): Promise<{ ok: true; lots: LotChoice[] } | Failure> {
-  const access = await editableProject(projectId);
-  if ("error" in access) return { ok: false, error: access.error! };
-
-  try {
-    const list = await findCandidates(access.address);
-    return {
-      ok: true,
-      lots: list.candidates.map((c) => ({
-        apn: c.apn,
-        address: c.address,
-        parcelXZ: c.parcelXZ,
-        lotSizeSqFt: c.attributes.lotSizeSqFt ?? null,
-        livableAreaSqFt: c.attributes.livableAreaSqFt ?? null,
-        constructionYear: c.attributes.constructionYear ?? null,
-      })),
-    };
-  } catch (err) {
-    return lookupFailure(err, access.address);
-  }
+  return { supabase, address } as const;
 }
 
 /**
- * Step 2: trace the house on the confirmed lot and store it on the project.
- * Slow — two GeoTIFF decodes, ~10–15 s — hence the page's maxDuration.
+ * Stores the traced outline on the project, replacing whatever was there.
+ * `blueprint_fetched_at` is what tells a headset this outline is newer than
+ * its copy, so a re-trace reaches every headset that hasn't placed one yet.
  */
-export async function pickLot(
+export async function saveTracedOutline(
   projectId: string,
-  apn: string
+  outline: TracedOutline
 ): Promise<{ ok: true } | Failure> {
   const access = await editableProject(projectId);
   if ("error" in access) return { ok: false, error: access.error! };
-  const { supabase, project, address } = access;
+  const { supabase, address } = access;
 
-  let provider: string;
-  let candidate;
+  let stored;
   try {
-    const list = await findCandidates(address);
-    provider = list.provider;
-    candidate = await enrichCandidate(list, apn, { includeImagery: true });
+    stored = buildTracedBlueprint(address, outline);
   } catch (err) {
-    return lookupFailure(err, address);
+    if (err instanceof TraceError) return { ok: false, error: err.message };
+    throw err;
   }
 
-  // A server without the imagery key still answers — with the lot and a
-  // warning instead of a house. Storing that would send the headset a bare
-  // rectangle labelled as the office's pick, so refuse it here, where the
-  // person who can fix the configuration is looking.
-  if (candidate.warnings?.some((w) => /GOOGLE_SOLAR_API_KEY/.test(w.message))) {
-    return {
-      ok: false,
-      error:
-        "Aerial imagery isn't configured on this server (GOOGLE_SOLAR_API_KEY), so the house can't be traced.",
-    };
-  }
-
-  const { stored, orthoJpeg } = toStored(provider, address, candidate);
-
-  let orthoPath: string | null = null;
-  if (orthoJpeg) {
-    // Under the designer's folder even when the owner is the one picking —
-    // the same single canonical spot as every other piece of project media.
-    const path = orthoPathFor(project.client_id as string, projectId);
-    const { error: uploadError } = await supabase.storage
-      .from("project-media")
-      .upload(path, orthoJpeg, { contentType: "image/jpeg", upsert: true });
-    if (uploadError) {
-      return { ok: false, error: `Couldn't store the aerial: ${uploadError.message}` };
-    }
-    orthoPath = path;
-  }
-
+  const oldTile = await tilePath(supabase, projectId);
   const { error } = await supabase
     .from("projects")
     .update({
       blueprint_payload: stored,
-      blueprint_ortho_path: orthoPath,
+      // A trace has no tile of its own: the headset's corner map draws the
+      // lines on paper, and Esri's imagery isn't licensed for offline copies.
+      blueprint_ortho_path: null,
       blueprint_fetched_at: new Date().toISOString(),
     })
     .eq("id", projectId);
@@ -181,14 +95,14 @@ export async function pickLot(
     };
   }
 
+  await removeTile(supabase, oldTile);
   revalidatePath(`/dashboard/projects/${projectId}`);
   return { ok: true };
 }
 
 /**
  * Clears the outline from the project. A headset that already has it keeps
- * its copy — this stops it reaching any that don't, and frees the card to
- * look the lot up again.
+ * its copy — this stops it reaching any that don't.
  */
 export async function removeHouseOutline(
   projectId: string
@@ -199,12 +113,7 @@ export async function removeHouseOutline(
   if ("error" in access) return { ok: false, error: access.error! };
   const { supabase } = access;
 
-  const { data: row } = await supabase
-    .from("projects")
-    .select("blueprint_ortho_path")
-    .eq("id", projectId)
-    .single();
-
+  const oldTile = await tilePath(supabase, projectId);
   const { error } = await supabase
     .from("projects")
     .update({
@@ -220,11 +129,30 @@ export async function removeHouseOutline(
     };
   }
 
-  // Best effort: an orphaned tile costs half a megabyte, a failed removal of
-  // it should not undo the clear the designer asked for.
-  const path = (row as { blueprint_ortho_path?: string | null } | null)?.blueprint_ortho_path;
-  if (path) await supabase.storage.from("project-media").remove([path]);
-
+  await removeTile(supabase, oldTile);
   revalidatePath(`/dashboard/projects/${projectId}`);
   return { ok: true };
+}
+
+/**
+ * The aerial tile an outline from the old county lookup left in
+ * project-media, if any. Its own select, so a database without migration
+ * 020 fails on the write with the migration hint, not here as "not found".
+ */
+async function tilePath(supabase: Supabase, projectId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from("projects")
+    .select("blueprint_ortho_path")
+    .eq("id", projectId)
+    .single();
+  const path = (data as { blueprint_ortho_path?: string | null } | null)?.blueprint_ortho_path;
+  return path || null;
+}
+
+/**
+ * Best effort: an orphaned tile costs half a megabyte, and failing to remove
+ * it should not undo the change the designer asked for.
+ */
+async function removeTile(supabase: Supabase, path: string | null) {
+  if (path) await supabase.storage.from("project-media").remove([path]);
 }
