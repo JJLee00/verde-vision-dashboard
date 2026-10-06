@@ -630,7 +630,6 @@ export default async function ProjectPage({
           <SectionCard title="House outline">
             <HouseOutline
               projectId={data.id}
-              address={data.address}
               outline={data.houseOutline}
               ready={data.houseOutlineReady}
               disabled={disabled}

@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
 import type { LatLng } from "@/lib/blueprint/types";
-import { sameAddress } from "@/lib/blueprint/stored";
-import { geocodeAddress, type GeocodeHit } from "@/lib/blueprint/esri";
+import {
+  geocodeAddress,
+  suggestAddresses,
+  type AddressSuggestion,
+  type GeocodeHit,
+} from "@/lib/blueprint/esri";
 import {
   ringAreaSqFt,
   TRACE_PROVIDER,
@@ -16,31 +20,34 @@ import { removeHouseOutline, saveTracedOutline } from "./house-outline-actions";
 import { TraceMap, type MapView, type Shape, type ShapeKind, type Shapes } from "./trace-map";
 
 /**
- * The house outline the headset will walk, traced by the designer on the
- * aerial at a desk.
+ * The house outline the headset will walk, traced by the designer on a map
+ * at a desk.
  *
  * This used to be a county lookup plus an automatic trace of the roof from
  * Solar imagery, which only ever covered Maricopa County. Tracing by hand
- * works at any address with imagery, and the headset receives the same
- * outline either way: on site, Blueprint opens on the corner walk — walk to
- * two of these corners and the outline drops into the yard.
+ * works at any address, and the headset receives the same outline either
+ * way: on site, Blueprint opens on the corner walk — walk to two of these
+ * corners and the outline drops into the yard.
+ *
+ * The card finds the property with its own search box rather than the
+ * project's address field: the address on file is for the customer record
+ * and is often partial, while this search is for putting a map on a roof.
  */
 export function HouseOutline({
   projectId,
-  address,
   outline,
   ready,
   disabled,
 }: {
   projectId: string;
-  address: string | null;
   outline: { stored: StoredBlueprint; fetchedAt: string | null } | null;
   /** False until migration-020 has been run. */
   ready: boolean;
   disabled: boolean;
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  // Set while the editor is open: where it opens, and what found it.
+  const [start, setStart] = useState<EditorStart | null>(null);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -54,18 +61,17 @@ export function HouseOutline({
   }
 
   const stored = outline?.stored ?? null;
-  const addressChanged = stored != null && !sameAddress(stored.lookupAddress, address);
 
-  if (editing && address) {
+  if (start) {
     return (
       <TraceEditor
-        address={address}
+        start={start}
         initial={stored ? tracedOutlineFrom(stored) : null}
-        onCancel={() => setEditing(false)}
-        onSave={async (traced) => {
-          const result = await saveTracedOutline(projectId, traced);
+        onCancel={() => setStart(null)}
+        onSave={async (traced, address) => {
+          const result = await saveTracedOutline(projectId, traced, address);
           if (result.ok) {
-            setEditing(false);
+            setStart(null);
             startTransition(() => router.refresh());
           }
           return result;
@@ -83,60 +89,55 @@ export function HouseOutline({
     setRemoving(false);
   }
 
+  if (!stored) {
+    if (disabled) return <p className="text-sm text-muted">No house outline yet.</p>;
+    return (
+      <div>
+        <p className="text-sm text-muted">
+          Search for the property, then click around the roof, corner by
+          corner. The headset picks the outline up on its next sync — on site,
+          walk to two of its corners and it drops into the yard.
+        </p>
+        <div className="mt-3">
+          <AddressSearch
+            initialQuery=""
+            onFound={(hit, query, status) => setStart(startAt(hit, query, status))}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {stored ? (
-        <SavedOutline stored={stored} fetchedAt={outline?.fetchedAt ?? null} />
-      ) : !address ? (
-        <p className="text-sm text-muted">
-          Add the property address with <span className="font-semibold">Edit details</span>{" "}
-          and the house can be traced here, so the headset arrives on site with
-          the outline already in hand.
-        </p>
-      ) : (
-        <p className="text-sm text-muted">
-          Find <span className="text-body">{address}</span> on the aerial and
-          click around the roof, corner by corner. The headset picks the outline
-          up on its next sync — on site, walk to two of its corners and it drops
-          into the yard.
-        </p>
-      )}
-
-      {addressChanged && (
-        <p className="mt-4 rounded-lg border border-gold/40 bg-gold/10 px-3.5 py-2.5 text-sm text-gold">
-          Traced for “{stored!.lookupAddress}”. The project&apos;s address has
-          changed since — check the outline is on the right house.
-        </p>
-      )}
+      <SavedOutline stored={stored} fetchedAt={outline?.fetchedAt ?? null} />
       {error && <p className="mt-4 text-sm text-clay">{error}</p>}
-
-      {!disabled && address && (
+      {!disabled && (
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             disabled={removing}
             onClick={() => {
               setError(null);
-              setEditing(true);
+              setStart({
+                query: stored.lookupAddress,
+                address: stored.lookupAddress,
+                view: null, // opens framed on the outline
+                status: { state: "idle" },
+              });
             }}
-            className={
-              stored
-                ? "rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
-                : "rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
-            }
+            className="rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
           >
-            {stored ? "Edit outline" : "Trace the house"}
+            Edit outline
           </button>
-          {stored && (
-            <button
-              type="button"
-              disabled={removing}
-              onClick={remove}
-              className="text-sm font-semibold text-muted transition hover:text-clay disabled:opacity-50"
-            >
-              {removing ? "Removing…" : "Remove"}
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={removing}
+            onClick={remove}
+            className="text-sm font-semibold text-muted transition hover:text-clay disabled:opacity-50"
+          >
+            {removing ? "Removing…" : "Remove"}
+          </button>
         </div>
       )}
     </div>
@@ -171,6 +172,11 @@ function SavedOutline({
       </div>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        {stored.lookupAddress && (
+          <div className="sm:col-span-2">
+            <Fact label="Address">{stored.lookupAddress}</Fact>
+          </div>
+        )}
         <Fact label="House">{describeShape(traced.house, { area: true })}</Fact>
         <Fact label="Boundary">{describeShape(traced.boundary)}</Fact>
         {fetchedAt && (
@@ -187,17 +193,19 @@ function SavedOutline({
       {fromCounty && (
         <p className="mt-3 text-sm text-muted">
           Found by the old county lookup. Open it with Edit outline to check the
-          corners against the aerial.
+          corners against the map.
         </p>
       )}
       <p className="mt-3 text-[11px] text-faint">
-        The aerial shows the roof, so the corners are the roof&apos;s — a foot
-        or two outside the walls. On site, stand the corner post under the
-        roof&apos;s corner, not the wall&apos;s.
+        The outline follows the roof, so its corners sit a foot or two outside
+        the walls. On site, stand the corner post under the roof&apos;s corner,
+        not the wall&apos;s.
       </p>
     </div>
   );
 }
+
+// ── Finding the property ──────────────────────────────────────────────
 
 type SearchState =
   | { state: "idle" }
@@ -206,80 +214,243 @@ type SearchState =
   | { state: "missed"; query: string }
   | { state: "failed"; message: string };
 
-/** What a finished search does to the map and the status line. */
-function afterSearch(query: string, hit: GeocodeHit | null): {
-  search: SearchState;
+/**
+ * A street-level (not rooftop) match is the usual loose one: the map lands
+ * on the right road, and the house is the designer's to find.
+ */
+const LOOSE_BELOW = 95;
+
+/**
+ * What the outline records as its address: Esri's tidy version of an exact
+ * match, or the designer's own words when the match was loose — those name
+ * the house more precisely than the street Esri found.
+ */
+function addressFor(hit: GeocodeHit, query: string): string {
+  return hit.score >= LOOSE_BELOW ? hit.label : query.trim();
+}
+
+type EditorStart = {
+  query: string;
+  address: string;
   view: MapView | null;
-} {
-  if (!hit) return { search: { state: "missed", query }, view: null };
+  status: SearchState;
+};
+
+function startAt(hit: GeocodeHit, query: string, status: SearchState): EditorStart {
   return {
-    // A street-level (not rooftop) match is the usual loose one: the map
-    // lands on the right road, and the house is the designer's to find.
-    search: { state: "found", label: hit.label, loose: hit.score < 95 },
+    query,
+    address: addressFor(hit, query),
     view: { kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 },
+    status,
   };
 }
 
+/**
+ * An address box with Esri's suggestions under it. Picking a suggestion or
+ * pressing Find looks the address up; `onFound` gets the hit.
+ */
+function AddressSearch({
+  initialQuery,
+  initialStatus = { state: "idle" },
+  onFound,
+}: {
+  initialQuery: string;
+  initialStatus?: SearchState;
+  onFound: (hit: GeocodeHit, query: string, status: SearchState) => void;
+}) {
+  const [query, setQuery] = useState(initialQuery);
+  const [status, setStatus] = useState<SearchState>(initialStatus);
+  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const [highlight, setHighlight] = useState(-1);
+  const listId = useId();
+
+  // Suggestions follow the typing, a beat behind it.
+  useEffect(() => {
+    const text = query.trim();
+    if (!open || text.length < 3) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      suggestAddresses(text, controller.signal)
+        .then((list) => {
+          setSuggestions(list);
+          setHighlight(-1);
+        })
+        // A failed suggestion is just no dropdown; Find still works.
+        .catch(() => {});
+    }, 200);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query, open]);
+
+  const showList = open && query.trim().length >= 3 && suggestions.length > 0;
+
+  async function find(text: string, magicKey?: string) {
+    const q = text.trim();
+    if (!q) return;
+    setOpen(false);
+    setStatus({ state: "searching" });
+    try {
+      const hit = await geocodeAddress(q, { magicKey });
+      if (!hit) {
+        setStatus({ state: "missed", query: q });
+        return;
+      }
+      const found: SearchState = { state: "found", label: hit.label, loose: hit.score < LOOSE_BELOW };
+      setStatus(found);
+      onFound(hit, q, found);
+    } catch (err) {
+      setStatus({ state: "failed", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  function choose(s: AddressSuggestion) {
+    setQuery(s.text);
+    void find(s.text, s.magicKey);
+  }
+
+  return (
+    <div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (showList && highlight >= 0) choose(suggestions[highlight]);
+          else void find(query);
+        }}
+        className="flex gap-2"
+      >
+        <div className="relative min-w-0 flex-1">
+          <input
+            value={query}
+            placeholder="Search for the property's address"
+            role="combobox"
+            aria-label="Property address"
+            aria-expanded={showList}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={showList && highlight >= 0 ? `${listId}-${highlight}` : undefined}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => setOpen(false)}
+            onKeyDown={(e) => {
+              if (!showList) return;
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setHighlight((h) => (h + 1) % suggestions.length);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setHighlight((h) => (h <= 0 ? suggestions.length - 1 : h - 1));
+              } else if (e.key === "Escape") {
+                setOpen(false);
+              }
+            }}
+            className="w-full rounded-lg border border-rule-strong bg-card-hover px-3 py-2 text-sm text-ink outline-none transition placeholder:text-faint focus:border-accent"
+          />
+          {showList && (
+            // Above the map: the editor's map sits right under this box.
+            <ul
+              id={listId}
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-[1100] mt-1 overflow-hidden rounded-lg border border-rule-strong bg-card shadow-lg"
+            >
+              {suggestions.map((s, i) => (
+                <li
+                  key={s.magicKey}
+                  id={`${listId}-${i}`}
+                  role="option"
+                  aria-selected={i === highlight}
+                  // mousedown, not click: the input's blur would close the
+                  // list before a click could land.
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(s);
+                  }}
+                  onMouseEnter={() => setHighlight(i)}
+                  className={`cursor-pointer px-3 py-2 text-sm ${
+                    i === highlight ? "bg-card-hover text-ink" : "text-body"
+                  }`}
+                >
+                  {s.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <button
+          type="submit"
+          disabled={status.state === "searching"}
+          className="rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
+        >
+          {status.state === "searching" ? "Finding…" : "Find"}
+        </button>
+      </form>
+      <SearchStatus search={status} />
+    </div>
+  );
+}
+
+function SearchStatus({ search }: { search: SearchState }) {
+  switch (search.state) {
+    case "found":
+      return search.loose ? (
+        <p className="mt-1.5 text-sm text-gold">
+          Closest match: {search.label}. Check the map is on the right house.
+        </p>
+      ) : null;
+    case "missed":
+      return (
+        <p className="mt-1.5 text-sm text-gold">
+          Couldn&apos;t find “{search.query}”. Try another spelling, or pick
+          one of the suggestions as you type.
+        </p>
+      );
+    case "failed":
+      return (
+        <p className="mt-1.5 text-sm text-clay">
+          Address search isn&apos;t answering ({search.message}). Try again in a
+          moment.
+        </p>
+      );
+    default:
+      return null;
+  }
+}
+
+// ── Tracing ───────────────────────────────────────────────────────────
+
 function TraceEditor({
-  address,
+  start,
   initial,
   onCancel,
   onSave,
 }: {
-  address: string;
+  start: EditorStart;
   initial: TracedOutline | null;
   onCancel: () => void;
-  onSave: (outline: TracedOutline) => Promise<{ ok: true } | { ok: false; error: string }>;
+  onSave: (
+    outline: TracedOutline,
+    address: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [shapes, setShapes] = useState<Shapes>(() => ({
     house: { points: initial?.house ?? [], closed: (initial?.house.length ?? 0) >= 3 },
     boundary: { points: initial?.boundary ?? [], closed: (initial?.boundary.length ?? 0) >= 3 },
   }));
-  // Editing an outline opens on it; a first trace opens on the address.
-  const [startsEmpty] = useState(
-    () => (initial?.house.length ?? 0) + (initial?.boundary.length ?? 0) === 0
-  );
-  const [view, setView] = useState<MapView | null>(() =>
-    startsEmpty
-      ? null
-      : { kind: "fit", points: [...initial!.house, ...initial!.boundary] }
-  );
-  const [search, setSearch] = useState<SearchState>(() =>
-    startsEmpty ? { state: "searching" } : { state: "idle" }
-  );
-  const [query, setQuery] = useState(address);
+  // A search opens on what it found; Edit outline opens framed on the outline.
+  const [view, setView] = useState<MapView | null>(() => {
+    if (start.view) return start.view;
+    const points = [...(initial?.house ?? []), ...(initial?.boundary ?? [])];
+    return points.length > 0 ? { kind: "fit", points } : null;
+  });
+  const [address, setAddress] = useState(start.address);
   const [tool, setTool] = useState<ShapeKind>("house");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!startsEmpty) return;
-    const controller = new AbortController();
-    geocodeAddress(address, controller.signal)
-      .then((hit) => {
-        const next = afterSearch(address, hit);
-        setSearch(next.search);
-        if (next.view) setView(next.view);
-      })
-      .catch((err) => {
-        if (controller.signal.aborted) return;
-        setSearch({ state: "failed", message: err instanceof Error ? err.message : String(err) });
-      });
-    return () => controller.abort();
-  }, [startsEmpty, address]);
-
-  async function find(text: string) {
-    const q = text.trim();
-    if (!q) return;
-    setSearch({ state: "searching" });
-    try {
-      const next = afterSearch(q, await geocodeAddress(q));
-      setSearch(next.search);
-      if (next.view) setView(next.view);
-    } catch (err) {
-      setSearch({ state: "failed", message: err instanceof Error ? err.message : String(err) });
-    }
-  }
 
   function update(kind: ShapeKind, shape: Shape) {
     setShapes((s) => ({ ...s, [kind]: shape }));
@@ -305,10 +476,13 @@ function TraceEditor({
   async function save() {
     setSaving(true);
     setError(null);
-    const result = await onSave({
-      house: shapes.house.points,
-      boundary: shapes.boundary.closed ? shapes.boundary.points : [],
-    });
+    const result = await onSave(
+      {
+        house: shapes.house.points,
+        boundary: shapes.boundary.closed ? shapes.boundary.points : [],
+      },
+      address
+    );
     // On success the card closes the editor; only a failure lands here.
     if (!result.ok) setError(result.error);
     setSaving(false);
@@ -316,30 +490,20 @@ function TraceEditor({
 
   return (
     <div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void find(query);
+      <AddressSearch
+        initialQuery={start.query}
+        initialStatus={start.status}
+        onFound={(hit, query) => {
+          setView({ kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 });
+          setAddress(addressFor(hit, query));
         }}
-        className="flex gap-2"
-      >
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Find an address on the map"
-          className="min-w-0 flex-1 rounded-lg border border-rule-strong bg-card-hover px-3 py-2 text-sm text-ink outline-none transition focus:border-accent"
-        />
-        <button
-          type="submit"
-          disabled={search.state === "searching"}
-          className="rounded-lg border border-rule-strong px-4 py-2 text-sm font-semibold text-body transition hover:border-accent hover:text-accent disabled:opacity-50"
-        >
-          {search.state === "searching" ? "Finding…" : "Find"}
-        </button>
-      </form>
-      <SearchStatus search={search} />
+      />
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* Nothing above the map may change height while drawing: the first
+          corner used to bring in a row of buttons and a shorter hint, and
+          the map jumped under the cursor between clicks. The hint and the
+          corner tools live below it for that reason. */}
+      <div className="mt-3">
         <div role="tablist" className="inline-flex rounded-lg border border-rule p-0.5">
           {(["house", "boundary"] as const).map((kind) => (
             <button
@@ -356,6 +520,21 @@ function TraceEditor({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="isolate mt-3 overflow-hidden rounded-[10px] border border-rule">
+        <TraceMap
+          shapes={shapes}
+          editing={tool}
+          onChange={update}
+          onAddCorner={addCorner}
+          view={view}
+          className="h-[520px] w-full"
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+        <p className="text-sm text-muted">{hint(tool, active)}</p>
         <div className="flex flex-wrap items-center gap-3">
           {!active.closed && active.points.length > 0 && (
             <ToolButton onClick={() => update(tool, { points: active.points.slice(0, -1), closed: false })}>
@@ -373,18 +552,6 @@ function TraceEditor({
             </ToolButton>
           )}
         </div>
-      </div>
-      <p className="mt-2 text-sm text-muted">{hint(tool, active)}</p>
-
-      <div className="isolate mt-3 overflow-hidden rounded-[10px] border border-rule">
-        <TraceMap
-          shapes={shapes}
-          editing={tool}
-          onChange={update}
-          onAddCorner={addCorner}
-          view={view}
-          className="h-[520px] w-full"
-        />
       </div>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
@@ -414,33 +581,6 @@ function TraceEditor({
       </div>
     </div>
   );
-}
-
-function SearchStatus({ search }: { search: SearchState }) {
-  switch (search.state) {
-    case "found":
-      return search.loose ? (
-        <p className="mt-1.5 text-sm text-gold">
-          Closest match: {search.label}. Check the map is on the right house.
-        </p>
-      ) : null;
-    case "missed":
-      return (
-        <p className="mt-1.5 text-sm text-gold">
-          Couldn&apos;t find “{search.query}” on the map. Try another spelling,
-          or pan and zoom to the house.
-        </p>
-      );
-    case "failed":
-      return (
-        <p className="mt-1.5 text-sm text-clay">
-          Address search isn&apos;t answering ({search.message}). Pan and zoom
-          to the house instead.
-        </p>
-      );
-    default:
-      return null;
-  }
 }
 
 function hint(tool: ShapeKind, shape: Shape): string {

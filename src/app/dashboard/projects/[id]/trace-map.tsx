@@ -1,18 +1,17 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+import "./trace-map.css";
 import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import type { LatLng } from "@/lib/blueprint/types";
-import {
-  IMAGERY_ATTRIBUTION,
-  IMAGERY_MAX_NATIVE_ZOOM,
-  IMAGERY_TILE_URL,
-} from "@/lib/blueprint/esri";
+import { BASEMAPS, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
 import { distanceMeters, formatFeetInches } from "@/lib/blueprint/trace";
 
-// The aerial the house is traced on: Esri imagery under the outline, with
-// the corners as handles while it is being edited.
+// The map the house is traced on — Esri satellite, or Esri's topographic
+// map where houses are clean grey footprints — with the corners as handles
+// while it is being edited. The designer flips between the two from the
+// corner of the map, and the choice is remembered in this browser.
 //
 // Leaflet is driven imperatively from effects rather than wrapped in React
 // components. It touches `window` the moment it is imported, so it loads
@@ -38,20 +37,70 @@ type L = typeof Leaflet;
 type Built = {
   L: L;
   map: Leaflet.Map;
+  /** Swapped, not restyled, when the base map changes. */
+  tiles: Leaflet.TileLayer;
+  basemap: Basemap;
   overlay: Leaflet.LayerGroup;
   /** The dashed line from the last corner to the cursor while drawing. */
   band: Leaflet.Polyline;
 };
 
-// Inks chosen for aerial imagery, not the paper UI: the house in the
-// headset's walk gold, the boundary as a cream survey dash, both over a
-// dark halo so they hold on a white roof and on black asphalt alike.
-const INK: Record<ShapeKind, { line: string; weight: number; dash?: string; fill?: string }> = {
-  house: { line: "#f2c14e", weight: 2.5, fill: "#f2c14e" },
-  boundary: { line: "#f8f3e6", weight: 2, dash: "8 6" },
+type Ink = { line: string; weight: number; dash?: string; fill?: string };
+interface Palette {
+  ink: Record<ShapeKind, Ink>;
+  /** Drawn wider beneath each line so it holds on any ground. */
+  halo: string;
+  band: string;
+  /** The ring around a corner handle. */
+  cornerRing: string;
+}
+
+const PALETTES: Record<Basemap, Palette> = {
+  // Inks for aerial imagery, not the paper UI: the house in the headset's
+  // walk gold, the boundary as a cream survey dash, both over a dark halo
+  // so they hold on a white roof and on black asphalt alike.
+  satellite: {
+    ink: {
+      house: { line: "#f2c14e", weight: 2.5, fill: "#f2c14e" },
+      boundary: { line: "#f8f3e6", weight: 2, dash: "8 6" },
+    },
+    halo: "rgba(20,24,20,0.7)",
+    band: "#f8f3e6",
+    cornerRing: "rgba(20,24,20,0.85)",
+  },
+  // On the near-white map gold and cream vanish, so the dashboard's own
+  // green and ink, over a white halo that lifts them off the grey
+  // footprints they are traced against.
+  map: {
+    ink: {
+      house: { line: "#2e5d43", weight: 2.5, fill: "#3c7857" },
+      boundary: { line: "#1c2a21", weight: 2, dash: "8 6" },
+    },
+    halo: "rgba(255,255,255,0.85)",
+    band: "#1c2a21",
+    cornerRing: "rgba(255,255,255,0.95)",
+  },
 };
-const HALO = "rgba(20,24,20,0.7)";
+
 const CONTIGUOUS_US: [number, number] = [39.5, -98.35];
+const BASEMAP_KEY = "vv.traceBasemap";
+
+/** The base map this browser last chose. Satellite until told otherwise. */
+function rememberedBasemap(): Basemap {
+  try {
+    return localStorage.getItem(BASEMAP_KEY) === "map" ? "map" : "satellite";
+  } catch {
+    return "satellite";
+  }
+}
+
+function tilesFor(L: L, basemap: Basemap): Leaflet.TileLayer {
+  return L.tileLayer(BASEMAPS[basemap].url, {
+    maxZoom: 22,
+    maxNativeZoom: MAX_NATIVE_ZOOM,
+    attribution: BASEMAPS[basemap].attribution,
+  });
+}
 
 /** Edge labels and midpoint handles drop out below these on-screen sizes. */
 const MIN_LABEL_PX = 56;
@@ -92,6 +141,7 @@ export function TraceMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const builtRef = useRef<Built | null>(null);
   const [ready, setReady] = useState(false);
+  const [basemap, setBasemap] = useState<Basemap>("satellite");
   // Labels and handles depend on the zoom (they thin out when crowded).
   const [zoomTick, setZoomTick] = useState(0);
   // Leaflet's handlers are bound once; they read the current props here.
@@ -121,15 +171,14 @@ export function TraceMap({
         zoomSnap: 0.5,
       }).setView(CONTIGUOUS_US, 4);
 
-      L.tileLayer(IMAGERY_TILE_URL, {
-        maxZoom: 22,
-        maxNativeZoom: IMAGERY_MAX_NATIVE_ZOOM,
-        attribution: IMAGERY_ATTRIBUTION,
-      }).addTo(map);
+      // Read here, not in useState: the server renders this component too,
+      // and has no localStorage to agree with.
+      const initial = rememberedBasemap();
+      const tiles = tilesFor(L, initial).addTo(map);
 
       const overlay = L.layerGroup().addTo(map);
       const band = L.polyline([], {
-        color: "#f8f3e6",
+        color: PALETTES[initial].band,
         weight: 1.5,
         dashArray: "4 4",
         interactive: false,
@@ -156,8 +205,9 @@ export function TraceMap({
       observer = new ResizeObserver(() => map.invalidateSize());
       observer.observe(el);
 
-      built = { L, map, overlay, band };
+      built = { L, map, tiles, basemap: initial, overlay, band };
       builtRef.current = built;
+      setBasemap(initial);
       setReady(true);
     })();
 
@@ -195,11 +245,53 @@ export function TraceMap({
 
   useEffect(() => {
     const built = builtRef.current;
-    if (!ready || !built) return;
-    draw(built, shapes, editing, (kind, shape) => latest.current.onChange?.(kind, shape));
-  }, [ready, shapes, editing, zoomTick]);
+    if (!ready || !built || built.basemap === basemap) return;
+    built.tiles.remove();
+    built.tiles = tilesFor(built.L, basemap).addTo(built.map);
+    built.basemap = basemap;
+    built.band.setStyle({ color: PALETTES[basemap].band });
+  }, [ready, basemap]);
 
-  return <div ref={containerRef} className={className} />;
+  useEffect(() => {
+    const built = builtRef.current;
+    if (!ready || !built) return;
+    draw(built, shapes, editing, PALETTES[basemap], (kind, shape) =>
+      latest.current.onChange?.(kind, shape)
+    );
+  }, [ready, shapes, editing, basemap, zoomTick]);
+
+  function choose(next: Basemap) {
+    setBasemap(next);
+    try {
+      localStorage.setItem(BASEMAP_KEY, next);
+    } catch {
+      // A private window: the choice simply isn't remembered.
+    }
+  }
+
+  return (
+    <div className={`trace-map relative ${className ?? ""}`}>
+      <div ref={containerRef} className="absolute inset-0" />
+      {ready && (
+        // Outside Leaflet's container, so a click here is never a corner.
+        <div className="absolute right-2.5 top-2.5 z-[1000] flex rounded-lg bg-card p-0.5 shadow-sm ring-1 ring-rule-strong">
+          {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
+            <button
+              key={b}
+              type="button"
+              aria-pressed={basemap === b}
+              onClick={() => choose(b)}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                basemap === b ? "bg-accent text-paper" : "text-muted hover:text-ink"
+              }`}
+            >
+              {BASEMAPS[b].label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Rebuilds every outline layer from the shapes. Cheap: a house is a dozen corners. */
@@ -207,6 +299,7 @@ function draw(
   { L, map, overlay }: Built,
   shapes: Shapes,
   editing: ShapeKind | null,
+  palette: Palette,
   emit: (kind: ShapeKind, shape: Shape) => void
 ) {
   overlay.clearLayers();
@@ -221,7 +314,7 @@ function draw(
     if (n === 0) continue;
     const active = editing === kind;
     const dim = editing != null && !active;
-    const ink = INK[kind];
+    const ink = palette.ink[kind];
     const ring = shape.closed && n >= 3;
 
     let halo: Leaflet.Polyline | Leaflet.Polygon | null = null;
@@ -231,7 +324,7 @@ function draw(
       const make = (opts: Leaflet.PolylineOptions) =>
         ring ? L.polygon(lls, opts) : L.polyline(lls, opts);
       halo = make({
-        color: HALO,
+        color: palette.halo,
         weight: ink.weight + 3,
         opacity: dim ? 0.35 : 0.7,
         fill: false,
@@ -318,7 +411,7 @@ function draw(
       const closer = !shape.closed && i === 0 && n >= 3;
       const corner = L.marker(toLL(p), {
         draggable: true,
-        icon: cornerIcon(L, ink.line, closer),
+        icon: cornerIcon(L, ink.line, palette.cornerRing, closer),
         keyboard: false,
         zIndexOffset: closer ? 2000 : 1000,
       });
@@ -346,7 +439,7 @@ function draw(
   }
 }
 
-function cornerIcon(L: L, color: string, closer: boolean): Leaflet.DivIcon {
+function cornerIcon(L: L, color: string, ring: string, closer: boolean): Leaflet.DivIcon {
   const size = closer ? 18 : 12;
   return L.divIcon({
     className: "",
@@ -355,7 +448,7 @@ function cornerIcon(L: L, color: string, closer: boolean): Leaflet.DivIcon {
     html:
       `<div style="box-sizing:border-box;width:${size}px;height:${size}px;border-radius:50%;` +
       `background:${closer ? "#f8f3e6" : color};` +
-      `border:2px solid ${closer ? color : "rgba(20,24,20,0.85)"};` +
+      `border:2px solid ${closer ? color : ring};` +
       `box-shadow:0 0 0 1.5px rgba(20,24,20,0.55);cursor:${closer ? "pointer" : "grab"}"></div>`,
   });
 }
