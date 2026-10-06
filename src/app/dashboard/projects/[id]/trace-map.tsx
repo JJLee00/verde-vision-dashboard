@@ -160,6 +160,9 @@ export function TraceMap({
   houseLabel,
   expanded = false,
   onToggleExpand,
+  hint,
+  toolbar,
+  status,
   view,
   className,
 }: {
@@ -195,6 +198,12 @@ export function TraceMap({
   expanded?: boolean;
   /** Shows the Expand button in the bottom-right corner when given. */
   onToggleExpand?: () => void;
+  /** One line of guidance, floated under the zoom buttons. */
+  hint?: string | null;
+  /** Buttons floated in the bottom-left corner (Undo, Close, Start over). */
+  toolbar?: React.ReactNode;
+  /** A card floated above the toolbar — the facts, when full screen. */
+  status?: React.ReactNode;
   view: MapView | null;
   className?: string;
 }) {
@@ -388,13 +397,28 @@ export function TraceMap({
   return (
     <div className={`trace-map relative ${className ?? ""}`} data-basemap={basemap}>
       <div ref={containerRef} className="absolute inset-0" />
-      {ready && editing && basemap === "map" && (
-        // Click-through, so it never eats a corner.
-        <p className="pointer-events-none absolute bottom-7 left-2.5 z-[1000] max-w-[62%] rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">
-          {shifted > 0.3
-            ? `Map lined up with the satellite for this property (moved ${formatFeetInches(shifted)}). Tracing here now lands in the right place.`
-            : "Map outlines can sit 10 ft or more off the real house. Trace here, then switch to Satellite and drag the outline onto the roof — the Map lines itself up to match."}
-        </p>
+      {ready && (hint || (editing && basemap === "map")) && (
+        // Under the zoom buttons, clear of the switches top-right. Click-
+        // through, so a note over the map never eats a corner.
+        <div className="pointer-events-none absolute left-2.5 top-[84px] z-[1000] flex max-w-[min(70%,30rem)] flex-col items-start gap-1.5">
+          {hint && (
+            <p className="rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">{hint}</p>
+          )}
+          {editing && basemap === "map" && (
+            <p className="rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper/90">
+              {shifted > 0.3
+                ? `Map lined up with the satellite here (moved ${formatFeetInches(shifted)}) — tracing on it lands in the right place.`
+                : "Map outlines can sit 10 ft or more off. Trace here, then drag the outline onto the roof on Satellite and the Map lines itself up."}
+            </p>
+          )}
+        </div>
+      )}
+      {ready && (status || toolbar) && (
+        // Bottom-left, above the source credit and clear of Expand.
+        <div className="pointer-events-none absolute bottom-7 left-2.5 z-[1000] flex max-w-[calc(100%-8rem)] flex-col items-start gap-2 [&>*]:pointer-events-auto">
+          {status}
+          {toolbar}
+        </div>
       )}
       {ready && (
         // Outside Leaflet's container, so a click here is never a corner.

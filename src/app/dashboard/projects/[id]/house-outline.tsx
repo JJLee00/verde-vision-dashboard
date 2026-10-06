@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useReducer, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
 import type { LatLng } from "@/lib/blueprint/types";
@@ -174,61 +174,72 @@ function SavedOutline({
   const fromCounty = stored.provider !== TRACE_PROVIDER;
   const check = useHouseAddress(traced.house, stored.lookupAddress);
   const [expanded, setExpanded] = useExpanded();
+  const facts = (
+    <OutlineFacts
+      house={{ points: traced.house, closed: true }}
+      boundary={{ points: traced.boundary, closed: true }}
+      address={stored.lookupAddress}
+      compact={expanded}
+    />
+  );
 
+  // One tree for both sizes, so the map is never remounted (and never loses
+  // its place) when it expands: only the classes and the extras change.
   return (
-    <>
-      {expanded && <div aria-hidden className="fixed inset-0 z-[59] bg-ink/40" />}
-      <div className={expanded ? EXPANDED_PANEL : ""}>
-        <div
-          className={`isolate overflow-hidden rounded-[10px] border border-rule ${
-            expanded ? "flex min-h-[360px] flex-1" : ""
-          }`}
-        >
-          <TraceMap
-            shapes={shapes}
-            editing={null}
-            view={view}
-            mapOffset={stored.mapOffset ?? null}
-            houseLabel={houseLabelFor(check, stored.lookupAddress)}
-            expanded={expanded}
-            onToggleExpand={() => setExpanded((e) => !e)}
-            className={expanded ? "h-full w-full" : "h-[400px] w-full"}
-          />
-        </div>
-
-        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-          {stored.lookupAddress && (
-            <div className="sm:col-span-2">
-              <Fact label="Address">{stored.lookupAddress}</Fact>
-            </div>
-          )}
-          <Fact label="House">{describeShape(traced.house, "roof")}</Fact>
-          <Fact label="Boundary">{describeShape(traced.boundary, "lot")}</Fact>
-          {fetchedAt && (
-            <Fact label={fromCounty ? "Looked up" : "Traced"}>
-              {new Date(fetchedAt).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
-            </Fact>
-          )}
-        </dl>
-        <HouseCheckLine check={check} typed={stored.lookupAddress} />
-
-        {fromCounty && (
-          <p className="mt-3 text-sm text-muted">
-            Found by the old county lookup. Open it with Edit outline to check the
-            corners against the map.
-          </p>
-        )}
-        <p className="mt-3 text-[11px] text-faint">
-          The outline follows the roof, so its corners sit a foot or two outside
-          the walls. On site, stand the corner post under the roof&apos;s corner,
-          not the wall&apos;s.
-        </p>
+    <div className={expanded ? FULL_PAGE : ""}>
+      <div className={expanded ? FULL_PAGE_MAP : "isolate overflow-hidden rounded-[10px] border border-rule"}>
+        <TraceMap
+          shapes={shapes}
+          editing={null}
+          view={view}
+          mapOffset={stored.mapOffset ?? null}
+          houseLabel={houseLabelFor(check, stored.lookupAddress)}
+          expanded={expanded}
+          onToggleExpand={() => setExpanded((e) => !e)}
+          status={
+            expanded ? (
+              <StatusCard>
+                {facts}
+                <HouseCheckLine check={check} typed={stored.lookupAddress} compact />
+              </StatusCard>
+            ) : null
+          }
+          className={expanded ? "h-full w-full" : "h-[400px] w-full"}
+        />
       </div>
-    </>
+
+      {!expanded && (
+        <>
+          <div className="mt-3">
+            {facts}
+            {fetchedAt && (
+              <dl className="mt-1.5 text-sm">
+                <Fact label={fromCounty ? "Looked up" : "Traced"}>
+                  {new Date(fetchedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </Fact>
+              </dl>
+            )}
+          </div>
+          <HouseCheckLine check={check} typed={stored.lookupAddress} />
+
+          {fromCounty && (
+            <p className="mt-3 text-sm text-muted">
+              Found by the old county lookup. Open it with Edit outline to check
+              the corners against the map.
+            </p>
+          )}
+          <p className="mt-3 text-[11px] text-faint">
+            The outline follows the roof, so its corners sit a foot or two
+            outside the walls. On site, stand the corner post under the
+            roof&apos;s corner, not the wall&apos;s.
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -286,30 +297,40 @@ function houseLabelFor(check: HouseCheck, typed: string): string | null {
   return typed ? streetLine(typed) : null;
 }
 
-function HouseCheckLine({ check, typed }: { check: HouseCheck; typed: string }) {
+function HouseCheckLine({
+  check,
+  typed,
+  compact = false,
+}: {
+  check: HouseCheck;
+  typed: string;
+  /** Status-card size, for the full-screen map. */
+  compact?: boolean;
+}) {
+  const size = compact ? "mt-1 text-xs" : "mt-2 text-sm";
   switch (check.state) {
     case "checking":
-      return <p className="mt-2 text-sm text-faint">Checking the address at this outline…</p>;
+      return <p className={`${size} text-faint`}>Checking the address at this outline…</p>;
     case "unknown":
       return (
-        <p className="mt-2 text-sm text-faint">
+        <p className={`${size} text-faint`}>
           No street address found at this outline — check the map is on the
           right house.
         </p>
       );
     case "found":
       if (check.match === true) {
-        return <p className="mt-2 text-sm text-accent">✓ This is {check.found.street}.</p>;
+        return <p className={`${size} text-accent`}>✓ This is {check.found.street}.</p>;
       }
       if (check.match === false) {
         return (
-          <p className="mt-2 text-sm text-gold">
+          <p className={`${size} text-gold`}>
             ⚠ This outline is on {check.found.street}, not {streetLine(typed)}.
             Check you traced the right house.
           </p>
         );
       }
-      return <p className="mt-2 text-sm text-muted">This outline is on {check.found.street}.</p>;
+      return <p className={`${size} text-muted`}>This outline is on {check.found.street}.</p>;
     default:
       return null;
   }
@@ -317,9 +338,12 @@ function HouseCheckLine({ check, typed }: { check: HouseCheck; typed: string }) 
 
 // ── Expand ────────────────────────────────────────────────────────────
 
-/** Nearly full screen, over a dimmed page; the map takes the spare height. */
-const EXPANDED_PANEL =
-  "fixed inset-3 z-[60] flex flex-col overflow-y-auto rounded-2xl bg-card p-5 shadow-2xl ring-1 ring-rule-strong sm:inset-6";
+/**
+ * Expanded is the whole window, sidebar and all: a slim top bar, and the map
+ * filling everything under it with the tools and facts floated on top.
+ */
+const FULL_PAGE = "fixed inset-0 z-[60] flex flex-col bg-paper";
+const FULL_PAGE_MAP = "relative isolate min-h-0 flex-1";
 
 /**
  * Expanded state for a map section: Esc closes it (unless something inside,
@@ -564,6 +588,34 @@ function SearchStatus({ search }: { search: SearchState }) {
 
 // ── Tracing ───────────────────────────────────────────────────────────
 
+/**
+ * Everything one Undo steps back over: both shapes, the Map offset (a slide
+ * onto the roof moves it), and which base map the house was finished on
+ * (the thing that decides whether such a slide calibrates the Map).
+ */
+type Doc = { shapes: Shapes; mapOffset: MapOffset | null; houseClosedOn: Basemap | null };
+type History = { doc: Doc; past: Doc[] };
+type HistoryAction =
+  // A change the designer made: Undo can take it back.
+  | { type: "apply"; change: (d: Doc) => Doc }
+  // Rides on the step just made — the Map offset a slide implies — so one
+  // Undo puts the outline and the Map back together.
+  | { type: "amend"; change: (d: Doc) => Doc }
+  | { type: "undo" };
+
+const MAX_UNDO = 100;
+
+function history(h: History, action: HistoryAction): History {
+  if (action.type === "undo") {
+    if (h.past.length === 0) return h;
+    return { doc: h.past[h.past.length - 1], past: h.past.slice(0, -1) };
+  }
+  const doc = action.change(h.doc);
+  if (doc === h.doc) return h;
+  if (action.type === "amend") return { ...h, doc };
+  return { doc, past: [...h.past, h.doc].slice(-MAX_UNDO) };
+}
+
 function TraceEditor({
   start,
   initial,
@@ -581,10 +633,18 @@ function TraceEditor({
     mapOffset: MapOffset | null
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
-  const [shapes, setShapes] = useState<Shapes>(() => ({
-    house: { points: initial?.house ?? [], closed: (initial?.house.length ?? 0) >= 3 },
-    boundary: { points: initial?.boundary ?? [], closed: (initial?.boundary.length ?? 0) >= 3 },
+  const [{ doc, past }, dispatch] = useReducer(history, null, () => ({
+    doc: {
+      shapes: {
+        house: { points: initial?.house ?? [], closed: (initial?.house.length ?? 0) >= 3 },
+        boundary: { points: initial?.boundary ?? [], closed: (initial?.boundary.length ?? 0) >= 3 },
+      },
+      mapOffset: initialMapOffset,
+      houseClosedOn: null,
+    },
+    past: [],
   }));
+  const { shapes, mapOffset } = doc;
   // A search opens on what it found; Edit outline opens framed on the outline.
   const [view, setView] = useState<MapView | null>(() => {
     if (start.view) return start.view;
@@ -595,20 +655,41 @@ function TraceEditor({
   const [tool, setTool] = useState<ShapeKind>("house");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mapOffset, setMapOffset] = useState<MapOffset | null>(initialMapOffset);
-  // Read only in handlers, so refs rather than state: which base map is in
-  // view, and which one the house was finished on (null = not this session).
+  // Read only in handlers: which base map is in view.
   const basemapRef = useRef<Basemap>("satellite");
-  const houseClosedOn = useRef<Basemap | null>(null);
   const check = useHouseAddress(shapes.house.closed ? shapes.house.points : [], address);
   const [expanded, setExpanded] = useExpanded();
 
   function update(kind: ShapeKind, shape: Shape) {
-    if (kind === "house") {
-      if (!shapes.house.closed && shape.closed) houseClosedOn.current = basemapRef.current;
-      if (shape.points.length === 0) houseClosedOn.current = null;
-    }
-    setShapes((s) => ({ ...s, [kind]: shape }));
+    const basemap = basemapRef.current;
+    dispatch({
+      type: "apply",
+      change: (d) => {
+        let closedOn = d.houseClosedOn;
+        if (kind === "house") {
+          if (!d.shapes.house.closed && shape.closed) closedOn = basemap;
+          if (shape.points.length === 0) closedOn = null;
+        }
+        return { ...d, houseClosedOn: closedOn, shapes: { ...d.shapes, [kind]: shape } };
+      },
+    });
+    setError(null);
+  }
+
+  function addCorner(kind: ShapeKind, point: LatLng) {
+    dispatch({
+      type: "apply",
+      change: (d) =>
+        d.shapes[kind].closed
+          ? d
+          : {
+              ...d,
+              shapes: {
+                ...d.shapes,
+                [kind]: { points: [...d.shapes[kind].points, point], closed: false },
+              },
+            },
+    });
     setError(null);
   }
 
@@ -622,19 +703,40 @@ function TraceEditor({
    */
   function moveWhole(kind: ShapeKind, from: LatLng, to: LatLng) {
     if (kind !== "house" || basemapRef.current !== "satellite") return;
-    if (houseClosedOn.current !== "map") return;
     const [[east, south]] = ringToXZMeters([to], from);
-    setMapOffset((o) => ({ east: (o?.east ?? 0) + east, north: (o?.north ?? 0) - south }));
+    dispatch({
+      type: "amend",
+      change: (d) =>
+        d.houseClosedOn !== "map"
+          ? d
+          : {
+              ...d,
+              mapOffset: {
+                east: (d.mapOffset?.east ?? 0) + east,
+                north: (d.mapOffset?.north ?? 0) - south,
+              },
+            },
+    });
   }
 
-  const shifted = mapOffset ? Math.hypot(mapOffset.east, mapOffset.north) : 0;
-
-  function addCorner(kind: ShapeKind, point: LatLng) {
-    setShapes((s) =>
-      s[kind].closed ? s : { ...s, [kind]: { points: [...s[kind].points, point], closed: false } }
-    );
+  function undo() {
+    dispatch({ type: "undo" });
     setError(null);
   }
+
+  // ⌘Z / Ctrl+Z steps back — except while typing an address, where the
+  // box's own undo is the one meant.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.key.toLowerCase() !== "z") return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      e.preventDefault();
+      dispatch({ type: "undo" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const active = shapes[tool];
   const houseDone = shapes.house.closed && shapes.house.points.length >= 3;
@@ -661,24 +763,87 @@ function TraceEditor({
     setSaving(false);
   }
 
-  return (
-    <>
-      {expanded && <div aria-hidden className="fixed inset-0 z-[59] bg-ink/40" />}
-      <div className={expanded ? EXPANDED_PANEL : ""}>
-        <AddressSearch
-          initialQuery={start.query}
-          initialStatus={start.status}
-          onFound={(hit, query) => {
-            setView({ kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 });
-            setAddress(addressFor(hit, query));
-          }}
-        />
+  const facts = (
+    <OutlineFacts
+      house={shapes.house}
+      boundary={shapes.boundary}
+      mapOffset={mapOffset}
+      onResetMapOffset={() =>
+        dispatch({ type: "apply", change: (d) => (d.mapOffset ? { ...d, mapOffset: null } : d) })
+      }
+      compact={expanded}
+    />
+  );
 
-        {/* Nothing above the map may change height while drawing: the first
-            corner used to bring in a row of buttons and a shorter hint, and
-            the map jumped under the cursor between clicks. The hint and the
-            corner tools live below it for that reason. */}
-        <div className="mt-3">
+  // The drawing tools live on the map itself, bottom-left.
+  const toolbar = (
+    <div className="flex flex-wrap gap-2">
+      <MapButton onClick={undo} disabled={past.length === 0} title="Undo (⌘Z or Ctrl+Z)">
+        <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5.5 3.5 2.5 6.5l3 3" />
+          <path d="M2.5 6.5h7a4 4 0 0 1 0 8H7" />
+        </svg>
+        Undo
+      </MapButton>
+      {!active.closed && active.points.length >= 3 && (
+        <MapButton onClick={() => update(tool, { points: active.points, closed: true })}>
+          Close outline
+        </MapButton>
+      )}
+      {active.points.length > 0 && (
+        <MapButton onClick={() => update(tool, { points: [], closed: false })}>Start over</MapButton>
+      )}
+    </div>
+  );
+
+  const saveControls = (
+    <div className="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        disabled={blocker != null || saving}
+        onClick={save}
+        title={blocker ?? undefined}
+        className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save outline"}
+      </button>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={onCancel}
+        className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
+      >
+        Cancel
+      </button>
+      {blocker && <span className="text-sm text-faint">{blocker}</span>}
+      {error && <span className="text-sm text-clay">{error}</span>}
+    </div>
+  );
+
+  // One tree for both sizes, so the map is never remounted (and never loses
+  // its place) when it expands: only the classes and the extras change.
+  // Nothing above the map changes height while drawing — the tools and the
+  // hint float on the map — so it never jumps under the cursor.
+  return (
+    <div className={expanded ? FULL_PAGE : ""}>
+      <div
+        className={
+          expanded
+            ? "flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-card px-4 py-3"
+            : ""
+        }
+      >
+        <div className={expanded ? "min-w-[16rem] max-w-xl flex-1" : ""}>
+          <AddressSearch
+            initialQuery={start.query}
+            initialStatus={start.status}
+            onFound={(hit, query) => {
+              setView({ kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 });
+              setAddress(addressFor(hit, query));
+            }}
+          />
+        </div>
+        <div className={expanded ? "" : "mt-3"}>
           <div role="tablist" className="inline-flex rounded-lg border border-rule p-0.5">
             {(["house", "boundary"] as const).map((kind) => (
               <button
@@ -696,108 +861,158 @@ function TraceEditor({
             ))}
           </div>
         </div>
+        {expanded && <div className="ml-auto">{saveControls}</div>}
+      </div>
 
-        <div
-          className={`isolate mt-3 overflow-hidden rounded-[10px] border border-rule ${
-            expanded ? "flex min-h-[360px] flex-1" : ""
-          }`}
-        >
-          <TraceMap
-            shapes={shapes}
-            editing={tool}
-            onChange={update}
-            onAddCorner={addCorner}
-            onMoveWhole={moveWhole}
-            onBasemapChange={(b) => {
-              basemapRef.current = b;
-            }}
-            mapOffset={mapOffset}
-            houseLabel={shapes.house.closed ? houseLabelFor(check, address) : null}
-            expanded={expanded}
-            onToggleExpand={() => setExpanded((e) => !e)}
-            view={view}
-            className={expanded ? "h-full w-full" : "h-[520px] w-full"}
-          />
+      <div
+        className={expanded ? FULL_PAGE_MAP : "isolate mt-3 overflow-hidden rounded-[10px] border border-rule"}
+      >
+        <TraceMap
+          shapes={shapes}
+          editing={tool}
+          onChange={update}
+          onAddCorner={addCorner}
+          onMoveWhole={moveWhole}
+          onBasemapChange={(b) => {
+            basemapRef.current = b;
+          }}
+          mapOffset={mapOffset}
+          houseLabel={shapes.house.closed ? houseLabelFor(check, address) : null}
+          expanded={expanded}
+          onToggleExpand={() => setExpanded((e) => !e)}
+          hint={hint(tool, active)}
+          toolbar={toolbar}
+          status={
+            expanded ? (
+              <StatusCard>
+                {facts}
+                <HouseCheckLine check={check} typed={address} compact />
+              </StatusCard>
+            ) : null
+          }
+          view={view}
+          className={expanded ? "h-full w-full" : "h-[520px] w-full"}
+        />
+      </div>
+
+      {!expanded && (
+        <>
+          <div className="mt-3">{facts}</div>
+          <HouseCheckLine check={check} typed={address} />
+          <div className="mt-4">{saveControls}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Short, because it floats on the map. */
+function hint(tool: ShapeKind, shape: Shape): string {
+  const n = shape.points.length;
+  if (shape.closed) {
+    return "Drag a corner, a midpoint (adds a corner), or the whole outline. Right-click a corner to remove it.";
+  }
+  if (n === 0) {
+    return tool === "house"
+      ? "Click each corner of the roof, in order around the house."
+      : "Optional: click each corner of the yard. Lot lines shows the county's lot to follow.";
+  }
+  if (n < 3) return "Keep clicking corners.";
+  return "Click the white first corner to close the outline.";
+}
+
+/** The facts under the map, or in its status card when full screen. */
+function OutlineFacts({
+  house,
+  boundary,
+  address,
+  mapOffset,
+  onResetMapOffset,
+  compact = false,
+}: {
+  house: Shape;
+  boundary: Shape;
+  address?: string;
+  mapOffset?: MapOffset | null;
+  onResetMapOffset?: () => void;
+  compact?: boolean;
+}) {
+  const shifted = mapOffset ? Math.hypot(mapOffset.east, mapOffset.north) : 0;
+  return (
+    <dl
+      className={
+        compact
+          ? "flex flex-col gap-0.5 text-xs"
+          : "grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2"
+      }
+    >
+      {address && (
+        <div className={compact ? "" : "sm:col-span-2"}>
+          <Fact label="Address" compact={compact}>
+            {address}
+          </Fact>
         </div>
-
-        <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
-          <p className="text-sm text-muted">{hint(tool, active)}</p>
-          <div className="flex flex-wrap items-center gap-3">
-            {!active.closed && active.points.length > 0 && (
-              <ToolButton onClick={() => update(tool, { points: active.points.slice(0, -1), closed: false })}>
-                Undo corner
-              </ToolButton>
-            )}
-            {!active.closed && active.points.length >= 3 && (
-              <ToolButton onClick={() => update(tool, { points: active.points, closed: true })}>
-                Close outline
-              </ToolButton>
-            )}
-            {active.points.length > 0 && (
-              <ToolButton onClick={() => update(tool, { points: [], closed: false })}>
-                Start over
-              </ToolButton>
-            )}
-          </div>
-        </div>
-
-        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-          <Fact label="House">{describeDraft(shapes.house, "roof")}</Fact>
-          <Fact label="Boundary">{describeDraft(shapes.boundary, "lot")}</Fact>
-          {shifted > 0.3 && (
-            <div className="sm:col-span-2">
-              <Fact label="Map view">
-                Lined up with the satellite here (moved {formatFeetInches(shifted)}) ·{" "}
+      )}
+      <Fact label="House" compact={compact}>
+        {describeDraft(house, "roof")}
+      </Fact>
+      <Fact label="Boundary" compact={compact}>
+        {describeDraft(boundary, "lot")}
+      </Fact>
+      {shifted > 0.3 && (
+        <div className={compact ? "" : "sm:col-span-2"}>
+          <Fact label="Map view" compact={compact}>
+            Lined up with the satellite here (moved {formatFeetInches(shifted)})
+            {onResetMapOffset && (
+              <>
+                {" · "}
                 <button
                   type="button"
-                  onClick={() => setMapOffset(null)}
+                  onClick={onResetMapOffset}
                   className="font-semibold text-muted underline-offset-2 transition hover:text-ink hover:underline"
                 >
                   Reset
                 </button>
-              </Fact>
-            </div>
-          )}
-        </dl>
-        <HouseCheckLine check={check} typed={address} />
-
-        {error && <p className="mt-4 text-sm text-clay">{error}</p>}
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            disabled={blocker != null || saving}
-            onClick={save}
-            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
-          >
-            {saving ? "Saving…" : "Save outline"}
-          </button>
-          <button
-            type="button"
-            disabled={saving}
-            onClick={onCancel}
-            className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          {blocker && <span className="text-sm text-faint">{blocker}</span>}
+              </>
+            )}
+          </Fact>
         </div>
-      </div>
-    </>
+      )}
+    </dl>
   );
 }
 
-function hint(tool: ShapeKind, shape: Shape): string {
-  const n = shape.points.length;
-  if (shape.closed) {
-    return "Drag a corner to move it, or a midpoint to add one. Drag inside the outline to move all of it. Right-click a corner to remove it.";
-  }
-  if (n === 0) {
-    return tool === "house"
-      ? "Click each corner of the roof, in order around the house. Zoom in close — every corner is one the headset can walk to."
-      : "Optional. Click each corner of the yard — the property wall or fence line. Lot lines shows the county's lot boundary to follow.";
-  }
-  if (n < 3) return "Keep clicking corners.";
-  return "Click the first corner (the white one) to close the outline.";
+function StatusCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="max-w-[30rem] rounded-lg bg-card/95 px-3 py-2 shadow-sm ring-1 ring-rule-strong">
+      {children}
+    </div>
+  );
+}
+
+/** A control that sits on the map, styled like its other switches. */
+function MapButton({
+  onClick,
+  disabled,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className="flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1.5 text-xs font-semibold text-body shadow-sm ring-1 ring-rule-strong transition hover:text-ink disabled:cursor-default disabled:opacity-45"
+    >
+      {children}
+    </button>
+  );
 }
 
 const corners = (n: number) => `${n} ${n === 1 ? "corner" : "corners"}`;
@@ -819,22 +1034,18 @@ function describeDraft(shape: Shape, area: AreaKind): string {
   return describeShape(shape.points, area);
 }
 
-function ToolButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="text-sm font-semibold text-muted transition hover:text-ink"
-    >
-      {children}
-    </button>
-  );
-}
-
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({
+  label,
+  compact = false,
+  children,
+}: {
+  label: string;
+  compact?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex gap-2">
-      <dt className="w-20 shrink-0 text-faint">{label}</dt>
+      <dt className={`${compact ? "w-16" : "w-20"} shrink-0 text-faint`}>{label}</dt>
       <dd className="min-w-0 text-body">{children}</dd>
     </div>
   );
