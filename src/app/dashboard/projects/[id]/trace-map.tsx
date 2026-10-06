@@ -136,9 +136,8 @@ function tilesFor(L: L, basemap: Basemap): Leaflet.TileLayer {
  */
 const MOVABLE_FILL = 0.06;
 
-/** Edge labels and midpoint handles drop out below these on-screen sizes. */
+/** Edge labels drop out below this on-screen length. */
 const MIN_LABEL_PX = 56;
-const MIN_HANDLE_PX = 28;
 /** The gap between an edge and its length label. */
 const LABEL_GAP_PX = 9;
 
@@ -484,8 +483,6 @@ function draw(
   emitMove: (kind: ShapeKind, from: LatLng, to: LatLng) => void
 ) {
   overlay.clearLayers();
-  const px = (a: LatLng, b: LatLng) =>
-    map.latLngToLayerPoint(toLL(a)).distanceTo(map.latLngToLayerPoint(toLL(b)));
 
   // The shape being edited goes on top.
   const order: ShapeKind[] = editing === "boundary" ? ["house", "boundary"] : ["boundary", "house"];
@@ -503,7 +500,7 @@ function draw(
       : movable
         ? Math.max(ink.fillOpacity, MOVABLE_FILL)
         : ink.fillOpacity;
-    // Handles and labels that a whole-outline drag hides until it lands.
+    // Labels that a whole-outline drag hides until it lands.
     const extras: Leaflet.Layer[] = [];
 
     let halo: Leaflet.Polyline | Leaflet.Polygon | null = null;
@@ -540,7 +537,7 @@ function draw(
 
     // Lengths on the house always (they're what the walk checks against),
     // and on whichever shape is being drawn. Each sits just outside its
-    // edge, clear of the midpoint handle on it.
+    // edge, off the line itself.
     if ((kind === "house" || active) && !dim) {
       const screen = shape.points.map((p) => map.latLngToLayerPoint(toLL(p)));
       const cx = screen.reduce((sum, p) => sum + p.x, 0) / n;
@@ -580,34 +577,6 @@ function draw(
     }
 
     if (!active) continue;
-
-    // Midpoints first, so a corner always sits above them.
-    if (ring) {
-      for (let i = 0; i < n; i++) {
-        const a = shape.points[i];
-        const b = shape.points[(i + 1) % n];
-        if (px(a, b) < MIN_HANDLE_PX) continue;
-        const at = midpoint(a, b);
-        const insert = (p: LatLng) => [
-          ...shape.points.slice(0, i + 1),
-          p,
-          ...shape.points.slice(i + 1),
-        ];
-        const handle = L.marker(toLL(at), {
-          draggable: true,
-          icon: midpointIcon(L, ink.line),
-          keyboard: false,
-          zIndexOffset: 500,
-        });
-        handle.on("drag", () => reshape(insert(fromLL(handle.getLatLng()))));
-        handle.on("dragend", () =>
-          emit(kind, { points: insert(fromLL(handle.getLatLng())), closed: true })
-        );
-        handle.on("click", () => emit(kind, { points: insert(at), closed: true }));
-        handle.addTo(overlay);
-        extras.push(handle);
-      }
-    }
 
     const working = [...shape.points];
     const corners: Leaflet.Marker[] = [];
@@ -692,18 +661,6 @@ function cornerIcon(L: L, color: string, ring: string, closer: boolean): Leaflet
       `background:${closer ? "#f8f3e6" : color};` +
       `border:2px solid ${closer ? color : ring};` +
       `box-shadow:0 0 0 1.5px rgba(20,24,20,0.55);cursor:${closer ? "pointer" : "grab"}"></div>`,
-  });
-}
-
-function midpointIcon(L: L, color: string): Leaflet.DivIcon {
-  const size = 10;
-  return L.divIcon({
-    className: "",
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    html:
-      `<div style="box-sizing:border-box;width:${size}px;height:${size}px;border-radius:50%;` +
-      `background:rgba(20,24,20,0.45);border:1.5px solid ${color};opacity:0.9;cursor:grab"></div>`,
   });
 }
 
