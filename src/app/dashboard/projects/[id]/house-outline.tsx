@@ -591,7 +591,7 @@ function hint(tool: ShapeKind, shape: Shape): string {
   if (n === 0) {
     return tool === "house"
       ? "Click each corner of the roof, in order around the house. Zoom in close — every corner is one the headset can walk to."
-      : "Optional. Click each corner of the yard — the property wall or fence line.";
+      : "Optional. Click each corner of the yard — the property wall or fence line. Lot lines shows the county's lot boundary to follow.";
   }
   if (n < 3) return "Keep clicking corners.";
   return "Click the first corner (the white one) to close the outline.";
