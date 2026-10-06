@@ -13,3 +13,8 @@
 .trace-map .leaflet-control-attribution:hover {
   white-space: normal;
 }
+
+/* A finished outline being edited moves as a whole when dragged inside. */
+.trace-map .trace-movable {
+  cursor: move;
+}

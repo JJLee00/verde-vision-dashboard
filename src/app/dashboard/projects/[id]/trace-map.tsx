@@ -45,7 +45,7 @@ type Built = {
   band: Leaflet.Polyline;
 };
 
-type Ink = { line: string; weight: number; dash?: string; fill?: string };
+type Ink = { line: string; weight: number; dash?: string; fill: string; fillOpacity: number };
 interface Palette {
   ink: Record<ShapeKind, Ink>;
   /** Drawn wider beneath each line so it holds on any ground. */
@@ -61,8 +61,8 @@ const PALETTES: Record<Basemap, Palette> = {
   // so they hold on a white roof and on black asphalt alike.
   satellite: {
     ink: {
-      house: { line: "#f2c14e", weight: 2.5, fill: "#f2c14e" },
-      boundary: { line: "#f8f3e6", weight: 2, dash: "8 6" },
+      house: { line: "#f2c14e", weight: 2.5, fill: "#f2c14e", fillOpacity: 0.18 },
+      boundary: { line: "#f8f3e6", weight: 2, dash: "8 6", fill: "#f8f3e6", fillOpacity: 0 },
     },
     halo: "rgba(20,24,20,0.7)",
     band: "#f8f3e6",
@@ -73,8 +73,8 @@ const PALETTES: Record<Basemap, Palette> = {
   // footprints they are traced against.
   map: {
     ink: {
-      house: { line: "#2e5d43", weight: 2.5, fill: "#3c7857" },
-      boundary: { line: "#1c2a21", weight: 2, dash: "8 6" },
+      house: { line: "#2e5d43", weight: 2.5, fill: "#3c7857", fillOpacity: 0.18 },
+      boundary: { line: "#1c2a21", weight: 2, dash: "8 6", fill: "#1c2a21", fillOpacity: 0 },
     },
     halo: "rgba(255,255,255,0.85)",
     band: "#1c2a21",
@@ -101,6 +101,12 @@ function tilesFor(L: L, basemap: Basemap): Leaflet.TileLayer {
     attribution: BASEMAPS[basemap].attribution,
   });
 }
+
+/**
+ * A finished outline being edited can be dragged by its inside. It needs a
+ * faint fill for that, even the boundary, which is otherwise only a line.
+ */
+const MOVABLE_FILL = 0.06;
 
 /** Edge labels and midpoint handles drop out below these on-screen sizes. */
 const MIN_LABEL_PX = 56;
@@ -272,6 +278,13 @@ export function TraceMap({
   return (
     <div className={`trace-map relative ${className ?? ""}`}>
       <div ref={containerRef} className="absolute inset-0" />
+      {ready && editing && basemap === "map" && (
+        // Click-through, so it never eats a corner.
+        <p className="pointer-events-none absolute bottom-7 left-2.5 z-[1000] max-w-[75%] rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">
+          Map outlines can sit 10 ft or more off the real house. Trace here,
+          then switch to Satellite and drag the outline onto the roof.
+        </p>
+      )}
       {ready && (
         // Outside Leaflet's container, so a click here is never a corner.
         <div className="absolute right-2.5 top-2.5 z-[1000] flex rounded-lg bg-card p-0.5 shadow-sm ring-1 ring-rule-strong">
@@ -316,6 +329,14 @@ function draw(
     const dim = editing != null && !active;
     const ink = palette.ink[kind];
     const ring = shape.closed && n >= 3;
+    const movable = active && ring;
+    const fillOpacity = dim
+      ? ink.fillOpacity * 0.45
+      : movable
+        ? Math.max(ink.fillOpacity, MOVABLE_FILL)
+        : ink.fillOpacity;
+    // Handles and labels that a whole-outline drag hides until it lands.
+    const extras: Leaflet.Layer[] = [];
 
     let halo: Leaflet.Polyline | Leaflet.Polygon | null = null;
     let line: Leaflet.Polyline | Leaflet.Polygon | null = null;
@@ -335,10 +356,12 @@ function draw(
         weight: ink.weight,
         opacity: dim ? 0.55 : 1,
         dashArray: ink.dash,
-        fill: ring && ink.fill != null,
+        fill: ring && fillOpacity > 0,
         fillColor: ink.fill,
-        fillOpacity: dim ? 0.08 : 0.18,
-        interactive: false,
+        fillOpacity,
+        interactive: movable,
+        bubblingMouseEvents: false,
+        className: movable ? "trace-movable" : undefined,
       }).addTo(overlay);
     }
     const reshape = (points: LatLng[]) => {
@@ -368,11 +391,12 @@ function draw(
           nx = -nx;
           ny = -ny;
         }
-        L.marker(toLL(midpoint(a, b)), {
+        const label = L.marker(toLL(midpoint(a, b)), {
           icon: labelIcon(L, formatFeetInches(distanceMeters(a, b)), [nx, ny]),
           interactive: false,
           keyboard: false,
         }).addTo(overlay);
+        extras.push(label);
       }
     }
 
@@ -402,10 +426,12 @@ function draw(
         );
         handle.on("click", () => emit(kind, { points: insert(at), closed: true }));
         handle.addTo(overlay);
+        extras.push(handle);
       }
     }
 
     const working = [...shape.points];
+    const corners: Leaflet.Marker[] = [];
     shape.points.forEach((p, i) => {
       // While drawing, the first corner is the way to close the loop.
       const closer = !shape.closed && i === 0 && n >= 3;
@@ -435,7 +461,43 @@ function draw(
         emit(kind, { points: shape.points.filter((_, j) => j !== i), closed: shape.closed });
       });
       corner.addTo(overlay);
+      corners.push(corner);
     });
+
+    // Dragging inside a finished outline moves all of it. This is how a
+    // shape traced on the Map view, whose footprints can sit several metres
+    // from the real house, gets slid onto the roof on Satellite; it is just
+    // as handy for a satellite trace that landed a little off.
+    if (movable && line) {
+      line.on("mousedown", (e: Leaflet.LeafletMouseEvent) => {
+        if (e.originalEvent.button !== 0) return;
+        L.DomEvent.stop(e);
+        // Before the event reaches the map, or it would pan instead.
+        map.dragging.disable();
+        const start = e.latlng;
+        let moved: LatLng[] | null = null;
+        for (const layer of extras) layer.remove();
+        // Document-level: the cursor rides on top of the outline the whole
+        // way, and the outline keeps its mouse events from the map.
+        const onMove = (ev: MouseEvent) => {
+          const at = map.mouseEventToLatLng(ev);
+          const dLat = at.lat - start.lat;
+          const dLng = at.lng - start.lng;
+          moved = shape.points.map((q) => ({ lat: q.lat + dLat, lng: q.lng + dLng }));
+          reshape(moved);
+          moved.forEach((q, i) => corners[i].setLatLng(toLL(q)));
+        };
+        const onUp = () => {
+          document.removeEventListener("mousemove", onMove);
+          map.dragging.enable();
+          // The redraw this triggers brings the labels and handles back,
+          // moved or not.
+          emit(kind, { points: moved ?? shape.points, closed: true });
+        };
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp, { once: true });
+      });
+    }
   }
 }
 

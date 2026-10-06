@@ -586,7 +586,7 @@ function TraceEditor({
 function hint(tool: ShapeKind, shape: Shape): string {
   const n = shape.points.length;
   if (shape.closed) {
-    return "Drag a corner to move it, or drag a midpoint to add one. Right-click a corner to remove it.";
+    return "Drag a corner to move it, or a midpoint to add one. Drag inside the outline to move all of it. Right-click a corner to remove it.";
   }
   if (n === 0) {
     return tool === "house"
