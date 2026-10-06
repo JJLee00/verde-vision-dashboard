@@ -23,6 +23,12 @@ export interface StoredBlueprint {
   lookupAddress: string;
   /** The outline, imagery WITHOUT `orthoJpegBase64`. */
   candidate: BlueprintCandidate;
+  /**
+   * Where the Map view's footprints needed shifting to agree with the
+   * satellite at this property (see trace.ts MapOffset). Dashboard-only —
+   * never sent to the headset.
+   */
+  mapOffset?: { east: number; north: number };
 }
 
 /** Reads the column defensively — a malformed row reads as "none". */

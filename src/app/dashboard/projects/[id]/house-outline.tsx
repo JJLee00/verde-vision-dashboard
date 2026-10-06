@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
 import type { LatLng } from "@/lib/blueprint/types";
@@ -8,12 +8,16 @@ import {
   geocodeAddress,
   suggestAddresses,
   type AddressSuggestion,
+  type Basemap,
   type GeocodeHit,
 } from "@/lib/blueprint/esri";
+import { ringToXZMeters } from "@/lib/blueprint/normalize";
 import {
+  formatFeetInches,
   ringAreaSqFt,
   TRACE_PROVIDER,
   tracedOutlineFrom,
+  type MapOffset,
   type TracedOutline,
 } from "@/lib/blueprint/trace";
 import { removeHouseOutline, saveTracedOutline } from "./house-outline-actions";
@@ -67,9 +71,10 @@ export function HouseOutline({
       <TraceEditor
         start={start}
         initial={stored ? tracedOutlineFrom(stored) : null}
+        initialMapOffset={stored?.mapOffset ?? null}
         onCancel={() => setStart(null)}
-        onSave={async (traced, address) => {
-          const result = await saveTracedOutline(projectId, traced, address);
+        onSave={async (traced, address, mapOffset) => {
+          const result = await saveTracedOutline(projectId, traced, address, mapOffset);
           if (result.ok) {
             setStart(null);
             startTransition(() => router.refresh());
@@ -168,7 +173,13 @@ function SavedOutline({
   return (
     <div>
       <div className="isolate overflow-hidden rounded-[10px] border border-rule">
-        <TraceMap shapes={shapes} editing={null} view={view} className="h-[400px] w-full" />
+        <TraceMap
+          shapes={shapes}
+          editing={null}
+          view={view}
+          mapOffset={stored.mapOffset ?? null}
+          className="h-[400px] w-full"
+        />
       </div>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
@@ -426,15 +437,18 @@ function SearchStatus({ search }: { search: SearchState }) {
 function TraceEditor({
   start,
   initial,
+  initialMapOffset,
   onCancel,
   onSave,
 }: {
   start: EditorStart;
   initial: TracedOutline | null;
+  initialMapOffset: MapOffset | null;
   onCancel: () => void;
   onSave: (
     outline: TracedOutline,
-    address: string
+    address: string,
+    mapOffset: MapOffset | null
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const [shapes, setShapes] = useState<Shapes>(() => ({
@@ -451,11 +465,37 @@ function TraceEditor({
   const [tool, setTool] = useState<ShapeKind>("house");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mapOffset, setMapOffset] = useState<MapOffset | null>(initialMapOffset);
+  // Read only in handlers, so refs rather than state: which base map is in
+  // view, and which one the house was finished on (null = not this session).
+  const basemapRef = useRef<Basemap>("satellite");
+  const houseClosedOn = useRef<Basemap | null>(null);
 
   function update(kind: ShapeKind, shape: Shape) {
+    if (kind === "house") {
+      if (!shapes.house.closed && shape.closed) houseClosedOn.current = basemapRef.current;
+      if (shape.points.length === 0) houseClosedOn.current = null;
+    }
     setShapes((s) => ({ ...s, [kind]: shape }));
     setError(null);
   }
+
+  /**
+   * A house finished on the Map and then slid onto the satellite roof: the
+   * slide is exactly how far the Map's footprints are off at this property,
+   * so the Map view takes the same shift and the two views agree from here
+   * on. Every such slide adds to it, so aligning in two nudges still works.
+   * A house traced on Satellite is already true; dragging it is just an
+   * adjustment and leaves the Map alone. So is anything dragged on the Map.
+   */
+  function moveWhole(kind: ShapeKind, from: LatLng, to: LatLng) {
+    if (kind !== "house" || basemapRef.current !== "satellite") return;
+    if (houseClosedOn.current !== "map") return;
+    const [[east, south]] = ringToXZMeters([to], from);
+    setMapOffset((o) => ({ east: (o?.east ?? 0) + east, north: (o?.north ?? 0) - south }));
+  }
+
+  const shifted = mapOffset ? Math.hypot(mapOffset.east, mapOffset.north) : 0;
 
   function addCorner(kind: ShapeKind, point: LatLng) {
     setShapes((s) =>
@@ -481,7 +521,8 @@ function TraceEditor({
         house: shapes.house.points,
         boundary: shapes.boundary.closed ? shapes.boundary.points : [],
       },
-      address
+      address,
+      mapOffset
     );
     // On success the card closes the editor; only a failure lands here.
     if (!result.ok) setError(result.error);
@@ -528,6 +569,11 @@ function TraceEditor({
           editing={tool}
           onChange={update}
           onAddCorner={addCorner}
+          onMoveWhole={moveWhole}
+          onBasemapChange={(b) => {
+            basemapRef.current = b;
+          }}
+          mapOffset={mapOffset}
           view={view}
           className="h-[520px] w-full"
         />
@@ -557,6 +603,20 @@ function TraceEditor({
       <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
         <Fact label="House">{describeDraft(shapes.house, { area: true })}</Fact>
         <Fact label="Boundary">{describeDraft(shapes.boundary)}</Fact>
+        {shifted > 0.3 && (
+          <div className="sm:col-span-2">
+            <Fact label="Map view">
+              Lined up with the satellite here (moved {formatFeetInches(shifted)}) ·{" "}
+              <button
+                type="button"
+                onClick={() => setMapOffset(null)}
+                className="font-semibold text-muted underline-offset-2 transition hover:text-ink hover:underline"
+              >
+                Reset
+              </button>
+            </Fact>
+          </div>
+        )}
       </dl>
 
       {error && <p className="mt-4 text-sm text-clay">{error}</p>}

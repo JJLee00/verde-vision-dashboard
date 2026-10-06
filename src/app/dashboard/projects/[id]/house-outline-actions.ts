@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
-import { buildTracedBlueprint, TraceError, type TracedOutline } from "@/lib/blueprint/trace";
+import {
+  buildTracedBlueprint,
+  TraceError,
+  type MapOffset,
+  type TracedOutline,
+} from "@/lib/blueprint/trace";
 
 // The House outline card's server side: store the outline the designer
 // traced on the aerial, or clear it. The headset picks it up with its next
@@ -55,14 +60,16 @@ async function editableProject(projectId: string) {
 /**
  * Stores the traced outline on the project, replacing whatever was there.
  * `address` is what the card's search found it by (may be empty, if the
- * designer just panned there). `blueprint_fetched_at` is what tells a
+ * designer just panned there); `mapOffset` is how far the Map view was
+ * lined up to the satellite here. `blueprint_fetched_at` is what tells a
  * headset this outline is newer than its copy, so a re-trace reaches every
  * headset that hasn't placed one yet.
  */
 export async function saveTracedOutline(
   projectId: string,
   outline: TracedOutline,
-  address: string
+  address: string,
+  mapOffset: MapOffset | null = null
 ): Promise<{ ok: true } | Failure> {
   const access = await editableProject(projectId);
   if ("error" in access) return { ok: false, error: access.error! };
@@ -70,7 +77,7 @@ export async function saveTracedOutline(
 
   let stored;
   try {
-    stored = buildTracedBlueprint(address, outline);
+    stored = buildTracedBlueprint(address, outline, mapOffset);
   } catch (err) {
     if (err instanceof TraceError) return { ok: false, error: err.message };
     throw err;
