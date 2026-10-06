@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import "./trace-map.css";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import type { LatLng } from "@/lib/blueprint/types";
 import { BASEMAPS, LOT_LINES, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
@@ -136,27 +136,6 @@ function tilesFor(L: L, basemap: Basemap): Leaflet.TileLayer {
  */
 const MOVABLE_FILL = 0.06;
 
-/**
- * Lot lines, drawn as solid magenta with hard edges. Regrid's tiles stop at
- * zoom 17, where a line is ~2 px of soft grey; every zoom step past that
- * doubles it, so the filter trims each side by enough to keep it ~2 px.
- * Magenta because it is the opposite of desert tan and green on the
- * satellite, shows on the near-white map, and can't be mistaken for the
- * gold/green house or the cream/ink boundary the designer draws.
- */
-const LOT_LINE_RGB = [232, 65, 140]; // #E8418C
-// Measured in Chrome (Oct 2026): once snapped to solid, a line is exactly
-// 2 px per stretch — 8, 16, 32, 64 px at zooms 19–22. Overestimate this and
-// the trim eats the whole line at high zoom.
-const LOT_LINE_NATIVE_PX = 2;
-const LOT_LINE_TARGET_PX = 2;
-
-/** How far to erode the stretched lines at `zoom` to land near 2 px. */
-function lotLineErode(zoom: number): number {
-  const width = LOT_LINE_NATIVE_PX * 2 ** Math.max(0, zoom - LOT_LINES.maxNativeZoom);
-  return Math.max(0, Math.floor((width - LOT_LINE_TARGET_PX) / 2));
-}
-
 /** Edge labels and midpoint handles drop out below these on-screen sizes. */
 const MIN_LABEL_PX = 56;
 const MIN_HANDLE_PX = 28;
@@ -215,9 +194,8 @@ export function TraceMap({
   const [ready, setReady] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [lotLines, setLotLines] = useState(false);
-  // Labels, handles, the lot-line trim and the Map offset all follow zoom.
+  // Labels, handles and the Map offset all follow zoom.
   const [zoom, setZoom] = useState(4);
-  const lotFilterId = `vv-lot-lines-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   // Leaflet's handlers are bound once; they read the current props here.
   const latest = useRef({ shapes, editing, onChange, onAddCorner, onMoveWhole, onBasemapChange });
   useEffect(() => {
@@ -258,7 +236,7 @@ export function TraceMap({
         maxZoom: 22,
         // Above whichever base map is in, which is always zIndex 1.
         zIndex: 2,
-        // Restyled by the SVG filter this component renders (trace-map.css).
+        // Recoloured per base map in trace-map.css.
         className: "trace-lot-lines",
         attribution: LOT_LINES.attribution,
       });
@@ -390,8 +368,6 @@ export function TraceMap({
   }
 
   const shifted = mapOffset ? Math.hypot(mapOffset.east, mapOffset.north) : 0;
-  const erode = lotLineErode(zoom);
-  const [r, g, b] = LOT_LINE_RGB.map((v) => (v / 255).toFixed(3));
 
   function toggleLotLines() {
     const next = !lotLines;
@@ -400,26 +376,7 @@ export function TraceMap({
   }
 
   return (
-    <div
-      className={`trace-map relative ${className ?? ""}`}
-      data-basemap={basemap}
-      style={{ "--lot-filter": `url(#${lotFilterId})` } as React.CSSProperties}
-    >
-      {/* The lot-line look: alpha snapped to fully on or off (no soft glow),
-          trimmed back to ~2 px at this zoom, then painted solid magenta.
-          sRGB so the magenta comes out as specified. */}
-      <svg aria-hidden className="absolute h-0 w-0">
-        <filter id={lotFilterId} colorInterpolationFilters="sRGB">
-          <feComponentTransfer>
-            <feFuncA type="discrete" tableValues="0 1" />
-          </feComponentTransfer>
-          {erode > 0 && <feMorphology operator="erode" radius={erode} />}
-          <feColorMatrix
-            type="matrix"
-            values={`0 0 0 0 ${r}  0 0 0 0 ${g}  0 0 0 0 ${b}  0 0 0 1 0`}
-          />
-        </filter>
-      </svg>
+    <div className={`trace-map relative ${className ?? ""}`} data-basemap={basemap}>
       <div ref={containerRef} className="absolute inset-0" />
       {ready && editing && basemap === "map" && (
         // Click-through, so it never eats a corner.
