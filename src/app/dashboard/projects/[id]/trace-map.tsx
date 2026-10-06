@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import "./trace-map.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import type { LatLng } from "@/lib/blueprint/types";
 import { BASEMAPS, LOT_LINES, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
@@ -136,6 +136,13 @@ function tilesFor(L: L, basemap: Basemap): Leaflet.TileLayer {
  */
 const MOVABLE_FILL = 0.06;
 
+/**
+ * Lot lines in the website's clay (#b0552f, --clay in styles.css), the
+ * brand's warm accent. Only the colour is set here; their soft look, the
+ * satellite's dark edge and the map's translucency are trace-map.css.
+ */
+const LOT_LINE_RGB = [176, 85, 47];
+
 /** Edge labels and midpoint handles drop out below these on-screen sizes. */
 const MIN_LABEL_PX = 56;
 const MIN_HANDLE_PX = 28;
@@ -196,6 +203,7 @@ export function TraceMap({
   const [lotLines, setLotLines] = useState(false);
   // Labels, handles and the Map offset all follow zoom.
   const [zoom, setZoom] = useState(4);
+  const lotTintId = `vv-lot-tint-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   // Leaflet's handlers are bound once; they read the current props here.
   const latest = useRef({ shapes, editing, onChange, onAddCorner, onMoveWhole, onBasemapChange });
   useEffect(() => {
@@ -236,7 +244,7 @@ export function TraceMap({
         maxZoom: 22,
         // Above whichever base map is in, which is always zIndex 1.
         zIndex: 2,
-        // Recoloured per base map in trace-map.css.
+        // Tinted clay by this component's SVG filter; finished in trace-map.css.
         className: "trace-lot-lines",
         attribution: LOT_LINES.attribution,
       });
@@ -376,7 +384,21 @@ export function TraceMap({
   }
 
   return (
-    <div className={`trace-map relative ${className ?? ""}`} data-basemap={basemap}>
+    <div
+      className={`trace-map relative ${className ?? ""}`}
+      data-basemap={basemap}
+      style={{ "--lot-tint": `url(#${lotTintId})` } as React.CSSProperties}
+    >
+      {/* Repaints Regrid's grey lines clay and keeps their alpha, so their
+          soft edges stay soft. sRGB so the clay comes out as specified. */}
+      <svg aria-hidden className="absolute h-0 w-0">
+        <filter id={lotTintId} colorInterpolationFilters="sRGB">
+          <feColorMatrix
+            type="matrix"
+            values={`0 0 0 0 ${(LOT_LINE_RGB[0] / 255).toFixed(3)}  0 0 0 0 ${(LOT_LINE_RGB[1] / 255).toFixed(3)}  0 0 0 0 ${(LOT_LINE_RGB[2] / 255).toFixed(3)}  0 0 0 1 0`}
+          />
+        </filter>
+      </svg>
       <div ref={containerRef} className="absolute inset-0" />
       {ready && editing && basemap === "map" && (
         // Click-through, so it never eats a corner.
