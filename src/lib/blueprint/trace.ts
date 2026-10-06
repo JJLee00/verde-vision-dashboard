@@ -25,6 +25,16 @@ export interface TracedOutline {
   boundary: LatLng[];
 }
 
+/**
+ * How far to shift the Map view's tiles, in metres, so its house footprints
+ * sit where the satellite has them for this property. Display only: the
+ * outline itself is always in true (satellite) coordinates.
+ */
+export interface MapOffset {
+  east: number;
+  north: number;
+}
+
 /** A traced outline the server refused, with a message for the designer. */
 export class TraceError extends Error {}
 
@@ -36,6 +46,8 @@ const MAX_CORNERS = 200;
 const MAX_REACH_M = 1000;
 /** Corners closer than this are a double-click, not two corners. */
 const MIN_EDGE_M = 0.1;
+/** Past this the "offset" is a mis-drag, not a footprint dataset's error. */
+const MAX_MAP_OFFSET_M = 100;
 
 export function distanceMeters(a: LatLng, b: LatLng): number {
   const [[x, z]] = ringToXZMeters([b], a);
@@ -136,12 +148,27 @@ function toXZ(ring: LatLng[], origin: LatLng): [number, number][] {
   );
 }
 
+/** A Map offset from the browser, or null when absent, negligible or nonsense. */
+function parseMapOffset(raw: unknown): MapOffset | null {
+  const east = (raw as Partial<MapOffset> | null)?.east;
+  const north = (raw as Partial<MapOffset> | null)?.north;
+  if (typeof east !== "number" || typeof north !== "number") return null;
+  if (!Number.isFinite(east) || !Number.isFinite(north)) return null;
+  const size = Math.hypot(east, north);
+  if (size < 0.05 || size > MAX_MAP_OFFSET_M) return null;
+  return { east: Math.round(east * 100) / 100, north: Math.round(north * 100) / 100 };
+}
+
 /**
  * The traced outline as the project stores it and the headset receives it.
  * Throws TraceError, with a message meant for the designer, when the trace
  * can't be walked.
  */
-export function buildTracedBlueprint(address: string, outline: TracedOutline): StoredBlueprint {
+export function buildTracedBlueprint(
+  address: string,
+  outline: TracedOutline,
+  mapOffset: MapOffset | null = null
+): StoredBlueprint {
   // Display text only, from the browser: kept to a string of sane length.
   const label = typeof address === "string" ? address.trim().slice(0, 300) : "";
   const house = parseRing(outline?.house, "house");
@@ -172,10 +199,13 @@ export function buildTracedBlueprint(address: string, outline: TracedOutline): S
     throw new TraceError("The yard boundary crosses itself. Drag the corners so the edges don't cross.");
   }
 
+  const offset = parseMapOffset(mapOffset);
   return {
     version: 1,
     provider: TRACE_PROVIDER,
     lookupAddress: label,
+    // Dashboard-only: /api/vision-pro/projects sends the headset `candidate`.
+    ...(offset ? { mapOffset: offset } : {}),
     candidate: {
       // No parcel number: nothing was looked up. The headset only ever
       // displays it, and an empty one reads as absent there.
