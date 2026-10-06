@@ -95,6 +95,9 @@ const PALETTES: Record<Basemap, Palette> = {
 const CONTIGUOUS_US: [number, number] = [39.5, -98.35];
 const BASEMAP_KEY = "vv.traceBasemap";
 const LOT_LINES_KEY = "vv.traceLotLines";
+// The on-map notes, once dismissed, stay dismissed in this browser.
+const HIDE_HINT_KEY = "vv.traceHideHint";
+const HIDE_MAP_NOTE_KEY = "vv.traceHideMapNote";
 
 /** The base map this browser last chose. Satellite until told otherwise. */
 function rememberedBasemap(): Basemap {
@@ -109,6 +112,14 @@ function rememberedBasemap(): Basemap {
 function rememberedLotLines(): boolean {
   try {
     return localStorage.getItem(LOT_LINES_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberedFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
   } catch {
     return false;
   }
@@ -211,6 +222,8 @@ export function TraceMap({
   const [ready, setReady] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [lotLines, setLotLines] = useState(false);
+  const [hideHint, setHideHint] = useState(false);
+  const [hideMapNote, setHideMapNote] = useState(false);
   // Labels, handles and the Map offset all follow zoom.
   const [zoom, setZoom] = useState(4);
   // Leaflet's handlers are bound once; they read the current props here.
@@ -292,6 +305,8 @@ export function TraceMap({
       builtRef.current = built;
       setBasemap(initial);
       setLotLines(initialLots);
+      setHideHint(rememberedFlag(HIDE_HINT_KEY));
+      setHideMapNote(rememberedFlag(HIDE_MAP_NOTE_KEY));
       setZoom(map.getZoom());
       setReady(true);
       latest.current.onBasemapChange?.(initial);
@@ -387,6 +402,19 @@ export function TraceMap({
 
   const shifted = mapOffset ? Math.hypot(mapOffset.east, mapOffset.north) : 0;
 
+  function setTip(key: string, set: (hidden: boolean) => void, hidden: boolean) {
+    set(hidden);
+    remember(key, hidden ? "1" : "0");
+  }
+
+  // The Map view's own note, while editing on it.
+  const mapNote =
+    editing && basemap === "map"
+      ? shifted > 0.3
+        ? `Map lined up with the satellite here (moved ${formatFeetInches(shifted)}) — tracing on it lands in the right place.`
+        : "Map outlines can sit 10 ft or more off. Trace here, then drag the outline onto the roof on Satellite and the Map lines itself up."
+      : null;
+
   function toggleLotLines() {
     const next = !lotLines;
     setLotLines(next);
@@ -396,19 +424,31 @@ export function TraceMap({
   return (
     <div className={`trace-map relative ${className ?? ""}`} data-basemap={basemap}>
       <div ref={containerRef} className="absolute inset-0" />
-      {ready && (hint || (editing && basemap === "map")) && (
+      {ready && (hint || mapNote) && (
         // Under the zoom buttons, clear of the switches top-right. Click-
-        // through, so a note over the map never eats a corner.
+        // through apart from the buttons, so a note never eats a corner.
         <div className="pointer-events-none absolute left-2.5 top-[84px] z-[1000] flex max-w-[min(70%,30rem)] flex-col items-start gap-1.5">
-          {hint && (
-            <p className="rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">{hint}</p>
+          {hint && !hideHint && (
+            <MapNote onDismiss={() => setTip(HIDE_HINT_KEY, setHideHint, true)}>{hint}</MapNote>
           )}
-          {editing && basemap === "map" && (
-            <p className="rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper/90">
-              {shifted > 0.3
-                ? `Map lined up with the satellite here (moved ${formatFeetInches(shifted)}) — tracing on it lands in the right place.`
-                : "Map outlines can sit 10 ft or more off. Trace here, then drag the outline onto the roof on Satellite and the Map lines itself up."}
-            </p>
+          {mapNote && !hideMapNote && (
+            <MapNote onDismiss={() => setTip(HIDE_MAP_NOTE_KEY, setHideMapNote, true)}>
+              {mapNote}
+            </MapNote>
+          )}
+          {((hint && hideHint) || (mapNote && hideMapNote)) && (
+            <button
+              type="button"
+              onClick={() => {
+                setTip(HIDE_HINT_KEY, setHideHint, false);
+                setTip(HIDE_MAP_NOTE_KEY, setHideMapNote, false);
+              }}
+              aria-label="Show tips"
+              title="Show tips"
+              className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-ink/70 text-xs font-semibold text-paper shadow-sm transition hover:bg-ink/85"
+            >
+              ?
+            </button>
           )}
         </div>
       )}
@@ -697,4 +737,24 @@ function addressIcon(L: L, text: string): Leaflet.DivIcon {
       `color:#f8f3e6;background:rgba(28,42,33,0.86);padding:3px 8px;border-radius:6px;` +
       `box-shadow:0 1px 3px rgba(0,0,0,0.35)">${escapeHtml(text)}</div>`,
   });
+}
+
+/** A dismissable note floated on the map. */
+function MapNote({ onDismiss, children }: { onDismiss: () => void; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-1.5 rounded-md bg-ink/80 py-1.5 pl-2.5 pr-1.5 text-xs leading-snug text-paper">
+      <p>{children}</p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        title="Dismiss"
+        className="pointer-events-auto -my-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-paper/70 transition hover:bg-paper/15 hover:text-paper"
+      >
+        <svg aria-hidden viewBox="0 0 12 12" className="h-2.5 w-2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+          <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
 }
