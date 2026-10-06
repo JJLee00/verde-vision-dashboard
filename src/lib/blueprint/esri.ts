@@ -16,6 +16,14 @@
 // and Map is a view to check corners against. Worth confirming with Esri
 // when the account is set up.
 //
+// Lot lines come from Regrid — Esri's parcel-data partner — as a free,
+// nationwide tile layer it publishes on ArcGIS. It is a picture of the
+// lines, not the lots themselves, so it guides a hand-traced boundary; at
+// 6619 E Ashler Hills it matched Maricopa County's own lot line on all four
+// sides (Oct 2026). Its terms are Regrid's data licence, which doesn't say
+// whether it may be shown outside ArcGIS or traced from: off by default,
+// and worth confirming with Regrid.
+//
 // With NEXT_PUBLIC_ARCGIS_API_KEY set (an ArcGIS Location Platform key —
 // it is a browser key by design, restrict it by referrer) everything goes
 // through Esri's keyed hosts. Without one it falls back to the public
@@ -54,6 +62,17 @@ export const BASEMAPS: Record<Basemap, { label: string; url: string; attribution
       "FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, " +
       "Esri China (Hong Kong), (c) OpenStreetMap contributors, and the GIS User Community",
   },
+};
+
+export const LOT_LINES = {
+  url:
+    "https://tiles.arcgis.com/tiles/KzeiCaQsMoeCfoCq/arcgis/rest/services/" +
+    "Regrid_Nationwide_Parcel_Boundaries_v1/MapServer/tile/{z}/{y}/{x}",
+  attribution: 'Lot lines © <a href="https://regrid.com" target="_blank" rel="noreferrer">Regrid</a>',
+  // The service only has these three levels (14 and 18 are 404s); closer in
+  // the map stretches 17, and further out the lines are a blur anyway.
+  minNativeZoom: 15,
+  maxNativeZoom: 17,
 };
 
 /**

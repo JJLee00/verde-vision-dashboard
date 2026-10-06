@@ -5,13 +5,14 @@ import "./trace-map.css";
 import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import type { LatLng } from "@/lib/blueprint/types";
-import { BASEMAPS, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
+import { BASEMAPS, LOT_LINES, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
 import { distanceMeters, formatFeetInches } from "@/lib/blueprint/trace";
 
 // The map the house is traced on — Esri satellite, or Esri's topographic
 // map where houses are clean grey footprints — with the corners as handles
 // while it is being edited. The designer flips between the two from the
-// corner of the map, and the choice is remembered in this browser.
+// corner of the map, and the choice is remembered in this browser. Beside
+// it, a Lot lines switch lays Regrid's parcel boundaries over either one.
 //
 // Leaflet is driven imperatively from effects rather than wrapped in React
 // components. It touches `window` the moment it is imported, so it loads
@@ -40,6 +41,8 @@ type Built = {
   /** Swapped, not restyled, when the base map changes. */
   tiles: Leaflet.TileLayer;
   basemap: Basemap;
+  /** Added to and removed from the map by the Lot lines switch. */
+  lots: Leaflet.TileLayer;
   overlay: Leaflet.LayerGroup;
   /** The dashed line from the last corner to the cursor while drawing. */
   band: Leaflet.Polyline;
@@ -84,6 +87,7 @@ const PALETTES: Record<Basemap, Palette> = {
 
 const CONTIGUOUS_US: [number, number] = [39.5, -98.35];
 const BASEMAP_KEY = "vv.traceBasemap";
+const LOT_LINES_KEY = "vv.traceLotLines";
 
 /** The base map this browser last chose. Satellite until told otherwise. */
 function rememberedBasemap(): Basemap {
@@ -91,6 +95,23 @@ function rememberedBasemap(): Basemap {
     return localStorage.getItem(BASEMAP_KEY) === "map" ? "map" : "satellite";
   } catch {
     return "satellite";
+  }
+}
+
+/** Whether this browser last had lot lines on. Off until told otherwise. */
+function rememberedLotLines(): boolean {
+  try {
+    return localStorage.getItem(LOT_LINES_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function remember(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // A private window: the choice simply isn't remembered.
   }
 }
 
@@ -148,6 +169,7 @@ export function TraceMap({
   const builtRef = useRef<Built | null>(null);
   const [ready, setReady] = useState(false);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
+  const [lotLines, setLotLines] = useState(false);
   // Labels and handles depend on the zoom (they thin out when crowded).
   const [zoomTick, setZoomTick] = useState(0);
   // Leaflet's handlers are bound once; they read the current props here.
@@ -181,6 +203,20 @@ export function TraceMap({
       // and has no localStorage to agree with.
       const initial = rememberedBasemap();
       const tiles = tilesFor(L, initial).addTo(map);
+      const initialLots = rememberedLotLines();
+      const lots = L.tileLayer(LOT_LINES.url, {
+        minNativeZoom: LOT_LINES.minNativeZoom,
+        maxNativeZoom: LOT_LINES.maxNativeZoom,
+        // Below this the service has nothing; not asking keeps it quiet.
+        minZoom: LOT_LINES.minNativeZoom,
+        maxZoom: 22,
+        // Above whichever base map is in, which is always zIndex 1.
+        zIndex: 2,
+        // Recoloured per base map in trace-map.css.
+        className: "trace-lot-lines",
+        attribution: LOT_LINES.attribution,
+      });
+      if (initialLots) lots.addTo(map);
 
       const overlay = L.layerGroup().addTo(map);
       const band = L.polyline([], {
@@ -211,9 +247,10 @@ export function TraceMap({
       observer = new ResizeObserver(() => map.invalidateSize());
       observer.observe(el);
 
-      built = { L, map, tiles, basemap: initial, overlay, band };
+      built = { L, map, tiles, basemap: initial, lots, overlay, band };
       builtRef.current = built;
       setBasemap(initial);
+      setLotLines(initialLots);
       setReady(true);
     })();
 
@@ -261,6 +298,13 @@ export function TraceMap({
   useEffect(() => {
     const built = builtRef.current;
     if (!ready || !built) return;
+    if (lotLines) built.lots.addTo(built.map);
+    else built.lots.remove();
+  }, [ready, lotLines]);
+
+  useEffect(() => {
+    const built = builtRef.current;
+    if (!ready || !built) return;
     draw(built, shapes, editing, PALETTES[basemap], (kind, shape) =>
       latest.current.onChange?.(kind, shape)
     );
@@ -268,15 +312,17 @@ export function TraceMap({
 
   function choose(next: Basemap) {
     setBasemap(next);
-    try {
-      localStorage.setItem(BASEMAP_KEY, next);
-    } catch {
-      // A private window: the choice simply isn't remembered.
-    }
+    remember(BASEMAP_KEY, next);
+  }
+
+  function toggleLotLines() {
+    const next = !lotLines;
+    setLotLines(next);
+    remember(LOT_LINES_KEY, next ? "1" : "0");
   }
 
   return (
-    <div className={`trace-map relative ${className ?? ""}`}>
+    <div className={`trace-map relative ${className ?? ""}`} data-basemap={basemap}>
       <div ref={containerRef} className="absolute inset-0" />
       {ready && editing && basemap === "map" && (
         // Click-through, so it never eats a corner.
@@ -287,20 +333,32 @@ export function TraceMap({
       )}
       {ready && (
         // Outside Leaflet's container, so a click here is never a corner.
-        <div className="absolute right-2.5 top-2.5 z-[1000] flex rounded-lg bg-card p-0.5 shadow-sm ring-1 ring-rule-strong">
-          {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
-            <button
-              key={b}
-              type="button"
-              aria-pressed={basemap === b}
-              onClick={() => choose(b)}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
-                basemap === b ? "bg-accent text-paper" : "text-muted hover:text-ink"
-              }`}
-            >
-              {BASEMAPS[b].label}
-            </button>
-          ))}
+        <div className="absolute right-2.5 top-2.5 z-[1000] flex items-center gap-2">
+          <button
+            type="button"
+            aria-pressed={lotLines}
+            onClick={toggleLotLines}
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold shadow-sm ring-1 ring-rule-strong transition ${
+              lotLines ? "bg-accent text-paper" : "bg-card text-muted hover:text-ink"
+            }`}
+          >
+            Lot lines
+          </button>
+          <div className="flex rounded-lg bg-card p-0.5 shadow-sm ring-1 ring-rule-strong">
+            {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
+              <button
+                key={b}
+                type="button"
+                aria-pressed={basemap === b}
+                onClick={() => choose(b)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold transition ${
+                  basemap === b ? "bg-accent text-paper" : "text-muted hover:text-ink"
+                }`}
+              >
+                {BASEMAPS[b].label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
