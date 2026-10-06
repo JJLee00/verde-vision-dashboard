@@ -104,7 +104,6 @@ async function esriGet<T>(path: string, params: Record<string, string>, signal?:
   const url = new URL(`${GEOCODE_ROOT}/${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   url.searchParams.set("f", "json");
-  url.searchParams.set("countryCode", "USA");
   if (apiKey) url.searchParams.set("token", apiKey);
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`Address search failed (${res.status})`);
@@ -121,7 +120,7 @@ export async function suggestAddresses(
   const body = await esriGet<{ suggestions?: (AddressSuggestion & { isCollection: boolean })[] }>(
     "suggest",
     // Addresses only: a business or a city is never the yard.
-    { text, maxSuggestions: "5", category: "Address,Postal" },
+    { text, maxSuggestions: "5", category: "Address,Postal", countryCode: "USA" },
     signal
   );
   return (body.suggestions ?? [])
@@ -145,6 +144,7 @@ export async function geocodeAddress(
     {
       SingleLine: address,
       maxLocations: "1",
+      countryCode: "USA",
       forStorage: "false",
       ...(magicKey ? { magicKey } : {}),
     },
@@ -158,4 +158,48 @@ export async function geocodeAddress(
     label: best.address,
     score: best.score,
   };
+}
+
+export interface PlaceAddress {
+  /** The street line, e.g. "6619 E Ashler Hills Dr". */
+  street: string;
+  /** Just the house number, e.g. "6619". */
+  number: string;
+  /** The full line, with city, state and ZIP. */
+  label: string;
+}
+
+/**
+ * The street address at a point — what the designer has actually traced,
+ * as opposed to what they searched for. Point addresses only (a house's own
+ * address point, not one interpolated along the street), so a neighbour's
+ * roof answers with the neighbour's number. Display-only, like the search:
+ * nothing about the answer is stored.
+ */
+export async function reverseGeocode(
+  point: LatLng,
+  signal?: AbortSignal
+): Promise<PlaceAddress | null> {
+  let body;
+  try {
+    body = await esriGet<{
+      address?: { Address?: string; AddNum?: string; Match_addr?: string };
+    }>(
+      "reverseGeocode",
+      {
+        location: `${point.lng},${point.lat}`,
+        featureTypes: "PointAddress",
+        forStorage: "false",
+      },
+      signal
+    );
+  } catch (err) {
+    // "Unable to find address for the specified location" arrives as an
+    // error body; it means there's no address point nearby, not a failure.
+    if (err instanceof Error && /find address|invalid query/i.test(err.message)) return null;
+    throw err;
+  }
+  const a = body.address;
+  if (!a?.Address || !a.AddNum) return null;
+  return { street: a.Address, number: a.AddNum, label: a.Match_addr ?? a.Address };
 }

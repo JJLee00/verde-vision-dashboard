@@ -4,14 +4,17 @@ import { useEffect, useId, useMemo, useRef, useState, useTransition } from "reac
 import { useRouter } from "next/navigation";
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
 import type { LatLng } from "@/lib/blueprint/types";
+import { sameHouse, streetLine } from "@/lib/blueprint/address";
 import {
   geocodeAddress,
+  reverseGeocode,
   suggestAddresses,
   type AddressSuggestion,
   type Basemap,
   type GeocodeHit,
+  type PlaceAddress,
 } from "@/lib/blueprint/esri";
-import { ringToXZMeters } from "@/lib/blueprint/normalize";
+import { ringCentroid, ringToXZMeters } from "@/lib/blueprint/normalize";
 import {
   formatFeetInches,
   ringAreaSqFt,
@@ -169,51 +172,176 @@ function SavedOutline({
     [traced]
   );
   const fromCounty = stored.provider !== TRACE_PROVIDER;
+  const check = useHouseAddress(traced.house, stored.lookupAddress);
+  const [expanded, setExpanded] = useExpanded();
 
   return (
-    <div>
-      <div className="isolate overflow-hidden rounded-[10px] border border-rule">
-        <TraceMap
-          shapes={shapes}
-          editing={null}
-          view={view}
-          mapOffset={stored.mapOffset ?? null}
-          className="h-[400px] w-full"
-        />
-      </div>
+    <>
+      {expanded && <div aria-hidden className="fixed inset-0 z-[59] bg-ink/40" />}
+      <div className={expanded ? EXPANDED_PANEL : ""}>
+        <div
+          className={`isolate overflow-hidden rounded-[10px] border border-rule ${
+            expanded ? "flex min-h-[360px] flex-1" : ""
+          }`}
+        >
+          <TraceMap
+            shapes={shapes}
+            editing={null}
+            view={view}
+            mapOffset={stored.mapOffset ?? null}
+            houseLabel={houseLabelFor(check, stored.lookupAddress)}
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((e) => !e)}
+            className={expanded ? "h-full w-full" : "h-[400px] w-full"}
+          />
+        </div>
 
-      <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-        {stored.lookupAddress && (
-          <div className="sm:col-span-2">
-            <Fact label="Address">{stored.lookupAddress}</Fact>
-          </div>
-        )}
-        <Fact label="House">{describeShape(traced.house, { area: true })}</Fact>
-        <Fact label="Boundary">{describeShape(traced.boundary)}</Fact>
-        {fetchedAt && (
-          <Fact label={fromCounty ? "Looked up" : "Traced"}>
-            {new Date(fetchedAt).toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
-          </Fact>
-        )}
-      </dl>
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+          {stored.lookupAddress && (
+            <div className="sm:col-span-2">
+              <Fact label="Address">{stored.lookupAddress}</Fact>
+            </div>
+          )}
+          <Fact label="House">{describeShape(traced.house, "roof")}</Fact>
+          <Fact label="Boundary">{describeShape(traced.boundary, "lot")}</Fact>
+          {fetchedAt && (
+            <Fact label={fromCounty ? "Looked up" : "Traced"}>
+              {new Date(fetchedAt).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </Fact>
+          )}
+        </dl>
+        <HouseCheckLine check={check} typed={stored.lookupAddress} />
 
-      {fromCounty && (
-        <p className="mt-3 text-sm text-muted">
-          Found by the old county lookup. Open it with Edit outline to check the
-          corners against the map.
+        {fromCounty && (
+          <p className="mt-3 text-sm text-muted">
+            Found by the old county lookup. Open it with Edit outline to check the
+            corners against the map.
+          </p>
+        )}
+        <p className="mt-3 text-[11px] text-faint">
+          The outline follows the roof, so its corners sit a foot or two outside
+          the walls. On site, stand the corner post under the roof&apos;s corner,
+          not the wall&apos;s.
         </p>
-      )}
-      <p className="mt-3 text-[11px] text-faint">
-        The outline follows the roof, so its corners sit a foot or two outside
-        the walls. On site, stand the corner post under the roof&apos;s corner,
-        not the wall&apos;s.
-      </p>
-    </div>
+      </div>
+    </>
   );
+}
+
+// ── Is this the right house? ──────────────────────────────────────────
+
+type HouseCheck =
+  | { state: "none" }
+  | { state: "checking" }
+  | { state: "unknown" }
+  | { state: "found"; found: PlaceAddress; match: boolean | null };
+
+/**
+ * Looks up the street address at the centre of a finished house outline,
+ * and compares it with the address the designer searched for. Catches the
+ * one mistake that matters here: a careful trace of the neighbour's roof.
+ * Re-runs (a beat after the last change) whenever the outline moves.
+ */
+function useHouseAddress(house: LatLng[], typed: string): HouseCheck {
+  const centre = house.length >= 3 ? ringCentroid(house) : null;
+  // Rounded to ~10 cm: a string key keeps the effect from re-firing on
+  // every render's fresh array.
+  const key = centre ? `${centre.lat.toFixed(6)},${centre.lng.toFixed(6)}` : null;
+  const [result, setResult] = useState<{ key: string; found: PlaceAddress | null } | null>(null);
+
+  useEffect(() => {
+    if (!key) return;
+    const [lat, lng] = key.split(",").map(Number);
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      reverseGeocode({ lat, lng }, controller.signal)
+        .then((found) => setResult({ key, found }))
+        .catch(() => {
+          if (!controller.signal.aborted) setResult({ key, found: null });
+        });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [key]);
+
+  if (!key) return { state: "none" };
+  if (!result || result.key !== key) return { state: "checking" };
+  if (!result.found) return { state: "unknown" };
+  return { state: "found", found: result.found, match: sameHouse(typed, result.found) };
+}
+
+/**
+ * The label on the house: the address actually found there once known —
+ * so a neighbour's roof shows the neighbour's number — and the searched
+ * address until then.
+ */
+function houseLabelFor(check: HouseCheck, typed: string): string | null {
+  if (check.state === "found") return check.found.street;
+  return typed ? streetLine(typed) : null;
+}
+
+function HouseCheckLine({ check, typed }: { check: HouseCheck; typed: string }) {
+  switch (check.state) {
+    case "checking":
+      return <p className="mt-2 text-sm text-faint">Checking the address at this outline…</p>;
+    case "unknown":
+      return (
+        <p className="mt-2 text-sm text-faint">
+          No street address found at this outline — check the map is on the
+          right house.
+        </p>
+      );
+    case "found":
+      if (check.match === true) {
+        return <p className="mt-2 text-sm text-accent">✓ This is {check.found.street}.</p>;
+      }
+      if (check.match === false) {
+        return (
+          <p className="mt-2 text-sm text-gold">
+            ⚠ This outline is on {check.found.street}, not {streetLine(typed)}.
+            Check you traced the right house.
+          </p>
+        );
+      }
+      return <p className="mt-2 text-sm text-muted">This outline is on {check.found.street}.</p>;
+    default:
+      return null;
+  }
+}
+
+// ── Expand ────────────────────────────────────────────────────────────
+
+/** Nearly full screen, over a dimmed page; the map takes the spare height. */
+const EXPANDED_PANEL =
+  "fixed inset-3 z-[60] flex flex-col overflow-y-auto rounded-2xl bg-card p-5 shadow-2xl ring-1 ring-rule-strong sm:inset-6";
+
+/**
+ * Expanded state for a map section: Esc closes it (unless something inside,
+ * like the address suggestions, used the Esc first) and the page behind
+ * stops scrolling, so the wheel only ever zooms the map.
+ */
+function useExpanded() {
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [expanded]);
+  return [expanded, setExpanded] as const;
 }
 
 // ── Finding the property ──────────────────────────────────────────────
@@ -357,6 +485,8 @@ function AddressSearch({
                 e.preventDefault();
                 setHighlight((h) => (h <= 0 ? suggestions.length - 1 : h - 1));
               } else if (e.key === "Escape") {
+                // Claimed, so an expanded map doesn't also close on it.
+                e.preventDefault();
                 setOpen(false);
               }
             }}
@@ -470,6 +600,8 @@ function TraceEditor({
   // view, and which one the house was finished on (null = not this session).
   const basemapRef = useRef<Basemap>("satellite");
   const houseClosedOn = useRef<Basemap | null>(null);
+  const check = useHouseAddress(shapes.house.closed ? shapes.house.points : [], address);
+  const [expanded, setExpanded] = useExpanded();
 
   function update(kind: ShapeKind, shape: Shape) {
     if (kind === "house") {
@@ -530,116 +662,127 @@ function TraceEditor({
   }
 
   return (
-    <div>
-      <AddressSearch
-        initialQuery={start.query}
-        initialStatus={start.status}
-        onFound={(hit, query) => {
-          setView({ kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 });
-          setAddress(addressFor(hit, query));
-        }}
-      />
-
-      {/* Nothing above the map may change height while drawing: the first
-          corner used to bring in a row of buttons and a shorter hint, and
-          the map jumped under the cursor between clicks. The hint and the
-          corner tools live below it for that reason. */}
-      <div className="mt-3">
-        <div role="tablist" className="inline-flex rounded-lg border border-rule p-0.5">
-          {(["house", "boundary"] as const).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              role="tab"
-              aria-selected={tool === kind}
-              onClick={() => setTool(kind)}
-              className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${
-                tool === kind ? "bg-accent text-paper" : "text-muted hover:text-ink"
-              }`}
-            >
-              {kind === "house" ? "House" : "Yard boundary"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="isolate mt-3 overflow-hidden rounded-[10px] border border-rule">
-        <TraceMap
-          shapes={shapes}
-          editing={tool}
-          onChange={update}
-          onAddCorner={addCorner}
-          onMoveWhole={moveWhole}
-          onBasemapChange={(b) => {
-            basemapRef.current = b;
+    <>
+      {expanded && <div aria-hidden className="fixed inset-0 z-[59] bg-ink/40" />}
+      <div className={expanded ? EXPANDED_PANEL : ""}>
+        <AddressSearch
+          initialQuery={start.query}
+          initialStatus={start.status}
+          onFound={(hit, query) => {
+            setView({ kind: "center", lat: hit.lat, lng: hit.lng, zoom: 19 });
+            setAddress(addressFor(hit, query));
           }}
-          mapOffset={mapOffset}
-          view={view}
-          className="h-[520px] w-full"
         />
-      </div>
 
-      <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
-        <p className="text-sm text-muted">{hint(tool, active)}</p>
-        <div className="flex flex-wrap items-center gap-3">
-          {!active.closed && active.points.length > 0 && (
-            <ToolButton onClick={() => update(tool, { points: active.points.slice(0, -1), closed: false })}>
-              Undo corner
-            </ToolButton>
+        {/* Nothing above the map may change height while drawing: the first
+            corner used to bring in a row of buttons and a shorter hint, and
+            the map jumped under the cursor between clicks. The hint and the
+            corner tools live below it for that reason. */}
+        <div className="mt-3">
+          <div role="tablist" className="inline-flex rounded-lg border border-rule p-0.5">
+            {(["house", "boundary"] as const).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                role="tab"
+                aria-selected={tool === kind}
+                onClick={() => setTool(kind)}
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition ${
+                  tool === kind ? "bg-accent text-paper" : "text-muted hover:text-ink"
+                }`}
+              >
+                {kind === "house" ? "House" : "Yard boundary"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className={`isolate mt-3 overflow-hidden rounded-[10px] border border-rule ${
+            expanded ? "flex min-h-[360px] flex-1" : ""
+          }`}
+        >
+          <TraceMap
+            shapes={shapes}
+            editing={tool}
+            onChange={update}
+            onAddCorner={addCorner}
+            onMoveWhole={moveWhole}
+            onBasemapChange={(b) => {
+              basemapRef.current = b;
+            }}
+            mapOffset={mapOffset}
+            houseLabel={shapes.house.closed ? houseLabelFor(check, address) : null}
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((e) => !e)}
+            view={view}
+            className={expanded ? "h-full w-full" : "h-[520px] w-full"}
+          />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+          <p className="text-sm text-muted">{hint(tool, active)}</p>
+          <div className="flex flex-wrap items-center gap-3">
+            {!active.closed && active.points.length > 0 && (
+              <ToolButton onClick={() => update(tool, { points: active.points.slice(0, -1), closed: false })}>
+                Undo corner
+              </ToolButton>
+            )}
+            {!active.closed && active.points.length >= 3 && (
+              <ToolButton onClick={() => update(tool, { points: active.points, closed: true })}>
+                Close outline
+              </ToolButton>
+            )}
+            {active.points.length > 0 && (
+              <ToolButton onClick={() => update(tool, { points: [], closed: false })}>
+                Start over
+              </ToolButton>
+            )}
+          </div>
+        </div>
+
+        <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+          <Fact label="House">{describeDraft(shapes.house, "roof")}</Fact>
+          <Fact label="Boundary">{describeDraft(shapes.boundary, "lot")}</Fact>
+          {shifted > 0.3 && (
+            <div className="sm:col-span-2">
+              <Fact label="Map view">
+                Lined up with the satellite here (moved {formatFeetInches(shifted)}) ·{" "}
+                <button
+                  type="button"
+                  onClick={() => setMapOffset(null)}
+                  className="font-semibold text-muted underline-offset-2 transition hover:text-ink hover:underline"
+                >
+                  Reset
+                </button>
+              </Fact>
+            </div>
           )}
-          {!active.closed && active.points.length >= 3 && (
-            <ToolButton onClick={() => update(tool, { points: active.points, closed: true })}>
-              Close outline
-            </ToolButton>
-          )}
-          {active.points.length > 0 && (
-            <ToolButton onClick={() => update(tool, { points: [], closed: false })}>
-              Start over
-            </ToolButton>
-          )}
+        </dl>
+        <HouseCheckLine check={check} typed={address} />
+
+        {error && <p className="mt-4 text-sm text-clay">{error}</p>}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={blocker != null || saving}
+            onClick={save}
+            className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save outline"}
+          </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onCancel}
+            className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          {blocker && <span className="text-sm text-faint">{blocker}</span>}
         </div>
       </div>
-
-      <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-        <Fact label="House">{describeDraft(shapes.house, { area: true })}</Fact>
-        <Fact label="Boundary">{describeDraft(shapes.boundary)}</Fact>
-        {shifted > 0.3 && (
-          <div className="sm:col-span-2">
-            <Fact label="Map view">
-              Lined up with the satellite here (moved {formatFeetInches(shifted)}) ·{" "}
-              <button
-                type="button"
-                onClick={() => setMapOffset(null)}
-                className="font-semibold text-muted underline-offset-2 transition hover:text-ink hover:underline"
-              >
-                Reset
-              </button>
-            </Fact>
-          </div>
-        )}
-      </dl>
-
-      {error && <p className="mt-4 text-sm text-clay">{error}</p>}
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          disabled={blocker != null || saving}
-          onClick={save}
-          className="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent-bright disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save outline"}
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={onCancel}
-          className="text-sm font-semibold text-muted transition hover:text-ink disabled:opacity-50"
-        >
-          Cancel
-        </button>
-        {blocker && <span className="text-sm text-faint">{blocker}</span>}
-      </div>
-    </div>
+    </>
   );
 }
 
@@ -659,17 +802,21 @@ function hint(tool: ShapeKind, shape: Shape): string {
 
 const corners = (n: number) => `${n} ${n === 1 ? "corner" : "corners"}`;
 
-function describeShape(points: LatLng[], { area = false } = {}): string {
+/** "roof" for a house (area under it), "lot" for a boundary (lot size). */
+type AreaKind = "roof" | "lot";
+
+function describeShape(points: LatLng[], area: AreaKind): string {
   if (points.length < 3) return "Not traced";
-  return area
-    ? `${corners(points.length)} · ${formatArea(ringAreaSqFt(points))} under roof`
-    : corners(points.length);
+  const sqFt = ringAreaSqFt(points);
+  return area === "roof"
+    ? `${corners(points.length)} · ${formatArea(sqFt)} under roof`
+    : `${corners(points.length)} · ${formatLot(sqFt)}`;
 }
 
-function describeDraft(shape: Shape, { area = false } = {}): string {
+function describeDraft(shape: Shape, area: AreaKind): string {
   if (shape.points.length === 0) return "Not traced yet";
   if (!shape.closed) return `${corners(shape.points.length)}, still open`;
-  return describeShape(shape.points, { area });
+  return describeShape(shape.points, area);
 }
 
 function ToolButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
@@ -691,6 +838,12 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
       <dd className="min-w-0 text-body">{children}</dd>
     </div>
   );
+}
+
+/** Lot size the way it's quoted: acres for anything sizeable, with sq ft. */
+function formatLot(sqFt: number): string {
+  const ft = `${Math.round(sqFt).toLocaleString("en-US")} sq ft`;
+  return sqFt >= 43560 * 0.25 ? `${(sqFt / 43560).toFixed(2)} ac (${ft})` : ft;
 }
 
 function formatArea(sqFt: number): string {

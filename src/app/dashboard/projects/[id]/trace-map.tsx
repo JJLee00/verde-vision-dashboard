@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
 import type { LatLng } from "@/lib/blueprint/types";
 import { BASEMAPS, LOT_LINES, MAX_NATIVE_ZOOM, type Basemap } from "@/lib/blueprint/esri";
-import { xzMetersToRing } from "@/lib/blueprint/normalize";
+import { ringCentroid, xzMetersToRing } from "@/lib/blueprint/normalize";
 import { distanceMeters, formatFeetInches, type MapOffset } from "@/lib/blueprint/trace";
 
 // The map the house is traced on — Esri satellite, or Esri's topographic
@@ -157,6 +157,9 @@ export function TraceMap({
   onMoveWhole,
   onBasemapChange,
   mapOffset,
+  houseLabel,
+  expanded = false,
+  onToggleExpand,
   view,
   className,
 }: {
@@ -186,6 +189,12 @@ export function TraceMap({
    * are never shifted: they already agree with the satellite.
    */
   mapOffset?: MapOffset | null;
+  /** Shown on the finished house, e.g. its street address. */
+  houseLabel?: string | null;
+  /** Whether the parent has blown this map up to (nearly) full screen. */
+  expanded?: boolean;
+  /** Shows the Expand button in the bottom-right corner when given. */
+  onToggleExpand?: () => void;
   view: MapView | null;
   className?: string;
 }) {
@@ -356,10 +365,11 @@ export function TraceMap({
       shapes,
       editing,
       PALETTES[basemap],
+      houseLabel ?? null,
       (kind, shape) => latest.current.onChange?.(kind, shape),
       (kind, from, to) => latest.current.onMoveWhole?.(kind, from, to)
     );
-  }, [ready, shapes, editing, basemap, zoom]);
+  }, [ready, shapes, editing, basemap, houseLabel, zoom]);
 
   function choose(next: Basemap) {
     setBasemap(next);
@@ -380,7 +390,7 @@ export function TraceMap({
       <div ref={containerRef} className="absolute inset-0" />
       {ready && editing && basemap === "map" && (
         // Click-through, so it never eats a corner.
-        <p className="pointer-events-none absolute bottom-7 left-2.5 z-[1000] max-w-[75%] rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">
+        <p className="pointer-events-none absolute bottom-7 left-2.5 z-[1000] max-w-[62%] rounded-md bg-ink/80 px-2.5 py-1.5 text-xs leading-snug text-paper">
           {shifted > 0.3
             ? `Map lined up with the satellite for this property (moved ${formatFeetInches(shifted)}). Tracing here now lands in the right place.`
             : "Map outlines can sit 10 ft or more off the real house. Trace here, then switch to Satellite and drag the outline onto the roof — the Map lines itself up to match."}
@@ -416,6 +426,25 @@ export function TraceMap({
           </div>
         </div>
       )}
+      {ready && onToggleExpand && (
+        // Bottom-right, just above the source credit.
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-label={expanded ? "Exit full screen" : "Expand the map"}
+          title={expanded ? "Exit full screen (Esc)" : "Expand the map"}
+          className="absolute bottom-7 right-2.5 z-[1000] flex items-center gap-1.5 rounded-lg bg-card px-2.5 py-1.5 text-xs font-semibold text-muted shadow-sm ring-1 ring-rule-strong transition hover:text-ink"
+        >
+          <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            {expanded ? (
+              <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+            ) : (
+              <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+            )}
+          </svg>
+          {expanded ? "Exit" : "Expand"}
+        </button>
+      )}
     </div>
   );
 }
@@ -426,6 +455,7 @@ function draw(
   shapes: Shapes,
   editing: ShapeKind | null,
   palette: Palette,
+  houseLabel: string | null,
   emit: (kind: ShapeKind, shape: Shape) => void,
   emitMove: (kind: ShapeKind, from: LatLng, to: LatLng) => void
 ) {
@@ -512,6 +542,17 @@ function draw(
         }).addTo(overlay);
         extras.push(label);
       }
+    }
+
+    // The house's address at its centre, so it's plain which house this is.
+    if (kind === "house" && ring && houseLabel) {
+      const label = L.marker(toLL(ringCentroid(shape.points)), {
+        icon: addressIcon(L, houseLabel),
+        interactive: false,
+        keyboard: false,
+        zIndexOffset: -500,
+      }).addTo(overlay);
+      extras.push(label);
     }
 
     if (!active) continue;
@@ -658,5 +699,21 @@ function labelIcon(L: L, text: string, [nx, ny]: [number, number]): Leaflet.DivI
       `<div style="position:absolute;transform:translate(${shift(nx)},${shift(ny)});white-space:nowrap;` +
       `pointer-events:none;font:600 11px/1.2 var(--font-schibsted),system-ui,sans-serif;` +
       `color:#f8f3e6;background:rgba(20,24,20,0.72);padding:2px 5px;border-radius:4px">${text}</div>`,
+  });
+}
+
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function addressIcon(L: L, text: string): Leaflet.DivIcon {
+  return L.divIcon({
+    className: "",
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    html:
+      `<div style="position:absolute;transform:translate(-50%,-50%);white-space:nowrap;` +
+      `pointer-events:none;font:600 12px/1.25 var(--font-schibsted),system-ui,sans-serif;` +
+      `color:#f8f3e6;background:rgba(28,42,33,0.86);padding:3px 8px;border-radius:6px;` +
+      `box-shadow:0 1px 3px rgba(0,0,0,0.35)">${escapeHtml(text)}</div>`,
   });
 }
