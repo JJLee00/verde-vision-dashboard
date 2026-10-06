@@ -19,15 +19,16 @@
   cursor: move;
 }
 
-/* Regrid draws its lot lines mid-grey (#b2b2b2), which disappears on light
-   desert and on the near-white map. Recoloured per base map: white with a
-   dark edge over the satellite, grey over the map. Its tiles stop at zoom
-   17, so close in the lines are stretched thick; they're kept translucent
-   so they guide without burying the footprints. (opacity() inside filter:
-   Leaflet writes the layer's own opacity inline.) */
+/* Lot lines: Regrid draws them mid-grey; TraceMap's SVG filter (--lot-tint)
+   repaints them the website's clay. Over the satellite they keep a dark
+   edge so they hold on light desert; over the near-white map they're a
+   little translucent so they guide without burying the footprints. Its
+   tiles stop at zoom 17, so close in the lines are stretched soft and
+   thick. (opacity() inside filter: Leaflet writes the layer's own opacity
+   inline.) */
 .trace-map[data-basemap="satellite"] .trace-lot-lines {
-  filter: brightness(1.45) opacity(0.85) drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
+  filter: var(--lot-tint) opacity(0.9) drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
 }
 .trace-map[data-basemap="map"] .trace-lot-lines {
-  filter: brightness(0.5) opacity(0.5);
+  filter: var(--lot-tint) opacity(0.7);
 }
