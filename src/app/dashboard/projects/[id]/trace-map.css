@@ -1,0 +1,15 @@
+/* Esri's credit on the house-outline map: one line, the whole text on
+   hover — how Esri's own map widget shows it. Its full sources list runs to
+   four lines in the card and would cover the bottom of the map. */
+.trace-map .leaflet-bottom.leaflet-right {
+  left: 0;
+}
+.trace-map .leaflet-control-attribution {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trace-map .leaflet-control-attribution:hover {
+  white-space: normal;
+}

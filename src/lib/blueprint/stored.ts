@@ -16,9 +16,9 @@ export interface StoredBlueprint {
    */
   provider: string;
   /**
-   * The project address when the outline was made. The address can be
-   * edited afterwards, and an outline made for the old one is the wrong
-   * house — so the card compares the two and says so.
+   * The address the outline was made for: what the card's search found
+   * (or the project's address, for one from the old county lookup). Shown
+   * on the card; may be empty if the designer panned to the house.
    */
   lookupAddress: string;
   /** The outline, imagery WITHOUT `orthoJpegBase64`. */
@@ -39,11 +39,4 @@ export function readStored(raw: unknown): StoredBlueprint | null {
     return null;
   }
   return value as StoredBlueprint;
-}
-
-/** Whether two typed addresses name the same place, ignoring case and spacing. */
-export function sameAddress(a: string | null, b: string | null): boolean {
-  const norm = (s: string | null) =>
-    (s ?? "").toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim();
-  return norm(a) === norm(b);
 }

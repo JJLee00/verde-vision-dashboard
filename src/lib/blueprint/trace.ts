@@ -142,6 +142,8 @@ function toXZ(ring: LatLng[], origin: LatLng): [number, number][] {
  * can't be walked.
  */
 export function buildTracedBlueprint(address: string, outline: TracedOutline): StoredBlueprint {
+  // Display text only, from the browser: kept to a string of sane length.
+  const label = typeof address === "string" ? address.trim().slice(0, 300) : "";
   const house = parseRing(outline?.house, "house");
   const boundary = parseRing(outline?.boundary ?? [], "boundary");
 
@@ -173,12 +175,12 @@ export function buildTracedBlueprint(address: string, outline: TracedOutline): S
   return {
     version: 1,
     provider: TRACE_PROVIDER,
-    lookupAddress: address,
+    lookupAddress: label,
     candidate: {
       // No parcel number: nothing was looked up. The headset only ever
       // displays it, and an empty one reads as absent there.
       apn: "",
-      address,
+      address: label,
       centroid,
       parcelXZ,
       // Required by the headset's decoder; a trace knows no county facts.

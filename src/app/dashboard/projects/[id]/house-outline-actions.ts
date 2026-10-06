@@ -24,11 +24,11 @@ const MIGRATION_HINT = "Run migration-020 in Supabase before saving outlines.";
  * Checked up front rather than left to RLS on the write, so a team member
  * who can see a project but not edit it is told why, instead of getting a
  * row-level-security error after tracing a whole house.
+ *
+ * The project's own address is not needed: the card finds the property
+ * with its own search, and the outline carries what that search found.
  */
-async function editableProject(
-  projectId: string,
-  { requireAddress = true }: { requireAddress?: boolean } = {}
-) {
+async function editableProject(projectId: string) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -37,7 +37,7 @@ async function editableProject(
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, client_id, address")
+    .select("id, client_id")
     .eq("id", projectId)
     .single();
   if (!project) return { error: "Project not found." } as const;
@@ -49,25 +49,24 @@ async function editableProject(
     } as const;
   }
 
-  const address = (project.address as string | null)?.trim() ?? "";
-  if (requireAddress && !address) {
-    return { error: "Add the property address in Edit details first." } as const;
-  }
-  return { supabase, address } as const;
+  return { supabase } as const;
 }
 
 /**
  * Stores the traced outline on the project, replacing whatever was there.
- * `blueprint_fetched_at` is what tells a headset this outline is newer than
- * its copy, so a re-trace reaches every headset that hasn't placed one yet.
+ * `address` is what the card's search found it by (may be empty, if the
+ * designer just panned there). `blueprint_fetched_at` is what tells a
+ * headset this outline is newer than its copy, so a re-trace reaches every
+ * headset that hasn't placed one yet.
  */
 export async function saveTracedOutline(
   projectId: string,
-  outline: TracedOutline
+  outline: TracedOutline,
+  address: string
 ): Promise<{ ok: true } | Failure> {
   const access = await editableProject(projectId);
   if ("error" in access) return { ok: false, error: access.error! };
-  const { supabase, address } = access;
+  const { supabase } = access;
 
   let stored;
   try {
@@ -107,9 +106,7 @@ export async function saveTracedOutline(
 export async function removeHouseOutline(
   projectId: string
 ): Promise<{ ok: true } | Failure> {
-  // No address is fine here — someone clearing the address and then the
-  // outline is exactly the order you'd expect.
-  const access = await editableProject(projectId, { requireAddress: false });
+  const access = await editableProject(projectId);
   if ("error" in access) return { ok: false, error: access.error! };
   const { supabase } = access;
 
