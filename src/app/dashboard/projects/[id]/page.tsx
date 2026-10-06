@@ -32,11 +32,6 @@ import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
 
 export const metadata = { title: "Project — Verde Vision" };
 
-// Server actions run under the page's limit, and the House outline card's
-// pickLot downloads and decodes two GeoTIFFs — measured 10–15 s, past the
-// common serverless default.
-export const maxDuration = 60;
-
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -74,11 +69,10 @@ type PageData = {
   notes: string | null;
   videos: VideoItem[];
   markers: SiteMarker[];
-  // The lot + house outline picked for the headset (migration 020).
+  // The house outline traced for the headset (migration 020).
   houseOutline: {
     stored: StoredBlueprint;
     fetchedAt: string | null;
-    orthoUrl: string | null;
   } | null;
   houseOutlineReady: boolean; // false until migration-020 has been run
   modeSeconds: Record<string, number> | null;
@@ -94,15 +88,16 @@ type PageData = {
   rail: { rows: RailRow[]; subtotal: number | null };
 };
 
-// A made-up lot and L-shaped house for the dev fixture — synthetic on
-// purpose, so no real property's outline lives in the repo.
+// A made-up yard and L-shaped house for the dev fixture — synthetic on
+// purpose, so no real property's outline lives in the repo. On the aerial
+// it lands on some real neighbourhood; it isn't meant to match a roof.
 const FIXTURE_OUTLINE: StoredBlueprint = {
   version: 1,
-  provider: "maricopa",
+  provider: "trace",
   lookupAddress: "27210 N Rio Verde Dr, Rio Verde, AZ",
   candidate: {
-    apn: "000-00-000",
-    address: "27210 N RIO VERDE DR",
+    apn: "",
+    address: "27210 N Rio Verde Dr, Rio Verde, AZ",
     centroid: { lat: 33.72, lng: -111.67 },
     parcelXZ: [
       [-16, -22],
@@ -110,7 +105,7 @@ const FIXTURE_OUTLINE: StoredBlueprint = {
       [16, 22],
       [-16, 22],
     ],
-    attributes: { lotSizeSqFt: 15155, livableAreaSqFt: 2650, constructionYear: 2004 },
+    attributes: {},
     houseXZ: [
       [-10, -14],
       [8, -14],
@@ -120,7 +115,7 @@ const FIXTURE_OUTLINE: StoredBlueprint = {
       [-10, 6],
     ],
     houseAreaSqFt: 3186,
-    imagery: { captureDate: "2022-03-14", quality: "MEDIUM" },
+    imagery: null,
     warnings: [],
   },
 };
@@ -149,7 +144,7 @@ function buildFixtureData(): PageData {
     markers: buildSiteMarkers([], {}, {
       origin: { text: "Garage frame, 4 ft up", updated_at: "2026-10-02T18:00:00Z" },
     }),
-    houseOutline: { stored: FIXTURE_OUTLINE, fetchedAt: "2026-07-12T16:00:00Z", orthoUrl: null },
+    houseOutline: { stored: FIXTURE_OUTLINE, fetchedAt: "2026-07-12T16:00:00Z" },
     houseOutlineReady: true,
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
     mediaOwnerId: "fixture",
@@ -213,7 +208,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
     // And again for migration-020.
     supabase
       .from("projects")
-      .select("blueprint_payload, blueprint_ortho_path, blueprint_fetched_at")
+      .select("blueprint_payload, blueprint_fetched_at")
       .eq("id", id)
       .single(),
     // And again for migration-021: the plate notes live in their own column
@@ -282,15 +277,13 @@ async function loadPageData(id: string): Promise<PageData | null> {
     : [];
   const outlineRow = outlineRes.data as {
     blueprint_payload?: unknown;
-    blueprint_ortho_path?: string | null;
     blueprint_fetched_at?: string | null;
   } | null;
   const storedOutline = readStored(outlineRow?.blueprint_payload);
-  const orthoPath = storedOutline ? (outlineRow?.blueprint_ortho_path ?? null) : null;
 
   // No cover photo here: it is set and shown on the project CARD, so
   // signing a URL for it on every project page render bought nothing.
-  const [docUrlRes, videoUrlRes, anchorUrlRes, orthoUrlRes] = await Promise.all([
+  const [docUrlRes, videoUrlRes, anchorUrlRes] = await Promise.all([
     docPaths.length > 0
       ? supabase.storage.from("blueprints").createSignedUrls(docPaths, 60 * 60)
       : Promise.resolve({ data: [] }),
@@ -318,9 +311,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
             60 * 60
           )
       : Promise.resolve({ data: [] }),
-    orthoPath
-      ? supabase.storage.from("project-media").createSignedUrl(orthoPath, 60 * 60)
-      : Promise.resolve({ data: null }),
   ]);
 
   const docUrls = new Map<string, string>();
@@ -393,7 +383,6 @@ async function loadPageData(id: string): Promise<PageData | null> {
       ? {
           stored: storedOutline,
           fetchedAt: outlineRow?.blueprint_fetched_at ?? null,
-          orthoUrl: orthoUrlRes.data?.signedUrl ?? null,
         }
       : null,
     houseOutlineReady: !outlineRes.error,

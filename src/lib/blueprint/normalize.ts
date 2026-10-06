@@ -31,6 +31,19 @@ export function ringToXZMeters(ring: LatLng[], origin: LatLng): [number, number]
 }
 
 /**
+ * The inverse of ringToXZMeters: geo-frame metres back to WGS84. Exact,
+ * because the projection is linear around its origin — which is what lets
+ * a stored outline reopen on the trace map at the corners it was saved with.
+ */
+export function xzMetersToRing(points: [number, number][], origin: LatLng): LatLng[] {
+  const m = metersPerDegree(origin.lat);
+  return points.map(([x, z]) => ({
+    lat: origin.lat - z / m.lat, // z = south
+    lng: origin.lng + x / m.lng, // x = east
+  }));
+}
+
+/**
  * Area centroid (shoelace) of a ring, computed in projected meters for
  * numerical sanity, returned in WGS84. Falls back to the vertex average
  * for degenerate (near-zero-area) rings.

@@ -1,4 +1,4 @@
-// The lot + house outline as a project stores it (migration 020).
+// The house outline as a project stores it (migration 020).
 //
 // Written by the project page's House outline card, read back by that card
 // and by /api/vision-pro/projects, which hands it to the headset. The
@@ -9,51 +9,20 @@ import type { BlueprintCandidate } from "./types";
 
 export interface StoredBlueprint {
   version: 1;
-  /** Which parcel provider answered, e.g. "maricopa". */
+  /**
+   * Where the outline came from: "trace" when it was drawn on the
+   * dashboard (trace.ts), or a parcel provider like "maricopa" for one
+   * from the old county lookup.
+   */
   provider: string;
   /**
-   * The project address this lot was looked up from. The address can be
-   * edited afterwards, and an outline picked for the old one is the wrong
+   * The project address when the outline was made. The address can be
+   * edited afterwards, and an outline made for the old one is the wrong
    * house — so the card compares the two and says so.
    */
   lookupAddress: string;
-  /** The enriched parcel, imagery WITHOUT `orthoJpegBase64`. */
+  /** The outline, imagery WITHOUT `orthoJpegBase64`. */
   candidate: BlueprintCandidate;
-}
-
-/** Where a project's aerial tile lives in the project-media bucket. */
-export function orthoPathFor(clientId: string, projectId: string): string {
-  return `${clientId}/${projectId}/blueprint/ortho.jpg`;
-}
-
-/**
- * Splits an enriched candidate into what goes in the database and the JPEG
- * that goes to storage. The base64 never reaches the row: the row rides
- * along on every project-list request a headset makes.
- */
-export function toStored(
-  provider: string,
-  lookupAddress: string,
-  candidate: BlueprintCandidate
-): { stored: StoredBlueprint; orthoJpeg: Buffer | null } {
-  const imagery = candidate.imagery ?? null;
-  const orthoJpeg =
-    imagery?.orthoJpegBase64 ? Buffer.from(imagery.orthoJpegBase64, "base64") : null;
-  let strippedImagery = imagery;
-  if (imagery) {
-    const { orthoJpegBase64: _bytes, ...rest } = imagery;
-    void _bytes;
-    strippedImagery = rest;
-  }
-  return {
-    stored: {
-      version: 1,
-      provider,
-      lookupAddress,
-      candidate: { ...candidate, imagery: strippedImagery },
-    },
-    orthoJpeg,
-  };
 }
 
 /** Reads the column defensively — a malformed row reads as "none". */

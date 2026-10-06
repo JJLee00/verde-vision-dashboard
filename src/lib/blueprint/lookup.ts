@@ -1,9 +1,10 @@
 // Address → parcel candidates → one enriched parcel.
 //
-// Shared by the two places a lookup starts: the headset's /api/blueprint
-// route (the backup path, run on site) and the project page's House outline
-// card (the normal path, run at a desk). Both must answer identically — the
-// headset cannot tell which one produced the outline it is walking.
+// LEGACY (Oct 2026): outlines are now traced by hand on the project page
+// (trace.ts), which works at any address; this county + Solar pipeline only
+// ever covered Maricopa. It stays for the /api/blueprint route, which
+// headset builds from before the change still call from their in-app
+// lookup. Once those are gone, so can this be.
 
 import { maricopaProvider, normalizeStreetAddress } from "./maricopa";
 import { enrichParcel } from "./enrich";
