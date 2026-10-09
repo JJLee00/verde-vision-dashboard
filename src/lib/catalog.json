@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-09-25",
+  "generatedAt": "2026-10-09",
   "sizeOrder": [
     "1g",
     "5g",
@@ -211,46 +211,6 @@
       "lifespan": "Long-lived (25+ yrs)"
     },
     {
-      "key": "gray boulder",
-      "name": "Gray Boulder",
-      "botanicalName": null,
-      "category": "Hardscape",
-      "thumbnail": "grayboulder_thumb",
-      "sizes": [
-        {
-          "size": "Small",
-          "price": 95,
-          "laborCost": 55,
-          "heightMultiplier": 1,
-          "modelName": "GrayBoulder"
-        },
-        {
-          "size": "Medium",
-          "price": 195,
-          "laborCost": 95,
-          "heightMultiplier": 2,
-          "modelName": "GrayBoulder"
-        },
-        {
-          "size": "Large",
-          "price": 350,
-          "laborCost": 150,
-          "heightMultiplier": 4,
-          "modelName": "GrayBoulder"
-        }
-      ],
-      "matureHeightFt": 3,
-      "matureWidthFt": 3,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Sonoran Desert, Arizona",
-      "description": "A weathered gray granite boulder that adds natural texture and grounding weight to desert landscapes. Used as a focal point, border accent, or dry riverbed element. Boulders pair well with ornamental grasses, agave, and low-water perennials to create authentic Sonoran compositions. Zero maintenance once placed.",
-      "coldToleranceFahrenheit": -40,
-      "bloomPeriod": null,
-      "growthRate": null,
-      "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
       "key": "golden barrel cactus",
       "name": "Golden Barrel Cactus",
       "botanicalName": "Echinocactus grusonii",
@@ -282,86 +242,6 @@
       "bloomPeriod": "Summer",
       "growthRate": "Slow",
       "lifespan": "Long-lived (25+ yrs)"
-    },
-    {
-      "key": "mexican fan palm",
-      "name": "Mexican Fan Palm",
-      "botanicalName": "Washingtonia robusta",
-      "category": "Tree",
-      "thumbnail": "mexfanpalm_thumb",
-      "sizes": [
-        {
-          "size": "24\" Box",
-          "price": 295,
-          "laborCost": 125,
-          "heightMultiplier": 1,
-          "modelName": "MexFanPalm"
-        },
-        {
-          "size": "36\" Box",
-          "price": 495,
-          "laborCost": 175,
-          "heightMultiplier": 1.5,
-          "modelName": "MexFanPalm"
-        },
-        {
-          "size": "48\" Box",
-          "price": 795,
-          "laborCost": 250,
-          "heightMultiplier": 3,
-          "modelName": "MexFanPalm"
-        }
-      ],
-      "matureHeightFt": 70,
-      "matureWidthFt": 10,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Northwestern Mexico",
-      "description": "The most widely planted palm in the American Southwest, the Mexican Fan Palm is prized for its dramatic height and slender silhouette. Its long fronds fan out at the crown, creating an unmistakably tropical skyline presence. Fast growing and extremely drought tolerant once established, it thrives in full sun and poor soils. Commonly used in rows along driveways, property borders, and commercial streetscapes for bold vertical impact.",
-      "coldToleranceFahrenheit": 20,
-      "bloomPeriod": "Spring – Summer",
-      "growthRate": "Fast",
-      "lifespan": "Long-lived (25+ yrs)"
-    },
-    {
-      "key": "saguaro",
-      "name": "Saguaro",
-      "botanicalName": "Carnegiea gigantea",
-      "category": "Succulent",
-      "thumbnail": "saguarospear_thumb",
-      "sizes": [
-        {
-          "size": "Small",
-          "price": 600,
-          "laborCost": 250,
-          "heightMultiplier": 1,
-          "modelName": "SaguaroSpear"
-        },
-        {
-          "size": "Medium",
-          "price": 900,
-          "laborCost": 350,
-          "heightMultiplier": 1.5,
-          "modelName": "SaguaroSpear"
-        },
-        {
-          "size": "Large",
-          "price": 1200,
-          "laborCost": 450,
-          "heightMultiplier": 2.5,
-          "modelName": "SaguaroSpear"
-        }
-      ],
-      "matureHeightFt": 40,
-      "matureWidthFt": 3,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Sonoran Desert, Arizona and Mexico",
-      "description": "The undisputed icon of the Sonoran Desert, the Saguaro is the largest cactus in the United States and one of the most recognizable plants on earth. Its tall columnar trunk and upward-reaching arms define the Arizona landscape. Incredibly slow growing — a 6-foot specimen may be 50–75 years old — and federally protected in Arizona. Adding a mature Saguaro to a landscape is a rare and premium statement piece. White flowers bloom at the crown in late spring, followed by edible red fruit prized by wildlife and indigenous peoples for centuries.",
-      "coldToleranceFahrenheit": 20,
-      "bloomPeriod": "Late Spring",
-      "growthRate": "Slow",
-      "lifespan": "Very long-lived (100+ yrs)"
     },
     {
       "key": "ocotillo",
@@ -437,46 +317,6 @@
       "lifespan": "Very long-lived (100+ yrs)"
     },
     {
-      "key": "flat boulder",
-      "name": "Flat Boulder",
-      "botanicalName": null,
-      "category": "Hardscape",
-      "thumbnail": "flatboulder_thumb",
-      "sizes": [
-        {
-          "size": "Small",
-          "price": 75,
-          "laborCost": 55,
-          "heightMultiplier": 0.5,
-          "modelName": "FlatBoulder"
-        },
-        {
-          "size": "Medium",
-          "price": 165,
-          "laborCost": 95,
-          "heightMultiplier": 0.7,
-          "modelName": "FlatBoulder"
-        },
-        {
-          "size": "Large",
-          "price": 295,
-          "laborCost": 150,
-          "heightMultiplier": 1.1,
-          "modelName": "FlatBoulder"
-        }
-      ],
-      "matureHeightFt": 1,
-      "matureWidthFt": 4,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Sonoran Desert, Arizona",
-      "description": "A low-profile desert boulder with a broad, flat surface that blends naturally into the landscape. Ideal for stepping stone paths, dry riverbed accents, or anchoring plant groupings at ground level. Its horizontal form contrasts beautifully with the vertical lines of cacti and agave. Zero maintenance and extremely long lasting — a timeless hardscape element in any Southwest design.",
-      "coldToleranceFahrenheit": -40,
-      "bloomPeriod": null,
-      "growthRate": null,
-      "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
       "key": "az boulder 1",
       "name": "AZ Boulder 1",
       "botanicalName": null,
@@ -512,39 +352,6 @@
       "origin": "Sonoran Desert, Arizona",
       "description": "A natural Arizona desert boulder scanned on-site, with weathered surfaces and authentic Sonoran character. Use it as a focal anchor, border accent, or dry riverbed element. Its rugged form pairs beautifully with cacti, agave, and low-water perennials. Zero maintenance and effectively permanent once placed.",
       "coldToleranceFahrenheit": -40,
-      "bloomPeriod": null,
-      "growthRate": null,
-      "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
-      "key": "swimming pool",
-      "name": "Swimming Pool",
-      "botanicalName": null,
-      "category": "Hardscape",
-      "thumbnail": "swimmingpool_thumb",
-      "sizes": [
-        {
-          "size": "Small",
-          "price": 32000,
-          "laborCost": 14000,
-          "heightMultiplier": 1,
-          "modelName": "SwimmingPool"
-        },
-        {
-          "size": "Large",
-          "price": 58000,
-          "laborCost": 22000,
-          "heightMultiplier": 2,
-          "modelName": "SwimmingPool"
-        }
-      ],
-      "matureHeightFt": 3,
-      "matureWidthFt": 6,
-      "sun": "Full Sun",
-      "water": "High",
-      "origin": "Prefabricated pool shell",
-      "description": "A prefabricated in-ground pool shell for quickly visualizing a pool in a yard. It's set flush to grade — the coping sits at ground level with the basin recessed below and a stainless ladder at one end. Use it to study proportions, placement, and how the water reads against surrounding hardscape and plantings. Demo asset (a downloaded model cleaned up for AR); finish and pricing are placeholders.",
-      "coldToleranceFahrenheit": null,
       "bloomPeriod": null,
       "growthRate": null,
       "lifespan": "Very long-lived (100+ yrs)"
@@ -800,42 +607,9 @@
       "lifespan": "Very long-lived (100+ yrs)"
     },
     {
-      "key": "agave geminiflora",
-      "name": "Agave Geminiflora",
-      "botanicalName": null,
-      "category": "Succulent",
-      "thumbnail": "agavegeminiflora_thumb",
-      "sizes": [
-        {
-          "size": "5g",
-          "price": 70,
-          "laborCost": 45,
-          "heightMultiplier": 0.4,
-          "modelName": "AgaveGeminiflora"
-        },
-        {
-          "size": "15g",
-          "price": 140,
-          "laborCost": 85,
-          "heightMultiplier": 0.6,
-          "modelName": "AgaveGeminiflora"
-        }
-      ],
-      "matureHeightFt": 2,
-      "matureWidthFt": 3,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Nayarit and Jalisco, Mexico",
-      "description": "The Twin-Flowered Agave forms a strikingly dense, symmetrical fountain of hundreds of slender, deep green leaves, each edged with fine curling white filaments that catch the light. Unlike most agaves, its narrow, flexible leaves carry no harsh terminal spine, giving it a soft, almost grass-like texture that reads beautifully in modern and naturalistic desert designs. Compact and slow growing, it makes an elegant container or focal specimen. Exceptionally drought and heat tolerant, it thrives in full sun and well-drained soil with virtually no maintenance.",
-      "coldToleranceFahrenheit": 25,
-      "bloomPeriod": "Once in lifetime (summer)",
-      "growthRate": "Slow",
-      "lifespan": "Long-lived (25+ yrs)"
-    },
-    {
       "key": "yellow bells",
       "name": "Yellow Bells",
-      "botanicalName": "Tecoma stans",
+      "botanicalName": "Tecoma stans 'Sundance'",
       "category": "Shrub",
       "thumbnail": "yellowbells_thumb",
       "sizes": [
@@ -843,14 +617,14 @@
           "size": "5g",
           "price": 65,
           "laborCost": 45,
-          "heightMultiplier": 0.3,
+          "heightMultiplier": 0.35,
           "modelName": "YellowBells"
         },
         {
           "size": "15g",
           "price": 130,
           "laborCost": 85,
-          "heightMultiplier": 0.5,
+          "heightMultiplier": 0.57,
           "modelName": "YellowBells"
         }
       ],
@@ -1071,86 +845,6 @@
       "lifespan": "Long-lived (25+ yrs)"
     },
     {
-      "key": "desert willow",
-      "name": "Desert Willow",
-      "botanicalName": "Chilopsis linearis",
-      "category": "Tree",
-      "thumbnail": "desertwillow_thumb",
-      "sizes": [
-        {
-          "size": "5g",
-          "price": 90,
-          "laborCost": 55,
-          "heightMultiplier": 0.47,
-          "modelName": "DesertWillow"
-        },
-        {
-          "size": "15g",
-          "price": 185,
-          "laborCost": 110,
-          "heightMultiplier": 0.79,
-          "modelName": "DesertWillow"
-        },
-        {
-          "size": "24\" Box",
-          "price": 420,
-          "laborCost": 240,
-          "heightMultiplier": 1.19,
-          "modelName": "DesertWillow"
-        }
-      ],
-      "matureHeightFt": 25,
-      "matureWidthFt": 20,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Southwestern U.S. and northern Mexico",
-      "description": "Not a true willow but a member of the trumpet-creeper family, prized across the Southwest for its long, willowy leaves and orchid-like trumpet flowers in pink, burgundy, and white. It blooms heavily from late spring through fall, drawing hummingbirds all season, then drops its leaves for a sculptural winter silhouette of twisting trunks. Fast-growing, deeply drought tolerant, and happy in reflected heat, it works as a patio shade tree, a screening multi-trunk, or a flowering accent near seating. Prune to shape while young to build good structure.",
-      "coldToleranceFahrenheit": 10,
-      "bloomPeriod": "Late Spring – Fall",
-      "growthRate": "Fast",
-      "lifespan": "Long-lived (25+ yrs)"
-    },
-    {
-      "key": "desert ironwood",
-      "name": "Desert Ironwood",
-      "botanicalName": "Olneya tesota",
-      "category": "Tree",
-      "thumbnail": "ironwood_thumb",
-      "sizes": [
-        {
-          "size": "5g",
-          "price": 95,
-          "laborCost": 55,
-          "heightMultiplier": 0.5,
-          "modelName": "Ironwood"
-        },
-        {
-          "size": "15g",
-          "price": 195,
-          "laborCost": 110,
-          "heightMultiplier": 0.84,
-          "modelName": "Ironwood"
-        },
-        {
-          "size": "24\" Box",
-          "price": 450,
-          "laborCost": 240,
-          "heightMultiplier": 1.27,
-          "modelName": "Ironwood"
-        }
-      ],
-      "matureHeightFt": 25,
-      "matureWidthFt": 25,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Sonoran Desert",
-      "description": "One of the Sonoran Desert's great nurse trees and among the longest-lived — individuals can persist well over a century. Ironwood carries a dense canopy of small blue-grey leaflets on gnarled grey bark, and flushes lavender-pink pea flowers in late spring. Its wood is famously heavy and hard, sinking in water. Slow but tough as nails, it casts genuinely useful filtered shade, shelters understory plantings, and anchors a native design as a long-term signature tree. Give it room and almost no supplemental water once established.",
-      "coldToleranceFahrenheit": 20,
-      "bloomPeriod": "Late Spring",
-      "growthRate": "Slow",
-      "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
       "key": "jojoba",
       "name": "Jojoba",
       "botanicalName": "Simmondsia chinensis",
@@ -1182,39 +876,6 @@
       "bloomPeriod": "Winter – Spring (inconspicuous)",
       "growthRate": "Slow",
       "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
-      "key": "leatherleaf acacia",
-      "name": "Leatherleaf Acacia",
-      "botanicalName": "Acacia craspedocarpa",
-      "category": "Shrub",
-      "thumbnail": "leatherleafacacia_thumb",
-      "sizes": [
-        {
-          "size": "5g",
-          "price": 75,
-          "laborCost": 45,
-          "heightMultiplier": 0.48,
-          "modelName": "LeatherleafAcacia"
-        },
-        {
-          "size": "15g",
-          "price": 155,
-          "laborCost": 85,
-          "heightMultiplier": 0.77,
-          "modelName": "LeatherleafAcacia"
-        }
-      ],
-      "matureHeightFt": 12,
-      "matureWidthFt": 10,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Western Australia",
-      "description": "A tough, upright evergreen with thick, round grey-green phyllodes that feel genuinely leathery — an unusual, coin-like texture among desert plants. It carries small yellow puffball flowers after rain and forms a dense screen with almost no care, tolerating heat, reflected sun, alkaline soil, and long dry spells. Trained up it becomes a handsome small patio tree; left alone it makes one of the most reliable privacy hedges available for low-water designs. Very low litter and no thorns.",
-      "coldToleranceFahrenheit": 15,
-      "bloomPeriod": "Spring (after rains)",
-      "growthRate": "Moderate",
-      "lifespan": "Long-lived (25+ yrs)"
     },
     {
       "key": "white dawn lantana",
@@ -1702,39 +1363,6 @@
       "lifespan": "Long-lived (25+ yrs)"
     },
     {
-      "key": "regal mist",
-      "name": "Regal Mist",
-      "botanicalName": "Muhlenbergia capillaris 'Lenca'",
-      "category": "Grass",
-      "thumbnail": "regalmist_thumb",
-      "sizes": [
-        {
-          "size": "1g",
-          "price": 18,
-          "laborCost": 15,
-          "heightMultiplier": 0.28,
-          "modelName": "RegalMist"
-        },
-        {
-          "size": "5g",
-          "price": 42,
-          "laborCost": 30,
-          "heightMultiplier": 0.5,
-          "modelName": "RegalMist"
-        }
-      ],
-      "matureHeightFt": 4,
-      "matureWidthFt": 4,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Southeastern and central United States — a nursery selection grown throughout the desert Southwest",
-      "description": "The one plant in the desert palette that stops traffic in October. A tidy, fine-textured green fountain for most of the year, then it throws a three-foot cloud of pink-rose bloom that catches low sun and glows — plant it where the afternoon light comes through it from behind and the whole clump turns to smoke. Tough in a way the effect does not suggest: full sun, reflected heat, hard drought once established, and cold well below anything Arizona sees. Plant it in drifts of five, seven or twelve along a wash, a driveway edge or a wall, where the mass is the point; a single clump reads as an accident. Cut it to a few inches in late winter before new growth starts and it comes back thicker. Evergreen-ish in mild winters, dormant tan in cold ones, and completely pest-free.",
-      "coldToleranceFahrenheit": 0,
-      "bloomPeriod": "Late summer through fall (September – November) — pink-rose bloom clouds",
-      "growthRate": "Fast",
-      "lifespan": "Perennial"
-    },
-    {
       "key": "desert spoon",
       "name": "Desert Spoon",
       "botanicalName": "Dasylirion wheeleri",
@@ -1771,93 +1399,6 @@
       "description": "A perfect sphere of narrow blue-gray blades, each edged in fine golden teeth, that reads as a single sculptural object from any angle — the desert's answer to a boxwood ball, without the water or the shearing. Desert Spoon grows slowly to a 4–5 ft rosette and in age lifts itself on a short trunk skirted in dry leaves; in early summer a mature plant sends up a single 10–15 ft flower pole that stands for months. Use it in threes and fives to stitch a planting together, singly as a focal point against gravel or a wall, or in a row where it makes a formal rhythm with no maintenance. The teeth are sharp enough to keep it a step back from paths. Full sun, hard drainage, drought-proof once established, and hardy well below anything Arizona sees.",
       "coldToleranceFahrenheit": 0,
       "bloomPeriod": "Late spring – summer, a single tall flower pole (not modelled)",
-      "growthRate": "Slow",
-      "lifespan": "Long-lived (25+ yrs)"
-    },
-    {
-      "key": "texas ebony ao spike",
-      "name": "Texas Ebony · AO spike",
-      "botanicalName": "Ebenopsis ebano",
-      "category": "Tree",
-      "thumbnail": "texasebony_thumb",
-      "sizes": [
-        {
-          "size": "15g",
-          "price": 195,
-          "laborCost": 110,
-          "heightMultiplier": 1,
-          "modelName": "TexasEbonySmAO"
-        },
-        {
-          "size": "24\" Box",
-          "price": 445,
-          "laborCost": 240,
-          "heightMultiplier": 0.85,
-          "modelName": "TexasEbonyMdAO"
-        },
-        {
-          "size": "36\" Box",
-          "price": 875,
-          "laborCost": 450,
-          "heightMultiplier": 1,
-          "modelName": "TexasEbonyMdAO"
-        },
-        {
-          "size": "48\" Box",
-          "price": 1450,
-          "laborCost": 650,
-          "heightMultiplier": 1.2,
-          "modelName": "TexasEbonyMdAO"
-        }
-      ],
-      "matureHeightFt": 30,
-      "matureWidthFt": 25,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "South Texas and northeastern Mexico",
-      "description": "DEBUG A/B: the Texas Ebony ladder with baked sky occlusion. Compare against the real entry, size for size and in Mature Mode.",
-      "coldToleranceFahrenheit": 15,
-      "bloomPeriod": "Summer",
-      "growthRate": "Slow",
-      "lifespan": "Very long-lived (100+ yrs)"
-    },
-    {
-      "key": "desert spoon ao spike",
-      "name": "Desert Spoon · AO spike",
-      "botanicalName": "Dasylirion wheeleri",
-      "category": "Succulent",
-      "thumbnail": "desertspoon_thumb",
-      "sizes": [
-        {
-          "size": "5g",
-          "price": 40,
-          "laborCost": 32,
-          "heightMultiplier": 0.55,
-          "modelName": "DesertSpoonSmAO"
-        },
-        {
-          "size": "15g",
-          "price": 125,
-          "laborCost": 70,
-          "heightMultiplier": 0.9,
-          "modelName": "DesertSpoonSmAO"
-        },
-        {
-          "size": "24\" Box",
-          "price": 395,
-          "laborCost": 240,
-          "heightMultiplier": 1,
-          "modelName": "DesertSpoonLgAO"
-        }
-      ],
-      "matureHeightFt": 5,
-      "matureWidthFt": 6,
-      "sun": "Full Sun",
-      "water": "Low",
-      "origin": "Chihuahuan Desert",
-      "description": "DEBUG A/B: the Desert Spoon ladder with baked sky occlusion. Compare against the real entry, size for size and in Mature Mode.",
-      "coldToleranceFahrenheit": 0,
-      "bloomPeriod": "Late spring – summer",
       "growthRate": "Slow",
       "lifespan": "Long-lived (25+ yrs)"
     }
