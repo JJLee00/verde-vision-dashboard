@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import type { ProjectFileJSON } from "./types";
 import { buildScene, buildRail, type Instance } from "./scene";
+import { symbolFor, drawPlanSymbol, symbolPath3D } from "./symbols";
 
 /* ── Brand-locked palette (matches globals.css / the marketing site).
       The viewer is a Verde Vision document — it does not follow the OS
@@ -398,6 +399,8 @@ export function LivingBlueprint({
       const h = meta.renderHeightFt * gr;
       const rw = (meta.matureWidthFt / 2) * gr;
       const { x, z } = inst;
+      const planSym = symbolFor(inst.model, meta.kind);
+      const symRot = (inst.yawDeg * Math.PI) / 180;
 
       if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
@@ -414,10 +417,10 @@ export function LivingBlueprint({
         ctx!.lineWidth = lw;
         ctx!.strokeStyle = stroke;
         ctx!.fillStyle = fill;
-        circle3D(x, h * (isShrub ? 0.45 : 0.66), z, rw);
+        symbolPath3D(ctx!, P, x, h * (isShrub ? 0.45 : 0.66), z, rw, planSym, symRot);
         ctx!.fill();
         ctx!.stroke();
-        circle3D(x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, 18);
+        symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
         ctx!.fill();
         ctx!.stroke();
       } else if (meta.kind === "palm") {
@@ -564,15 +567,17 @@ export function LivingBlueprint({
       /* ground symbol + label + hit target */
       const symR = Math.max(rw, meta.kind === "poolPrefab" ? 5 * inst.scale : 1);
       const c0 = P(x, 0.02, z);
-      if (meta.kind !== "poolPrefab") {
-        ctx!.strokeStyle = sel ? GOLD : verde(meta.kind === "boulder" ? 0.4 : 0.5);
-        ctx!.lineWidth = sel ? 1.6 : 1;
-        circle3D(x, 0.02, z, symR);
-        ctx!.stroke();
-        ctx!.fillStyle = sel ? GOLD : verde(0.55);
-        ctx!.beginPath();
-        ctx!.arc(c0[0], c0[1], 1.6, 0, 7);
-        ctx!.fill();
+      // The plan symbol: the same mark the blueprint prints, drawn flat on
+      // the ground here so plan mode and the printed sheet agree.
+      if (planSym) {
+        drawPlanSymbol(ctx!, P, x, z, symR, planSym, {
+          rot: symRot,
+          stroke: sel ? GOLD : verde(meta.kind === "boulder" ? 0.45 : 0.62),
+          detail: sel ? GOLD : verde(0.4),
+          lw: sel ? 1.6 : 1,
+          screenR: ftPx(x, z, symR),
+          seed: inst.model,
+        });
       }
       const labelA = Math.max(t, sel ? 1 : 0);
       if (labelA > 0.45) {
