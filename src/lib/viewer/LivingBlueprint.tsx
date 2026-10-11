@@ -117,9 +117,20 @@ export function LivingBlueprint({
   const [selected, setSelected] = useState<string | null>(null);
 
   type Cam = { az: number; el: number; dist: number; fov: number };
+  // panX/panZ slide the point the camera looks at across the ground, so the
+  // yard can be bigger than the screen without the view being stuck on its
+  // centre. They are deliberately NOT part of saved3d: switching modes keeps
+  // you over the same patch of ground, it just changes the angle on it.
+  type View = Cam & {
+    zoom: number;
+    planT: number;
+    growth: number;
+    panX: number;
+    panZ: number;
+  };
   const camRef = useRef<{
-    cur: Cam & { zoom: number; planT: number; growth: number };
-    tgt: Cam & { zoom: number; planT: number; growth: number };
+    cur: View;
+    tgt: View;
     saved3d: Cam;
   } | null>(null);
 
@@ -169,9 +180,20 @@ export function LivingBlueprint({
 
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const K = reducedMotion ? 1 : 0.14;
+    // Wide enough to read a single plant's symbol at one end and to see a
+    // whole acre at the other. The old ceiling of 2.6 was the reason the
+    // viewer felt stuck.
+    const ZOOM_MIN = 0.3;
+    const ZOOM_MAX = 10;
 
     const R = scene.radius;
     const [cx, cz] = scene.center;
+    // The point the camera looks at stays INSIDE the design, so that however
+    // far you pan and however far you zoom, there is always something under
+    // the middle of the screen. Corners are still reachable — they sit near
+    // the frame edge when you are centred on the bound. Zooming toward the
+    // cursor obeys the same limit.
+    const PAN_LIMIT = R * 0.9;
     const V3D = { az: -30, el: 30, dist: R * 2.6, fov: 40 };
     const VPLAN = { az: 0, el: 88.5, dist: R * 10.2, fov: 10 };
     // The camera lives OUTSIDE this effect. Editing a design hands down a new
@@ -180,12 +202,17 @@ export function LivingBlueprint({
     // size tap. It survives across rebuilds and is only created once.
     if (!camRef.current) {
       camRef.current = {
-        cur: { ...V3D, zoom: 1, planT: 0, growth: 1 },
-        tgt: { ...V3D, zoom: 1, planT: 0, growth: 1 },
+        cur: { ...V3D, zoom: 1, planT: 0, growth: 1, panX: 0, panZ: 0 },
+        tgt: { ...V3D, zoom: 1, planT: 0, growth: 1, panX: 0, panZ: 0 },
         saved3d: { ...V3D },
       };
     }
     const cam = camRef.current;
+    // A camera carried over from before panning existed has no offset.
+    for (const v of [cam.cur, cam.tgt]) {
+      if (!Number.isFinite(v.panX)) v.panX = 0;
+      if (!Number.isFinite(v.panZ)) v.panZ = 0;
+    }
     const cur = cam.cur;
     const tgt = cam.tgt;
     let lastMode: "3d" | "plan" = "3d";
@@ -224,11 +251,11 @@ export function LivingBlueprint({
     function updateCam() {
       const ar = (cur.az * Math.PI) / 180;
       const er = (cur.el * Math.PI) / 180;
-      const target = [cx, 0, cz];
+      const target = [cx + cur.panX, 0, cz + cur.panZ];
       eye = [
-        cx + cur.dist * Math.cos(er) * Math.sin(ar),
+        target[0] + cur.dist * Math.cos(er) * Math.sin(ar),
         cur.dist * Math.sin(er),
-        cz + cur.dist * Math.cos(er) * Math.cos(ar),
+        target[2] + cur.dist * Math.cos(er) * Math.cos(ar),
       ];
       fw = norm(sub(target, eye));
       rt = norm(cross(fw, [0, 1, 0]));
@@ -242,6 +269,22 @@ export function LivingBlueprint({
         W / 2 + (dot(d, rt) * focal) / zc,
         H / 2 - (dot(d, up) * focal) / zc,
         zc,
+      ];
+    };
+    /** The inverse of P for the ground plane: where a screen point lands on
+     *  y=0, or null when the ray misses it (at or above the horizon). This
+     *  is what makes dragging feel like moving the ground rather than the
+     *  camera — the spot under the cursor stays under the cursor. */
+    const groundAt = (sx: number, sy: number): [number, number] | null => {
+      const u = (sx - W / 2) / focal;
+      const v = (sy - H / 2) / focal;
+      const dy = fw[1] + rt[1] * u - up[1] * v;
+      if (dy > -1e-4) return null;
+      const t = -eye[1] / dy;
+      if (!Number.isFinite(t) || t < 0) return null;
+      return [
+        eye[0] + (fw[0] + rt[0] * u - up[0] * v) * t,
+        eye[2] + (fw[2] + rt[2] * u - up[2] * v) * t,
       ];
     };
     const ftPx = (x: number, z: number, r: number) => {
@@ -803,14 +846,25 @@ export function LivingBlueprint({
     const pointers = new Map<number, [number, number]>();
     let dragDist = 0;
     let lastPinch = 0;
+    let lastMid: [number, number] | null = null;
     const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-    function canvasXY(e: PointerEvent): [number, number] {
+    function canvasXY(e: { clientX: number; clientY: number }): [number, number] {
       const r = cv!.getBoundingClientRect();
       return [e.clientX - r.left, e.clientY - r.top];
     }
-    function nearest(e: PointerEvent) {
-      const [mx, my] = canvasXY(e);
+    /** Slide the ground so the point under `from` ends up under `to`. */
+    const panBy = (from: [number, number], to: [number, number]) => {
+      const a = groundAt(from[0], from[1]);
+      const b = groundAt(to[0], to[1]);
+      if (!a || !b) return;
+      const lim = PAN_LIMIT;
+      tgt.panX = clamp(tgt.panX - (b[0] - a[0]), -lim, lim);
+      tgt.panZ = clamp(tgt.panZ - (b[1] - a[1]), -lim, lim);
+      cur.panX = tgt.panX;
+      cur.panZ = tgt.panZ;
+    };
+    function nearestAt(mx: number, my: number) {
       let best: { model: string; id: string } | null = null;
       let bd = 1e9;
       for (const h of hits) {
@@ -822,6 +876,10 @@ export function LivingBlueprint({
       }
       return best;
     }
+    const nearest = (e: PointerEvent) => {
+      const [mx, my] = canvasXY(e);
+      return nearestAt(mx, my);
+    };
 
     const onDown = (e: PointerEvent) => {
       cv!.setPointerCapture(e.pointerId);
@@ -844,14 +902,39 @@ export function LivingBlueprint({
       if (pointers.size === 2) {
         const pts = [...pointers.values()];
         const d = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
-        if (lastPinch) tgt.zoom = clamp((tgt.zoom * d) / lastPinch, 0.5, 2.6);
+        const mid: [number, number] = [
+          (pts[0][0] + pts[1][0]) / 2,
+          (pts[0][1] + pts[1][1]) / 2,
+        ];
+        if (lastPinch) tgt.zoom = clamp((tgt.zoom * d) / lastPinch, ZOOM_MIN, ZOOM_MAX);
+        // Two fingers drag the ground as well as pinch it, which is what
+        // every map does and what hands expect.
+        if (lastMid)
+          panBy(
+            canvasXY({ clientX: lastMid[0], clientY: lastMid[1] }),
+            canvasXY({ clientX: mid[0], clientY: mid[1] }),
+          );
         lastPinch = d;
+        lastMid = mid;
         return;
       }
       const dx = e.clientX - prev[0];
       const dy = e.clientY - prev[1];
       dragDist += Math.abs(dx) + Math.abs(dy);
-      if (stateRef.current.mode === "3d") {
+      // Plan is a map, so a plain drag moves it. 3D is a model on a turntable,
+      // so a plain drag spins it and panning is the held-modifier gesture —
+      // shift, the right button or the middle one.
+      const pans =
+        stateRef.current.mode === "plan" ||
+        e.shiftKey ||
+        (e.buttons & 2) !== 0 ||
+        (e.buttons & 4) !== 0;
+      if (pans) {
+        panBy(
+          canvasXY({ clientX: prev[0], clientY: prev[1] }),
+          canvasXY(e),
+        );
+      } else if (stateRef.current.mode === "3d") {
         tgt.az = cur.az - dx * 0.4;
         tgt.el = clamp(cur.el + dy * 0.3, 8, 80);
         cur.az = tgt.az;
@@ -861,6 +944,7 @@ export function LivingBlueprint({
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       lastPinch = 0;
+      lastMid = null;
       cv!.style.cursor = "grab";
       if (dragDist < 6) {
         const hit = nearest(e);
@@ -876,12 +960,37 @@ export function LivingBlueprint({
     const onCancel = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       lastPinch = 0;
+      lastMid = null;
       cv!.style.cursor = "grab";
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      tgt.zoom = clamp(tgt.zoom * Math.exp(-e.deltaY * 0.0012), 0.5, 2.6);
+      const before = tgt.zoom;
+      const next = clamp(before * Math.exp(-e.deltaY * 0.0015), ZOOM_MIN, ZOOM_MAX);
+      if (next === before) return;
+      tgt.zoom = next;
+      // Zoom toward what the cursor is over, not the middle of the screen:
+      // pull the look-at point part of the way to it, by exactly the amount
+      // the magnification would otherwise push it off-screen.
+      const g = groundAt(...canvasXY(e));
+      if (!g) return;
+      const k = 1 - before / next;
+      tgt.panX = clamp(tgt.panX + (g[0] - (cx + cur.panX)) * k, -PAN_LIMIT, PAN_LIMIT);
+      tgt.panZ = clamp(tgt.panZ + (g[1] - (cz + cur.panZ)) * k, -PAN_LIMIT, PAN_LIMIT);
     };
+    // Framing got lost? Put it back. This never declines — a double click on
+    // a plant means nothing else here, and a reset that refuses when you are
+    // lost is worse than one that fires when you did not mean it.
+    const onDblClick = (e: MouseEvent) => {
+      e.preventDefault();
+      Object.assign(tgt, stateRef.current.mode === "plan" ? VPLAN : V3D);
+      tgt.zoom = 1;
+      tgt.panX = 0;
+      tgt.panZ = 0;
+      cam.saved3d = { ...V3D };
+    };
+    // Right-drag is a pan, so it must not also raise the browser menu.
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
     if (!embed) {
       cv.addEventListener("pointerdown", onDown);
       cv.addEventListener("pointermove", onMove);
@@ -889,6 +998,8 @@ export function LivingBlueprint({
       cv.addEventListener("pointerup", onUp);
       cv.addEventListener("pointercancel", onCancel);
       cv.addEventListener("wheel", onWheel, { passive: false });
+      cv.addEventListener("dblclick", onDblClick);
+      cv.addEventListener("contextmenu", onContextMenu);
     }
 
     /* ── loop ── */
@@ -907,7 +1018,7 @@ export function LivingBlueprint({
         lastMode = m;
       }
       tgt.growth = 1;
-      for (const k of ["az", "el", "dist", "fov", "zoom", "planT", "growth"] as const) {
+      for (const k of ["az", "el", "dist", "fov", "zoom", "planT", "growth", "panX", "panZ"] as const) {
         cur[k] += (tgt[k] - cur[k]) * K;
         if (Math.abs(tgt[k] - cur[k]) < 0.0005) cur[k] = tgt[k];
       }
@@ -925,6 +1036,8 @@ export function LivingBlueprint({
       cv.removeEventListener("pointerup", onUp);
       cv.removeEventListener("pointercancel", onCancel);
       cv.removeEventListener("wheel", onWheel);
+      cv.removeEventListener("dblclick", onDblClick);
+      cv.removeEventListener("contextmenu", onContextMenu);
     };
     // scene is the only real dependency; selectSpecies is stable.
   }, [scene, selectSpecies, embed]);
@@ -978,7 +1091,11 @@ export function LivingBlueprint({
       {!embed && (
         <>
           <p className="pointer-events-none absolute right-3.5 top-3 text-right font-mono text-[11px] leading-relaxed text-faint">
-            drag to orbit · scroll to zoom
+            {mode === "plan"
+              ? "drag to pan · scroll to zoom"
+              : "drag to orbit · shift-drag to pan · scroll to zoom"}
+            <br />
+            double-click to reset the view
             <br />
             {editing ? "click a plant to edit it" : "tap a plant to find its kind"}
           </p>
