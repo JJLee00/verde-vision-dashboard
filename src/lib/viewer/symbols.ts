@@ -10,11 +10,13 @@
 // viewer catalog's GlyphKind so a model nobody has classified yet still
 // draws something sensible.
 //
-// INTERIORS ARE LEVEL-OF-DETAIL. A 2 ft barrel cactus is ~19 px across on a
-// printed 60 ft yard; ribs drawn at that size are a smudge. Interiors are
-// skipped below INTERIOR_MIN_PX of projected radius.
-
-export const INTERIOR_MIN_PX = 22;
+// A SYMBOL IS ONE DRAWING AT EVERY SIZE. Interiors used to be skipped below
+// a projected radius, and the stipple was counted from the plant's size on
+// screen — so detail blinked in and out as the camera moved and a plant was
+// not the same mark twice. Everything here is now decided by the symbol
+// itself, never by how large it happens to be rendered. The cost is that a
+// small symbol is denser than it would otherwise be; the gain is that the
+// drawing holds still.
 
 export type EdgeKind =
   | "plain"
@@ -414,8 +416,9 @@ export type DrawOpts = {
   /** stroke for the thinner interior linework */
   detail: string;
   lw: number;
-  /** projected radius in screen px, for the level-of-detail cut */
-  screenR: number;
+  /** the mark's projected radius in px. Used ONLY to keep the centre mark
+   *  in proportion as the symbol grows — never to decide what to draw. */
+  markR: number;
   /** stable jitter seed; the model name is a good one */
   seed: string;
   /** height to draw at, world units — defaults to the ground. A tree's
@@ -471,7 +474,7 @@ export function drawPlanSymbol(
       const cz = z + Math.sin(a) * ring;
       ring3D(ctx, P, cx, cz, rr, null, 0);
       ctx.stroke();
-      if (sym.stems && o.screenR > INTERIOR_MIN_PX * 0.6) {
+      if (sym.stems) {
         const s = P(cx, cz);
         ctx.beginPath();
         ctx.arc(s[0], s[1], 1.5, 0, 7);
@@ -541,7 +544,7 @@ export function drawPlanSymbol(
 
   /* interior, only when there is room for it */
   const it = sym.interior;
-  if (it && o.screenR >= INTERIOR_MIN_PX) {
+  if (it) {
     if (it.kind === "radial") {
       for (let i = 0; i < it.n; i++) {
         const a = (i / it.n) * Math.PI * 2 + o.rot + (rng() - 0.5) * 0.07;
@@ -597,7 +600,9 @@ export function drawPlanSymbol(
         grow(x, z, (i / it.limbs) * Math.PI * 2 + o.rot + (rng() - 0.5) * 0.5, R * 0.4, it.depth, it.spread);
       }
     } else {
-      const tries = Math.round(it.density * o.screenR * 0.9);
+      // A fixed count placed in the symbol's own frame: the same dots in the
+      // same places whatever the zoom, rather than more of them as it grows.
+      const tries = Math.round(it.density * 20);
       ctx.fillStyle = o.detail;
       for (let i = 0; i < tries; i++) {
         const a = rng() * Math.PI * 2;
@@ -605,7 +610,7 @@ export function drawPlanSymbol(
         if (rr <= R * edgeRadius(sym, a - o.rot) * 0.9) {
           const s = P(x + Math.cos(a) * rr, z + Math.sin(a) * rr);
           ctx.beginPath();
-          ctx.arc(s[0], s[1], 0.7, 0, 7);
+          ctx.arc(s[0], s[1], 0.8, 0, 7);
           ctx.fill();
         }
       }
@@ -616,16 +621,19 @@ export function drawPlanSymbol(
   const c = P(x, z);
   ctx.fillStyle = o.stroke;
   ctx.strokeStyle = o.stroke;
+  // Centre marks ride the symbol's own size, with a floor so they survive
+  // on a plan of a whole acre. A fixed 1.6 px dot looked like a speck once
+  // the symbol was any bigger than its printed size.
   if (sym.centre === "dot") {
     ctx.beginPath();
-    ctx.arc(c[0], c[1], 1.6, 0, 7);
+    ctx.arc(c[0], c[1], Math.max(1.3, o.markR * 0.07), 0, 7);
     ctx.fill();
   } else if (sym.centre === "hub") {
     ctx.beginPath();
-    ctx.arc(c[0], c[1], Math.max(2, o.screenR * 0.16), 0, 7);
+    ctx.arc(c[0], c[1], Math.max(2, o.markR * 0.16), 0, 7);
     ctx.fill();
   } else if (sym.centre === "plus") {
-    const s = 3.5;
+    const s = Math.max(2.8, o.markR * 0.14);
     ctx.beginPath();
     ctx.moveTo(c[0] - s, c[1]);
     ctx.lineTo(c[0] + s, c[1]);

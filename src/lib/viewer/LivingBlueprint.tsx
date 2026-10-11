@@ -531,7 +531,10 @@ export function LivingBlueprint({
       const N = shape.n;
       const lerp = (p: [number, number], age: number) => p[0] + (p[1] - p[0]) * age;
       const y0 = h * 0.06; // leaves spring from a short stem, not the soil
-      const big = ftPx(x, z, rw) > 32; // room for the toothed edge?
+      // No zoom test here on purpose. Detail used to switch on above a
+      // projected size, so a plant grew teeth and a midrib as you leaned in
+      // and lost them as you pulled back. What a leaf carries is now a
+      // property of the leaf.
 
       type Leaf = {
         pts: [number, number][];
@@ -551,9 +554,9 @@ export function LivingBlueprint({
         // are a hand across, the young middle ones are narrow spikes. Scaling
         // width with age is what turns a dark scribble into a rosette.
         const halfW = rw * lerp(shape.width, age);
-        // Only the long outer leaves are big enough on screen to carry the
-        // margin and a midrib; on the inner ones that detail is just ink.
-        const detailed = big && age > 0.45;
+        // The long outer leaves carry the margin and a midrib; on the short
+        // inner ones that detail would just be ink. Age, not zoom.
+        const detailed = age > 0.45;
         const ca = Math.cos(a);
         const sa = Math.sin(a);
 
@@ -561,7 +564,7 @@ export function LivingBlueprint({
         // difference between a leaf and a petal. It has to be built from
         // real alternating vertices — a smooth curve modulated by a sine and
         // then sampled coarsely just aliases into crumpled paper.
-        const S = big && age > 0.45 ? 10 : 7;
+        const S = age > 0.45 ? 10 : 7;
         const spineLen = shape.spine * L;
         const r0 = rw * shape.root; // leaves ring a crown, they do not all
                                     // meet at one point — that knots the middle
@@ -713,7 +716,7 @@ export function LivingBlueprint({
             stroke,
             detail: sel ? GOLD : verde(0.42),
             lw,
-            screenR: ftPx(x, z, rw),
+            markR: ftPx(x, z, rw),
             seed: inst.model,
             y: canopyY,
           });
@@ -880,7 +883,7 @@ export function LivingBlueprint({
           stroke: sel ? GOLD : verde(meta.kind === "boulder" ? 0.45 : 0.62),
           detail: sel ? GOLD : verde(0.4),
           lw: sel ? 1.6 : 1,
-          screenR: ftPx(x, z, symR),
+          markR: ftPx(x, z, symR),
           seed: inst.model,
         });
       }
