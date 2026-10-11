@@ -319,6 +319,9 @@ export type DrawOpts = {
   screenR: number;
   /** stable jitter seed; the model name is a good one */
   seed: string;
+  /** height to draw at, world units — defaults to the ground. A tree's
+   *  canopy carries the same mark, just lifted into the air. */
+  y?: number;
 };
 
 const GROUND_Y = 0.02;
@@ -333,7 +336,7 @@ export function drawPlanSymbol(
   sym: PlanSymbol,
   o: DrawOpts,
 ): void {
-  const P = (wx: number, wz: number) => project(wx, GROUND_Y, wz);
+  const P = (wx: number, wz: number) => project(wx, o.y ?? GROUND_Y, wz);
   const line = (
     x1: number,
     z1: number,

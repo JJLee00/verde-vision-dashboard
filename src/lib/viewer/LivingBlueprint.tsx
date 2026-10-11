@@ -429,9 +429,25 @@ export function LivingBlueprint({
         ctx!.lineWidth = lw;
         ctx!.strokeStyle = stroke;
         ctx!.fillStyle = fill;
-        symbolPath3D(ctx!, P, x, h * (isShrub ? 0.45 : 0.66), z, rw, planSym, symRot);
+        // The canopy carries the WHOLE plan mark, lifted — outline and the
+        // branching inside it. The silhouette alone is the generic shape of
+        // a canopy; the limbs are what say which tree it is.
+        const canopyY = h * (isShrub ? 0.45 : 0.66);
+        symbolPath3D(ctx!, P, x, canopyY, z, rw, planSym, symRot);
         ctx!.fill();
-        ctx!.stroke();
+        if (planSym) {
+          drawPlanSymbol(ctx!, P, x, z, rw, planSym, {
+            rot: symRot,
+            stroke,
+            detail: sel ? GOLD : verde(0.42),
+            lw,
+            screenR: ftPx(x, z, rw),
+            seed: inst.model,
+            y: canopyY,
+          });
+        } else {
+          ctx!.stroke();
+        }
         symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
         ctx!.fill();
         ctx!.stroke();
