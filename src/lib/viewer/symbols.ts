@@ -18,6 +18,7 @@ export const INTERIOR_MIN_PX = 22;
 
 export type EdgeKind =
   | "plain"
+  | "poly"
   | "double"
   | "broken"
   | "scallop"
@@ -32,8 +33,12 @@ export type EdgeKind =
   | "flood"
   | "pathlight";
 
+/** A line segment in unit-symbol space: x1, y1, x2, y2, each in [-1,1]. */
+export type Seg = [number, number, number, number];
+
 export type Interior =
   | { kind: "radial"; n: number; thick: number; inner: number; outer: number }
+  | { kind: "lines"; segs: Seg[]; fine?: Seg[] }
   | { kind: "branch"; limbs: number; depth: number; spread: number }
   | { kind: "tex"; density: number };
 
@@ -53,6 +58,8 @@ export type PlanSymbol = {
   stems?: boolean;
   /** cluster: pulled in tight, for a mound rather than a ring */
   tight?: boolean;
+  /** edge "poly": the outline's own vertices, unit radius, drawn as given */
+  poly?: [number, number][];
 };
 
 /* ---------- edges: r(theta) in [0,1] ---------- */
@@ -60,6 +67,8 @@ export type PlanSymbol = {
 export function edgeRadius(sym: PlanSymbol, t: number): number {
   const { edge, n, d } = sym;
   switch (edge) {
+    case "poly":
+      return sym.poly ? polyRadius(sym.poly, t) : 1;
     case "scallop":
       return 1 - d + d * (0.5 + 0.5 * Math.cos(n * t));
     case "tooth":
@@ -83,6 +92,26 @@ export function edgeRadius(sym: PlanSymbol, t: number): number {
   }
 }
 
+/** Where the ray at angle `t` leaves an explicit outline. Lets a hand-drawn
+ *  polygon answer the same r(theta) question the generated edges do, so the
+ *  generic callers (canopy discs, stipple clipping) keep working. */
+function polyRadius(poly: [number, number][], t: number): number {
+  const dx = Math.cos(t);
+  const dy = Math.sin(t);
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, ay] = poly[i];
+    const [bx, by] = poly[(i + 1) % poly.length];
+    const ex = bx - ax;
+    const ey = by - ay;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const u = (ax * ey - ay * ex) / den; // distance along the ray
+    const v = (ax * dy - ay * dx) / den; // position along the edge, 0..1
+    if (u >= 0 && v >= 0 && v <= 1) return u;
+  }
+  return 1;
+}
+
 /* ---------- stable per-plant jitter ---------- */
 
 function rngFor(seed: string): () => number {
@@ -99,6 +128,52 @@ function rngFor(seed: string): () => number {
     return ((v ^ (v >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/* ---------- hand-drawn artwork ---------- */
+
+// Agave Americana — traced from agave-symbol.svg (800x800 box, tips at r=370),
+// normalised to unit radius. Eight leaves: the outline, the fold down the
+// middle of each leaf and the split between them, then the shoulder creases.
+// Kept exactly as supplied, including the slight asymmetry of the hand trace.
+
+const AGAVE_OUTLINE: [number, number][] = [
+  [0, -1], [0.1216, -0.3243], [0.6892, -0.7162], [0.3649, -0.1486],
+  [1, 0], [0.3649, 0.1486], [0.7162, 0.7162], [0.1216, 0.3378],
+  [0, 1], [-0.1351, 0.3649], [-0.7162, 0.6757], [-0.3378, 0.1486],
+  [-1, 0], [-0.3243, -0.1486], [-0.6892, -0.7297], [-0.1351, -0.3243],
+];
+
+// Leaf splits (centre to each valley) and the long centre folds (centre to
+// each tip) — the SVG draws both at stroke-width 5.
+const AGAVE_FOLDS: Seg[] = [
+  [0, 0, -0.1351, -0.3243], [0, 0, 0.1216, -0.3243], [0, 0, 0.3649, -0.1486],
+  [0, 0, 0.3649, 0.1486], [0, 0, 0.1216, 0.3378], [0, 0, -0.1351, 0.3649],
+  [0, 0, -0.3378, 0.1486], [0, 0, -0.3243, -0.1486], [0, 0, 0, -1],
+  [0, 0, 0, 1], [0, 0, -0.6892, -0.7297], [0, 0, 0.7162, 0.7162],
+  [0, 0, -1, 0], [0, 0, 1, 0], [0, 0, -0.7162, 0.6757],
+  [0, 0, 0.6892, -0.7162],
+];
+
+// Shoulder creases — stroke-width 3 in the SVG, so 0.6 of the main weight.
+const AGAVE_SHOULDERS: Seg[] = [
+  [-0.1351, -0.3243, 0, -0.6892], [0, -0.6892, 0.1216, -0.3243],
+  [0.1216, -0.3243, 0.4595, -0.4865], [0.4595, -0.4865, 0.3649, -0.1486],
+  [0.3649, -0.1486, 0.6892, 0], [0.6892, 0, 0.3649, 0.1486],
+  [0.3649, 0.1486, 0.4459, 0.4595], [0.4459, 0.4595, 0.1216, 0.3378],
+  [0.1216, 0.3378, 0, 0.6757], [0, 0.6757, -0.1351, 0.3649],
+  [-0.1351, 0.3649, -0.4595, 0.4459], [-0.4595, 0.4459, -0.3378, 0.1486],
+  [-0.3378, 0.1486, -0.6757, 0], [-0.6757, 0, -0.3243, -0.1486],
+  [-0.3243, -0.1486, -0.4595, -0.473], [-0.4595, -0.473, -0.1351, -0.3243],
+];
+
+const AGAVE_STAR: PlanSymbol = {
+  edge: "poly",
+  n: 8,
+  d: 0,
+  poly: AGAVE_OUTLINE,
+  interior: { kind: "lines", segs: AGAVE_FOLDS, fine: AGAVE_SHOULDERS },
+  centre: "dot",
+};
 
 /* ---------- the catalog ---------- */
 
@@ -159,7 +234,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   LittleJohnBottlebrush: { edge: "double", n: 0, d: 0, centre: "dot" },
 
   /* rosettes — leaf count and thickness ARE the species */
-  AgaveAmericana: ROSETTE(9, 0.4, 3.4),
+  AgaveAmericana: AGAVE_STAR,
   AgaveTruncata: ROSETTE(7, 0.42, 4.2, 0.88),
   TropicalAgave: ROSETTE(12, 0.36, 2.4),
   AloeFerox: ROSETTE(13, 0.34, 2.2),
@@ -344,7 +419,13 @@ export function drawPlanSymbol(
   }
 
   /* closed outline */
-  ring3D(ctx, P, x, z, R, sym, o.rot);
+  if (sym.edge === "poly" && sym.poly) {
+    // Drawn vertex for vertex, not resampled by angle: a star this sharp
+    // loses its points to a 96-step sweep.
+    polyRing3D(ctx, P, x, z, R, sym.poly, o.rot);
+  } else {
+    ring3D(ctx, P, x, z, R, sym, o.rot);
+  }
   ctx.stroke();
   if (sym.edge === "double") {
     ring3D(ctx, P, x, z, R * 0.87, sym, o.rot);
@@ -382,6 +463,23 @@ export function drawPlanSymbol(
           ctx.stroke();
         }
       }
+    } else if (it.kind === "lines") {
+      const cs = Math.cos(o.rot);
+      const sn = Math.sin(o.rot);
+      const put = (seg: Seg, w: number, col: string) => {
+        const [x1, y1, x2, y2] = seg;
+        line(
+          x + (x1 * cs - y1 * sn) * R,
+          z + (x1 * sn + y1 * cs) * R,
+          x + (x2 * cs - y2 * sn) * R,
+          z + (x2 * sn + y2 * cs) * R,
+          w,
+          col,
+        );
+      };
+      for (const seg of it.segs) put(seg, o.lw, o.stroke);
+      // stroke-width 3 against the outline's 5 in the source drawing
+      for (const seg of it.fine ?? []) put(seg, o.lw * 0.6, o.detail);
     } else if (it.kind === "branch") {
       const grow = (bx: number, bz: number, a: number, L: number, d: number, sp: number) => {
         const x2 = bx + Math.cos(a) * L;
@@ -479,6 +577,28 @@ function ring3D(
     const rr = R * (sym ? edgeRadius(sym, a - rot) : 1);
     const s = P(x + Math.cos(a) * rr, z + Math.sin(a) * rr);
     if (k) ctx.lineTo(s[0], s[1]);
+    else ctx.moveTo(s[0], s[1]);
+  }
+  ctx.closePath();
+}
+
+/** An explicit outline, placed on the ground and rotated with the plant. */
+function polyRing3D(
+  ctx: CanvasRenderingContext2D,
+  P: (x: number, z: number) => [number, number, number],
+  x: number,
+  z: number,
+  R: number,
+  poly: [number, number][],
+  rot: number,
+) {
+  const cs = Math.cos(rot);
+  const sn = Math.sin(rot);
+  ctx.beginPath();
+  for (let i = 0; i < poly.length; i++) {
+    const [px, py] = poly[i];
+    const s = P(x + (px * cs - py * sn) * R, z + (px * sn + py * cs) * R);
+    if (i) ctx.lineTo(s[0], s[1]);
     else ctx.moveTo(s[0], s[1]);
   }
   ctx.closePath();

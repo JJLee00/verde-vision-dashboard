@@ -402,6 +402,18 @@ export function LivingBlueprint({
       const planSym = symbolFor(inst.model, meta.kind);
       const symRot = (inst.yawDeg * Math.PI) / 180;
 
+      // A plant's 3D body and its flat plan mark are two drawings of the
+      // same thing, and neither survives the other's camera: tilted, the
+      // mark smears across the floor; from straight above, the body sits on
+      // top of the mark it belongs to. So they trade places as the camera
+      // swings, rather than both being drawn at once.
+      //   A pool has no plan symbol of its own — its footprint IS the body,
+      //   so it stays drawn. A light's cone is the only thing showing where
+      //   the fixture aims, so the cone stays too.
+      const bodyA = meta.kind === "poolPrefab" ? 1 : 1 - t;
+      const markA = meta.kind === "light" ? 1 : t;
+
+      ctx!.globalAlpha = bodyA;
       if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) {
@@ -564,12 +576,15 @@ export function LivingBlueprint({
         ctx!.stroke();
       }
 
+      ctx!.globalAlpha = 1;
+
       /* ground symbol + label + hit target */
       const symR = Math.max(rw, meta.kind === "poolPrefab" ? 5 * inst.scale : 1);
       const c0 = P(x, 0.02, z);
-      // The plan symbol: the same mark the blueprint prints, drawn flat on
-      // the ground here so plan mode and the printed sheet agree.
-      if (planSym) {
+      // The plan symbol: the mark the blueprint prints, drawn flat on the
+      // ground — so plan mode here and the printed sheet are one drawing.
+      ctx!.globalAlpha = markA;
+      if (planSym && markA > 0.004) {
         drawPlanSymbol(ctx!, P, x, z, symR, planSym, {
           rot: symRot,
           stroke: sel ? GOLD : verde(meta.kind === "boulder" ? 0.45 : 0.62),
@@ -579,6 +594,7 @@ export function LivingBlueprint({
           seed: inst.model,
         });
       }
+      ctx!.globalAlpha = 1;
       const labelA = Math.max(t, sel ? 1 : 0);
       if (labelA > 0.45) {
         ctx!.font = "600 10px ui-monospace, Menlo, monospace";
