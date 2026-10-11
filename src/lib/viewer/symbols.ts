@@ -58,8 +58,13 @@ export type PlanSymbol = {
   stems?: boolean;
   /** cluster: pulled in tight, for a mound rather than a ring */
   tight?: boolean;
-  /** edge "poly": the outline's own vertices, unit radius, drawn as given */
-  poly?: [number, number][];
+  /** edge "poly": the outline's own vertices, unit radius, drawn as given.
+   *  A list, because some marks are several closed shapes rather than one
+   *  silhouette — an artichoke agave is four overlapping leaves. */
+  polys?: [number, number][][];
+  /** weight of the `lines` interior's `fine` set, against the main one.
+   *  Defaults to the 0.6 most of the drawings use. */
+  fineScale?: number;
 };
 
 /* ---------- edges: r(theta) in [0,1] ---------- */
@@ -68,7 +73,8 @@ export function edgeRadius(sym: PlanSymbol, t: number): number {
   const { edge, n, d } = sym;
   switch (edge) {
     case "poly":
-      return sym.poly ? polyRadius(sym.poly, t) : 1;
+      if (!sym.polys) return 1;
+      return Math.max(...sym.polys.map((ring) => polyRadius(ring, t)));
     case "scallop":
       return 1 - d + d * (0.5 + 0.5 * Math.cos(n * t));
     case "tooth":
@@ -166,11 +172,104 @@ const AGAVE_SHOULDERS: Seg[] = [
   [-0.3243, -0.1486, -0.4595, -0.473], [-0.4595, -0.473, -0.1351, -0.3243],
 ];
 
+// Agave Truncata — traced from agave-truncata-symbol.svg (800x800 box),
+// normalised so the mark exactly fills a unit radius. An artichoke agave is
+// not a star: it is four broad overlapping leaves seen from above, with the
+// tips of the rank behind showing in the gaps between them. The leaves are
+// curves in the source, flattened to points here because every vertex is
+// projected onto the ground individually — a canvas bezier would be drawn
+// in screen space and would not lie flat.
+
+const TRUNCATA_LEAVES: [number, number][][] = [
+  [
+    [0, 0], [-0.0029, -0.0414], [-0.0048, -0.0856], [-0.006, -0.1321],
+    [-0.0067, -0.1801], [-0.0075, -0.2289], [-0.0087, -0.2778], [-0.0105, -0.3261],
+    [-0.0135, -0.3731], [-0.0179, -0.418], [-0.0241, -0.4603], [-0.0324, -0.4992],
+    [-0.0433, -0.5339], [-0.061, -0.5707], [-0.0854, -0.6019], [-0.1166, -0.628],
+    [-0.1545, -0.6494], [-0.1992, -0.6666], [-0.2507, -0.68], [-0.3092, -0.6902],
+    [-0.3747, -0.6975], [-0.4471, -0.7024], [-0.5267, -0.7053], [-0.6133, -0.7067],
+    [-0.7071, -0.7071], [-0.7067, -0.6133], [-0.7053, -0.5267], [-0.7024, -0.4471],
+    [-0.6975, -0.3747], [-0.6902, -0.3092], [-0.68, -0.2507], [-0.6666, -0.1992],
+    [-0.6494, -0.1545], [-0.628, -0.1166], [-0.6019, -0.0854], [-0.5707, -0.061],
+    [-0.5339, -0.0433], [-0.4992, -0.0324], [-0.4603, -0.0241], [-0.418, -0.0179],
+    [-0.3731, -0.0135], [-0.3261, -0.0105], [-0.2778, -0.0087], [-0.2289, -0.0075],
+    [-0.1801, -0.0067], [-0.1321, -0.006], [-0.0856, -0.0048], [-0.0414, -0.0029],
+  ],
+  [
+    [0, 0], [0.0029, -0.0414], [0.0048, -0.0856], [0.006, -0.1321],
+    [0.0067, -0.1801], [0.0075, -0.2289], [0.0087, -0.2778], [0.0105, -0.3261],
+    [0.0135, -0.3731], [0.0179, -0.418], [0.0241, -0.4603], [0.0324, -0.4992],
+    [0.0433, -0.5339], [0.061, -0.5707], [0.0854, -0.6019], [0.1166, -0.628],
+    [0.1545, -0.6494], [0.1992, -0.6666], [0.2507, -0.68], [0.3092, -0.6902],
+    [0.3747, -0.6975], [0.4471, -0.7024], [0.5267, -0.7053], [0.6133, -0.7067],
+    [0.7071, -0.7071], [0.7067, -0.6133], [0.7053, -0.5267], [0.7024, -0.4471],
+    [0.6975, -0.3747], [0.6902, -0.3092], [0.68, -0.2507], [0.6666, -0.1992],
+    [0.6494, -0.1545], [0.628, -0.1166], [0.6019, -0.0854], [0.5707, -0.061],
+    [0.5339, -0.0433], [0.4992, -0.0324], [0.4603, -0.0241], [0.418, -0.0179],
+    [0.3731, -0.0135], [0.3261, -0.0105], [0.2778, -0.0087], [0.2289, -0.0075],
+    [0.1801, -0.0067], [0.1321, -0.006], [0.0856, -0.0048], [0.0414, -0.0029],
+  ],
+  [
+    [0, 0], [0.0414, 0.0029], [0.0856, 0.0048], [0.1321, 0.006],
+    [0.1801, 0.0067], [0.2289, 0.0075], [0.2778, 0.0087], [0.3261, 0.0105],
+    [0.3731, 0.0135], [0.418, 0.0179], [0.4603, 0.0241], [0.4992, 0.0324],
+    [0.5339, 0.0433], [0.5707, 0.061], [0.6019, 0.0854], [0.628, 0.1166],
+    [0.6494, 0.1545], [0.6666, 0.1992], [0.68, 0.2507], [0.6902, 0.3092],
+    [0.6975, 0.3747], [0.7024, 0.4471], [0.7053, 0.5267], [0.7067, 0.6133],
+    [0.7071, 0.7071], [0.6133, 0.7067], [0.5267, 0.7053], [0.4471, 0.7024],
+    [0.3747, 0.6975], [0.3092, 0.6902], [0.2507, 0.68], [0.1992, 0.6666],
+    [0.1545, 0.6494], [0.1166, 0.628], [0.0854, 0.6019], [0.061, 0.5707],
+    [0.0433, 0.5339], [0.0324, 0.4992], [0.0241, 0.4603], [0.0179, 0.418],
+    [0.0135, 0.3731], [0.0105, 0.3261], [0.0087, 0.2778], [0.0075, 0.2289],
+    [0.0067, 0.1801], [0.006, 0.1321], [0.0048, 0.0856], [0.0029, 0.0414],
+  ],
+  [
+    [0, 0], [-0.0414, 0.0029], [-0.0856, 0.0048], [-0.1321, 0.006],
+    [-0.1801, 0.0067], [-0.2289, 0.0075], [-0.2778, 0.0087], [-0.3261, 0.0105],
+    [-0.3731, 0.0135], [-0.418, 0.0179], [-0.4603, 0.0241], [-0.4992, 0.0324],
+    [-0.5339, 0.0433], [-0.5707, 0.061], [-0.6019, 0.0854], [-0.628, 0.1166],
+    [-0.6494, 0.1545], [-0.6666, 0.1992], [-0.68, 0.2507], [-0.6902, 0.3092],
+    [-0.6975, 0.3747], [-0.7024, 0.4471], [-0.7053, 0.5267], [-0.7067, 0.6133],
+    [-0.7071, 0.7071], [-0.6133, 0.7067], [-0.5267, 0.7053], [-0.4471, 0.7024],
+    [-0.3747, 0.6975], [-0.3092, 0.6902], [-0.2507, 0.68], [-0.1992, 0.6666],
+    [-0.1545, 0.6494], [-0.1166, 0.628], [-0.0854, 0.6019], [-0.061, 0.5707],
+    [-0.0433, 0.5339], [-0.0324, 0.4992], [-0.0241, 0.4603], [-0.0179, 0.418],
+    [-0.0135, 0.3731], [-0.0105, 0.3261], [-0.0087, 0.2778], [-0.0075, 0.2289],
+    [-0.0067, 0.1801], [-0.006, 0.1321], [-0.0048, 0.0856], [-0.0029, 0.0414],
+  ],
+];
+
+const TRUNCATA_TIPS: Seg[] = [
+  [-0.3896, -0.7071, 0, -0.9957],
+  [0, -0.9957, 0.3896, -0.7071],
+  [0.7071, -0.3896, 0.9957, 0],
+  [0.9957, 0, 0.7071, 0.3896],
+  [0.3896, 0.7071, 0, 0.9957],
+  [0, 0.9957, -0.3896, 0.7071],
+  [-0.7071, 0.3896, -0.9957, 0],
+  [-0.9957, 0, -0.7071, -0.3896],
+];
+
+const TRUNCATA_FOLDS: Seg[] = [
+  [-0.7071, -0.7071, 0.7071, 0.7071],
+  [0.7071, -0.7071, -0.7071, 0.7071],
+];
+
+const AGAVE_TRUNCATA: PlanSymbol = {
+  edge: "poly",
+  n: 4,
+  d: 0,
+  polys: TRUNCATA_LEAVES,
+  interior: { kind: "lines", segs: TRUNCATA_TIPS, fine: TRUNCATA_FOLDS },
+  fineScale: 0.8, // the folds are 4 against the outlines' 5
+  centre: "dot",
+};
+
 const AGAVE_STAR: PlanSymbol = {
   edge: "poly",
   n: 8,
   d: 0,
-  poly: AGAVE_OUTLINE,
+  polys: [AGAVE_OUTLINE],
   interior: { kind: "lines", segs: AGAVE_FOLDS, fine: AGAVE_SHOULDERS },
   centre: "dot",
 };
@@ -235,7 +334,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
 
   /* rosettes — leaf count and thickness ARE the species */
   AgaveAmericana: AGAVE_STAR,
-  AgaveTruncata: ROSETTE(7, 0.42, 4.2, 0.88),
+  AgaveTruncata: AGAVE_TRUNCATA,
   TropicalAgave: ROSETTE(12, 0.36, 2.4),
   AloeFerox: ROSETTE(13, 0.34, 2.2),
   "Aloe Vera": ROSETTE(11, 0.32, 2.0),
@@ -422,10 +521,10 @@ export function drawPlanSymbol(
   }
 
   /* closed outline */
-  if (sym.edge === "poly" && sym.poly) {
+  if (sym.edge === "poly" && sym.polys) {
     // Drawn vertex for vertex, not resampled by angle: a star this sharp
     // loses its points to a 96-step sweep.
-    polyRing3D(ctx, P, x, z, R, sym.poly, o.rot);
+    polyRing3D(ctx, P, x, z, R, sym.polys, o.rot);
   } else {
     ring3D(ctx, P, x, z, R, sym, o.rot);
   }
@@ -481,8 +580,8 @@ export function drawPlanSymbol(
         );
       };
       for (const seg of it.segs) put(seg, o.lw, o.stroke);
-      // stroke-width 3 against the outline's 5 in the source drawing
-      for (const seg of it.fine ?? []) put(seg, o.lw * 0.6, o.detail);
+      // the lighter weight in the source drawing, against the outline's
+      for (const seg of it.fine ?? []) put(seg, o.lw * (sym.fineScale ?? 0.6), o.detail);
     } else if (it.kind === "branch") {
       const grow = (bx: number, bz: number, a: number, L: number, d: number, sp: number) => {
         const x2 = bx + Math.cos(a) * L;
@@ -592,19 +691,21 @@ function polyRing3D(
   x: number,
   z: number,
   R: number,
-  poly: [number, number][],
+  polys: [number, number][][],
   rot: number,
 ) {
   const cs = Math.cos(rot);
   const sn = Math.sin(rot);
   ctx.beginPath();
-  for (let i = 0; i < poly.length; i++) {
-    const [px, py] = poly[i];
-    const s = P(x + (px * cs - py * sn) * R, z + (px * sn + py * cs) * R);
-    if (i) ctx.lineTo(s[0], s[1]);
-    else ctx.moveTo(s[0], s[1]);
+  for (const poly of polys) {
+    for (let i = 0; i < poly.length; i++) {
+      const [px, py] = poly[i];
+      const s = P(x + (px * cs - py * sn) * R, z + (px * sn + py * cs) * R);
+      if (i) ctx.lineTo(s[0], s[1]);
+      else ctx.moveTo(s[0], s[1]);
+    }
+    ctx.closePath();
   }
-  ctx.closePath();
 }
 
 function drawFixture(
