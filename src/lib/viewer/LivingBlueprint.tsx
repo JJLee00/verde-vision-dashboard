@@ -423,6 +423,115 @@ export function LivingBlueprint({
       }
     }
 
+    /** Agave americana, from the scan.
+     *
+     *  Not the generic rosette: that is nine single strokes, and a stroke has
+     *  no width, so a yard of them reads as tufts of grass. An agave's leaves
+     *  are BROAD — a hand's width at the base, tapering to one hard terminal
+     *  spine — and that width is most of what identifies the plant.
+     *
+     *  Leaves sit on the golden angle, which is how a rosette actually packs
+     *  itself, and age outward: the first ones out are the oldest, flung
+     *  nearly flat and sagging to the ground, while the youngest stand almost
+     *  upright in a tight spike at the middle. That spread — low skirt, hard
+     *  vertical core — is the silhouette in the photograph.
+     */
+    function drawAgaveBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      stroke: string,
+      fill: string,
+      lw: number,
+    ) {
+      // Few enough leaves that the overlaps stay legible. Fifteen looked
+      // right in plan and turned the middle into a blot here, because every
+      // leaf is a translucent fill laid over the last.
+      const N = 11;
+      const y0 = h * 0.06; // leaves spring from a short stem, not the soil
+      const big = ftPx(x, z, rw) > 32; // room for the toothed edge?
+
+      type Leaf = { pts: [number, number][]; rib: [number, number][]; depth: number };
+      const leaves: Leaf[] = [];
+
+      for (let k = 0; k < N; k++) {
+        const a = k * 2.399963; // golden angle — no two leaves shadow each other
+        const age = 1 - k / (N - 1); // 1 = oldest and outermost, 0 = youngest
+        const L = rw * (0.34 + 0.66 * age);
+        const yTip = h * (0.96 - 0.86 * age);
+        const arch = h * 0.13 * age; // the old ones lift before they fall away
+        // Width is the giveaway, and it is NOT uniform: the old outer leaves
+        // are a hand across, the young middle ones are narrow spikes. Scaling
+        // width with age is what turns a dark scribble into a rosette.
+        const halfW = rw * (0.07 + 0.22 * age);
+        // Only the long outer leaves are big enough on screen to carry teeth
+        // and a midrib; on the inner spikes that detail is just ink.
+        const detailed = big && age > 0.45;
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+
+        // The margin of an agave leaf is sawn, and the sawtooth is the
+        // difference between a leaf and a petal. It has to be built from
+        // real alternating vertices — a smooth curve modulated by a sine and
+        // then sampled coarsely just aliases into crumpled paper.
+        const S = big && age > 0.45 ? 10 : 7;
+        const r0 = rw * 0.05; // leaves ring a short stem, they do not all
+                              // meet at one point — that knots the middle
+        const at = (i: number, side: number): [number, number] => {
+          const t = i / S;
+          const r = r0 + (L - r0) * t;
+          const y = y0 + (yTip - y0) * t + arch * 4 * t * (1 - t);
+          const notch = detailed && side !== 0 && i > 1 && i < S && i % 2 === 1 ? 0.88 : 1;
+          // A leaf is narrow where it attaches, bellies out about a quarter
+          // of the way along, then runs to the terminal spine. Taking it as
+          // widest at the base is what made eleven leaves into one blot.
+          const belly = Math.pow(Math.min(1, t / 0.22), 0.8) * Math.pow(1 - t, 0.55);
+          const w = halfW * belly * notch * side;
+          const q = P(x + ca * r - sa * w, y, z + sa * r + ca * w);
+          return [q[0], q[1]];
+        };
+
+        const pts: [number, number][] = [];
+        for (let i = 0; i <= S; i++) pts.push(at(i, 1));
+        for (let i = S; i >= 0; i--) pts.push(at(i, -1));
+
+        const rib: [number, number][] = [];
+        if (detailed) {
+          for (let i = 0; i <= S; i += Math.max(1, Math.round(S / 4))) rib.push(at(i, 0));
+          rib.push(at(S, 0));
+        }
+
+        const tip = P(x + ca * L, y0 + (yTip - y0), z + sa * L);
+        leaves.push({ pts, rib, depth: tip[2] });
+      }
+
+      // Far leaves first, so the near ones lie over them.
+      leaves.sort((p, q) => q.depth - p.depth);
+
+      for (const leaf of leaves) {
+        ctx!.beginPath();
+        ctx!.moveTo(leaf.pts[0][0], leaf.pts[0][1]);
+        for (let i = 1; i < leaf.pts.length; i++) ctx!.lineTo(leaf.pts[i][0], leaf.pts[i][1]);
+        ctx!.closePath();
+        ctx!.fillStyle = fill;
+        ctx!.fill();
+        ctx!.strokeStyle = stroke;
+        ctx!.lineWidth = lw;
+        ctx!.lineJoin = "round";
+        ctx!.stroke();
+
+        if (leaf.rib.length > 1) {
+          ctx!.beginPath();
+          ctx!.moveTo(leaf.rib[0][0], leaf.rib[0][1]);
+          for (let i = 1; i < leaf.rib.length; i++) ctx!.lineTo(leaf.rib[i][0], leaf.rib[i][1]);
+          ctx!.lineWidth = lw * 0.5;
+          ctx!.stroke();
+          ctx!.lineWidth = lw;
+        }
+      }
+    }
+
     function drawInstance(inst: Instance, g: number, t: number) {
       const { meta } = inst;
       const st = stateRef.current;
@@ -577,6 +686,8 @@ export function LivingBlueprint({
         ctx!.strokeStyle = sel ? GOLD : verde(0.5);
         ctx!.lineWidth = lw;
         ctx!.stroke();
+      } else if (meta.kind === "rosette" && inst.model === "AgaveAmericana") {
+        drawAgaveBody(x, z, h, rw, stroke, fill, lw);
       } else if (meta.kind === "rosette") {
         const bp = P(x, 0, z);
         ctx!.strokeStyle = stroke;
