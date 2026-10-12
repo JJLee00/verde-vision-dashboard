@@ -155,6 +155,24 @@ type AgaveShape = {
  *  shows and what the plan symbol's scalloped rim says. */
 const LANTANAS = new Set(["WhiteDawnLantana", "PurpleLantana", "YellowLantana"]);
 
+/** The one place this viewer leaves its ink-on-sand palette.
+ *
+ *  With lantana the colour IS the species — three plants identical in habit
+ *  and size, told apart by nothing else — so a client looking at the 3D view
+ *  cannot read the design without it. It is confined to the flower heads:
+ *  stems, ground and everything else stay in verde, so the drawing still
+ *  reads as a drawing. Muted to sit on the sand rather than sing against it.
+ *
+ *  Deliberately NOT applied to the plan symbol. The blueprint is the thing
+ *  that gets printed, photocopied and marked up on a tailgate, and colour is
+ *  the first thing to fail there — the three keep their dashed rims, which
+ *  survive a monochrome print. */
+const LANTANA_BLOOM: Record<string, string> = {
+  WhiteDawnLantana: "rgba(252,248,238,0.85)",
+  PurpleLantana: "rgba(138,118,176,0.78)",
+  YellowLantana: "rgba(216,166,63,0.8)",
+};
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -570,6 +588,7 @@ export function LivingBlueprint({
       stroke: string,
       fill: string,
       lw: number,
+      bloom: string | undefined,
     ) {
       const N = 24;
       const headR = Math.max(ftPx(x, z, rw * 0.15), 1.6);
@@ -595,9 +614,12 @@ export function LivingBlueprint({
       for (const head of heads) {
         ctx!.beginPath();
         ctx!.arc(head.sx, head.sy, head.r, 0, 7);
+        // Paper first, so a near cluster still covers the one behind it,
+        // then the bloom over it — which both keeps the occlusion and lets
+        // the colour settle into the document instead of sitting on top.
         ctx!.fillStyle = LEAF_BODY;
         ctx!.fill();
-        ctx!.fillStyle = fill;
+        ctx!.fillStyle = bloom ?? fill;
         ctx!.fill();
         ctx!.stroke();
       }
@@ -939,7 +961,12 @@ export function LivingBlueprint({
 
       ctx!.globalAlpha = bodyA;
       if (LANTANAS.has(inst.model)) {
-        drawLantanaBody(x, z, h, rw, symRot, stroke, fill, lw);
+        // Selection still wins: a gold plant has been picked, and that has
+        // to read louder than the species colour.
+        drawLantanaBody(
+          x, z, h, rw, symRot, stroke, fill, lw,
+          sel ? undefined : LANTANA_BLOOM[inst.model],
+        );
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
