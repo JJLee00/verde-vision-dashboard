@@ -257,6 +257,62 @@ const TRUNCATA_FOLDS: Seg[] = [
   [0.7071, -0.7071, -0.7071, 0.7071],
 ];
 
+// Honey Mesquite — traced from mesquite-symbol.svg. One canopy section,
+// repeated on the quarter turns: a mesquite reads as a few big soft masses
+// with gaps between them, not as one outline. Normalised to a unit radius.
+//
+// The source draws the section with 481 points, roughly one every 2.5 units
+// of 800. Simplified to 101 by Douglas-Peucker at 0.6 units, which is 0.03 pt
+// on a printed symbol and a third of a pixel at the viewer's deepest zoom —
+// every undulation of the edge survives, and four sections cost 400 points
+// per plant per frame instead of 1,900.
+
+const MESQUITE_SECTION: [number, number][] = [
+  [0.0123, -0.0879], [0.0036, -0.1429], [-0.0275, -0.2055], [-0.0439, -0.2641],
+  [-0.0588, -0.2832], [-0.0962, -0.312], [-0.1087, -0.3251], [-0.1161, -0.3399],
+  [-0.1241, -0.3842], [-0.1328, -0.3987], [-0.1471, -0.4108], [-0.182, -0.4319],
+  [-0.1943, -0.4445], [-0.2002, -0.466], [-0.1964, -0.5101], [-0.1993, -0.5268],
+  [-0.2077, -0.5412], [-0.2308, -0.5673], [-0.2371, -0.5828], [-0.2347, -0.6077],
+  [-0.2067, -0.677], [-0.2028, -0.7303], [-0.1946, -0.7557], [-0.1711, -0.7902],
+  [-0.0819, -0.8949], [-0.0426, -0.9314], [0.0123, -0.9717], [0.0312, -0.9737],
+  [0.0893, -0.9897], [0.1182, -0.9887], [0.1368, -0.9822], [0.1814, -0.959],
+  [0.1995, -0.9533], [0.2184, -0.9516], [0.2685, -0.956], [0.2976, -0.9527],
+  [0.3236, -0.9393], [0.3628, -0.9078], [0.3795, -0.8987], [0.3977, -0.8934],
+  [0.4477, -0.8879], [0.4667, -0.8829], [0.4914, -0.8678], [0.5308, -0.8222],
+  [0.5453, -0.81], [0.5622, -0.8012], [0.6101, -0.7862], [0.6357, -0.7719],
+  [0.6547, -0.7496], [0.6788, -0.7055], [0.6907, -0.6907], [0.7055, -0.6788],
+  [0.7496, -0.6547], [0.7719, -0.6357], [0.7862, -0.6101], [0.8012, -0.5622],
+  [0.81, -0.5453], [0.8222, -0.5308], [0.8678, -0.4914], [0.8829, -0.4667],
+  [0.8879, -0.4477], [0.8934, -0.3977], [0.8987, -0.3795], [0.9078, -0.3628],
+  [0.9393, -0.3236], [0.9527, -0.2976], [0.956, -0.2685], [0.9516, -0.2184],
+  [0.9533, -0.1995], [0.959, -0.1814], [0.9822, -0.1368], [0.9887, -0.1182],
+  [0.9897, -0.0893], [0.9737, -0.0312], [0.9717, -0.0123], [0.9314, -0.0673],
+  [0.901, -0.1008], [0.7692, -0.2115], [0.7364, -0.2263], [0.6893, -0.2292],
+  [0.6706, -0.2332], [0.6146, -0.2571], [0.5885, -0.2623], [0.5673, -0.2554],
+  [0.5366, -0.229], [0.5215, -0.2223], [0.504, -0.2211], [0.466, -0.2248],
+  [0.4445, -0.219], [0.4319, -0.2066], [0.4108, -0.1717], [0.3987, -0.1574],
+  [0.3842, -0.1488], [0.3399, -0.1407], [0.3251, -0.1334], [0.312, -0.1209],
+  [0.2832, -0.0834], [0.2641, -0.0685], [0.2055, -0.0521], [0.1429, -0.021],
+  [0.0879, -0.0123],
+];
+
+/** The same ring on all four quarter turns. */
+const quarters = (ring: [number, number][]): [number, number][][] =>
+  [0, 1, 2, 3].map((k) => {
+    const a = (k * Math.PI) / 2;
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    return ring.map(([x, y]) => [x * c - y * s, x * s + y * c] as [number, number]);
+  });
+
+const MESQUITE: PlanSymbol = {
+  edge: "poly",
+  n: 4,
+  d: 0,
+  polys: quarters(MESQUITE_SECTION),
+  centre: "dot",
+};
+
 const AGAVE_TRUNCATA: PlanSymbol = {
   edge: "poly",
   n: 4,
@@ -321,7 +377,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   TexasEbonyLg: TREE(14, 0.1, branch(5, 3, 150)),
   TexasEbonyMd: TREE(14, 0.1, branch(5, 3, 150)),
   TexasEbonySm: TREE(14, 0.1, branch(5, 3, 150)),
-  HoneyMesquite: TREE(22, 0.07, branch(4, 3, 138)),
+  HoneyMesquite: MESQUITE,
   Vitex: { edge: "notch", n: 7, d: 0.17, interior: branch(3, 2, 105), centre: "plus" },
   Orange_Tree: { edge: "double", n: 0, d: 0, interior: tex(10), centre: "plus" },
   MulgaAcaciaLg: { edge: "tooth", n: 26, d: 0.07, interior: branch(3, 2, 92), centre: "plus" },
@@ -623,17 +679,20 @@ export function drawPlanSymbol(
   ctx.strokeStyle = o.stroke;
   // Centre marks ride the symbol's own size, with a floor so they survive
   // on a plan of a whole acre. A fixed 1.6 px dot looked like a speck once
-  // the symbol was any bigger than its printed size.
+  // the symbol was any bigger than its printed size — but the fraction has
+  // to be small, because it is a fraction of a 25 ft canopy as readily as a
+  // 2 ft barrel. The drawn symbols put their own centre at about a
+  // twenty-fifth of the radius, so that is the figure.
   if (sym.centre === "dot") {
     ctx.beginPath();
-    ctx.arc(c[0], c[1], Math.max(1.3, o.markR * 0.07), 0, 7);
+    ctx.arc(c[0], c[1], Math.max(1.3, o.markR * 0.04), 0, 7);
     ctx.fill();
   } else if (sym.centre === "hub") {
     ctx.beginPath();
     ctx.arc(c[0], c[1], Math.max(2, o.markR * 0.16), 0, 7);
     ctx.fill();
   } else if (sym.centre === "plus") {
-    const s = Math.max(2.8, o.markR * 0.14);
+    const s = Math.max(2.8, o.markR * 0.07);
     ctx.beginPath();
     ctx.moveTo(c[0] - s, c[1]);
     ctx.lineTo(c[0] + s, c[1]);

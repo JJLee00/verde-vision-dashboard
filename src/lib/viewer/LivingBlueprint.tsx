@@ -515,6 +515,72 @@ export function LivingBlueprint({
      *  upright in a tight spike at the middle. That spread — low skirt, hard
      *  vertical core — is the silhouette in the photograph.
      */
+    /** A trunk, rather than a line.
+     *
+     *  Every tree stood on a single stroke of constant width, which reads as
+     *  a pole holding up a canopy. A real one is thick at the ground, thins
+     *  as it rises, and forks low — on a mesquite low enough that the fork
+     *  is most of what you see of the wood. Drawn as tapered quads so the
+     *  width can actually change along the limb, which a stroke cannot do.
+     */
+    function drawTrunk(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      stroke: string,
+      lw: number,
+    ) {
+      // Taper in feet, floored in pixels so a tree on an acre plan still has
+      // a visible stem.
+      const limbQuad = (
+        ay: number,
+        by: number,
+        ar: number,
+        br: number,
+        aOut: number,
+        bOut: number,
+        az: number,
+      ) => {
+        const ca = Math.cos(az);
+        const sa = Math.sin(az);
+        const A = P(x + ca * aOut, ay, z + sa * aOut);
+        const B = P(x + ca * bOut, by, z + sa * bOut);
+        const dx = B[0] - A[0];
+        const dy = B[1] - A[1];
+        const L = Math.hypot(dx, dy) || 1;
+        const nx = -dy / L;
+        const ny = dx / L;
+        const wa = Math.max(ftPx(x, z, ar), 0.9);
+        const wb = Math.max(ftPx(x, z, br), 0.6);
+        ctx!.beginPath();
+        ctx!.moveTo(A[0] + nx * wa, A[1] + ny * wa);
+        ctx!.lineTo(B[0] + nx * wb, B[1] + ny * wb);
+        ctx!.lineTo(B[0] - nx * wb, B[1] - ny * wb);
+        ctx!.lineTo(A[0] - nx * wa, A[1] - ny * wa);
+        ctx!.closePath();
+        ctx!.fillStyle = LEAF_BODY;
+        ctx!.fill();
+        ctx!.fillStyle = verde(0.22);
+        ctx!.fill();
+        ctx!.strokeStyle = stroke;
+        ctx!.lineWidth = lw * 0.8;
+        ctx!.lineJoin = "round";
+        ctx!.stroke();
+      };
+
+      const forkY = h * 0.27;
+      const r0 = Math.max(rw * 0.055, 0.16); // half-width at the ground, ft
+      const r1 = r0 * 0.66; // at the fork
+      // Bole first, then the limbs over it, so the joint is covered.
+      limbQuad(0, forkY, r0, r1, 0, 0, 0);
+      for (let k = 0; k < 3; k++) {
+        const az = rot + (k / 3) * Math.PI * 2;
+        limbQuad(forkY, h * (0.56 + 0.1 * (k % 2)), r1 * 0.78, r1 * 0.24, 0, rw * 0.27, az);
+      }
+    }
+
     function drawAgaveBody(
       x: number,
       z: number,
@@ -691,16 +757,7 @@ export function LivingBlueprint({
       ctx!.globalAlpha = bodyA;
       if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
-        if (!isShrub) {
-          const base = P(x, 0, z);
-          const top = P(x, h * 0.62, z);
-          ctx!.strokeStyle = verde(0.7);
-          ctx!.lineWidth = Math.max(ftPx(x, z, 0.3), 1.2);
-          ctx!.beginPath();
-          ctx!.moveTo(base[0], base[1]);
-          ctx!.lineTo(top[0], top[1]);
-          ctx!.stroke();
-        }
+        if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
         ctx!.lineWidth = lw;
         ctx!.strokeStyle = stroke;
         ctx!.fillStyle = fill;
