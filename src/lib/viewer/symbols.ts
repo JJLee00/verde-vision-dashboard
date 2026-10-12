@@ -727,15 +727,21 @@ export function drawPlanSymbol(
      nothing else: a ring round it would be an outline the tree does not
      have, and the gaps between the twigs ARE the canopy edge. */
   if (sym.edge === "none") {
-    // nothing; straight on to the interior
-  } else if (sym.edge === "poly" && sym.polys) {
-    // Drawn vertex for vertex, not resampled by angle: a star this sharp
-    // loses its points to a 96-step sweep.
-    polyRing3D(ctx, P, x, z, R, sym.polys, o.rot);
+    // No outline — and no stroke either. Leaving the stroke outside this
+    // branch painted whatever path happened to be current: in plan that was
+    // the canopy disc built at zero alpha, in 3D the disc being filled right
+    // before. Both showed up as rings the drawing does not have.
+    ctx.beginPath();
   } else {
-    ring3D(ctx, P, x, z, R, sym, o.rot);
+    if (sym.edge === "poly" && sym.polys) {
+      // Drawn vertex for vertex, not resampled by angle: a star this sharp
+      // loses its points to a 96-step sweep.
+      polyRing3D(ctx, P, x, z, R, sym.polys, o.rot);
+    } else {
+      ring3D(ctx, P, x, z, R, sym, o.rot);
+    }
+    ctx.stroke();
   }
-  ctx.stroke();
   if (sym.edge === "double") {
     ring3D(ctx, P, x, z, R * 0.87, sym, o.rot);
     ctx.lineWidth = o.lw * 0.65;

@@ -896,8 +896,14 @@ export function LivingBlueprint({
         // branching inside it. The silhouette alone is the generic shape of
         // a canopy; the limbs are what say which tree it is.
         const canopyY = h * (isShrub ? 0.45 : 0.66);
-        symbolPath3D(ctx!, P, x, canopyY, z, rw, planSym, symRot);
-        ctx!.fill();
+        // A symbol with no outline has no canopy disc either: on a mulga the
+        // branches ARE the canopy, and a disc behind them is a shape the
+        // tree does not have.
+        const massed = planSym?.edge !== "none";
+        if (massed) {
+          symbolPath3D(ctx!, P, x, canopyY, z, rw, planSym, symRot);
+          ctx!.fill();
+        }
         if (planSym) {
           drawPlanSymbol(ctx!, P, x, z, rw, planSym, {
             rot: symRot,
@@ -911,9 +917,11 @@ export function LivingBlueprint({
         } else {
           ctx!.stroke();
         }
-        symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
-        ctx!.fill();
-        ctx!.stroke();
+        if (massed) {
+          symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
+          ctx!.fill();
+          ctx!.stroke();
+        }
       } else if (meta.kind === "palm") {
         const top = [x, h, z] as const;
         const tp = P(...top);
