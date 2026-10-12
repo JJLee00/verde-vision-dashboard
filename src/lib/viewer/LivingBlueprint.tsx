@@ -150,6 +150,11 @@ type AgaveShape = {
   stub: number;
 };
 
+/** Lantana is a groundcover, not a shrub with a canopy: a low spreading
+ *  mound carrying dozens of small flower clusters, which is what the scan
+ *  shows and what the plan symbol's scalloped rim says. */
+const LANTANAS = new Set(["WhiteDawnLantana", "PurpleLantana", "YellowLantana"]);
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -552,6 +557,53 @@ export function LivingBlueprint({
      *  skin, with a woolly crown. It was a plain ellipse, which is the right
      *  silhouette and nothing else — none of the ribbing that makes a barrel
      *  a barrel, and no clue which way is up. */
+    /** A lantana: the mound as its flower heads, since that is all you see
+     *  of one. Clusters sit on a flattened dome, spaced on the golden angle
+     *  so they spread evenly instead of banding, and are drawn back to front
+     *  so the near ones sit over the far ones. */
+    function drawLantanaBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      stroke: string,
+      fill: string,
+      lw: number,
+    ) {
+      const N = 24;
+      const headR = Math.max(ftPx(x, z, rw * 0.15), 1.6);
+      const heads: { sx: number; sy: number; depth: number; r: number }[] = [];
+      for (let k = 0; k < N; k++) {
+        // sqrt spreads them evenly by area rather than crowding the middle
+        const rr = Math.sqrt((k + 0.5) / N);
+        const a = rot + k * 2.399963;
+        const q = P(
+          x + Math.cos(a) * rw * rr * 0.9,
+          h * (0.85 - 0.6 * rr * rr),
+          z + Math.sin(a) * rw * rr * 0.9,
+        );
+        // Clusters are not all one size, and drawing them that way reads as
+        // a pattern rather than a plant. Varied off the index, so a given
+        // lantana looks the same every frame.
+        const vary = 0.74 + 0.52 * ((k * 0.6180339887) % 1);
+        heads.push({ sx: q[0], sy: q[1], depth: q[2], r: headR * vary });
+      }
+      heads.sort((p1, p2) => p2.depth - p1.depth);
+      ctx!.lineWidth = lw * 0.8;
+      ctx!.strokeStyle = stroke;
+      for (const head of heads) {
+        ctx!.beginPath();
+        ctx!.arc(head.sx, head.sy, head.r, 0, 7);
+        ctx!.fillStyle = LEAF_BODY;
+        ctx!.fill();
+        ctx!.fillStyle = fill;
+        ctx!.fill();
+        ctx!.stroke();
+      }
+      ctx!.lineWidth = lw;
+    }
+
     function drawBarrelBody(
       x: number,
       z: number,
@@ -886,7 +938,9 @@ export function LivingBlueprint({
       const markA = meta.kind === "light" ? 1 : t;
 
       ctx!.globalAlpha = bodyA;
-      if (meta.kind === "tree" || meta.kind === "shrub") {
+      if (LANTANAS.has(inst.model)) {
+        drawLantanaBody(x, z, h, rw, symRot, stroke, fill, lw);
+      } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
         ctx!.lineWidth = lw;

@@ -414,6 +414,63 @@ const MULGA_LIMBS: Limb[] = [
   [-0.857,-0.3696,0.003,-0.9124,-0.3935,0.0024], [-0.857,-0.3696,0.003,-0.8687,-0.4305,0.0024],
 ];
 
+// Lantana — from lantana.svg. A scalloped rim with tapering spokes running
+// out from the crown, and no two spokes the same length.
+//
+// The rim is exactly regular, so it is generated: 28 scallops, each a
+// quadratic from one rim point to the next through a control pulled in to
+// 0.89697, every point landing within a hundredth of a unit of the source.
+// Flattened to five samples a scallop, which at plan size is a point every
+// tenth of a millimetre. Only the spokes are hand-placed, so only the spokes
+// are stored — and they are the same tapering limb the mulga is built from,
+// run to nothing at the tip.
+
+const LANTANA_RIM: [number, number][] = (() => {
+  const N = 28;
+  const ctrl = 296 / 330;
+  const at = (k: number, r: number): [number, number] => {
+    const a = -Math.PI / 2 + (k * Math.PI * 2) / N;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  };
+  const out: [number, number][] = [];
+  for (let k = 0; k < N; k++) {
+    const p0 = at(k, 1);
+    const c = at(k + 0.5, ctrl);
+    const p1 = at(k + 1, 1);
+    for (let i = 0; i < 5; i++) {
+      const t = i / 5;
+      const m = 1 - t;
+      out.push([
+        m * m * p0[0] + 2 * m * t * c[0] + t * t * p1[0],
+        m * m * p0[1] + 2 * m * t * c[1] + t * t * p1[1],
+      ]);
+    }
+  }
+  return out;
+})();
+
+const LANTANA_SPOKES: Limb[] = [
+  [0,-0.0212,0.0152,0,-0.5303,0], [0.0112,-0.018,0.0288,0.5235,-0.8378,0],
+  [0.0189,-0.0096,0.0288,0.8802,-0.4485,0], [0.0211,0.0018,0.0197,0.3925,0.0343,0],
+  [0.0136,0.0163,0.0273,0.4578,0.5455,0], [0,0.0212,0.0152,0,0.5303,0],
+  [-0.0109,0.0182,0.0303,-0.5072,0.8442,0], [-0.0202,0.0066,0.0288,-0.8905,0.2894,0],
+  [-0.0212,0,0.0136,-0.3091,0,0], [-0.0147,-0.0153,0.0273,-0.5052,-0.5232,0],
+];
+
+/** The three lantanas are one drawing. They are told apart by the dash on
+ *  the rim, which is what already distinguished them and what survives a
+ *  monochrome print — colour would not. */
+const LANTANA = (dash: [number, number]): PlanSymbol => ({
+  edge: "poly",
+  n: 28,
+  d: 0,
+  polys: [LANTANA_RIM],
+  interior: { kind: "limbs", limbs: LANTANA_SPOKES },
+  centre: "dot",
+  centreR: 0.0485,
+  dash,
+});
+
 const MULGA: PlanSymbol = {
   edge: "none",
   n: 0,
@@ -567,9 +624,9 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   Firestick: { edge: "wand", n: 9, d: 0, centre: "none" },
 
   /* groundcover masses — dash as well as colour, so they survive mono printing */
-  WhiteDawnLantana: { edge: "broken", n: 0, d: 0, interior: tex(6), centre: "none", dash: [7, 4] },
-  PurpleLantana: { edge: "broken", n: 0, d: 0, interior: tex(6), centre: "none", dash: [2, 3] },
-  YellowLantana: { edge: "broken", n: 0, d: 0, interior: tex(6), centre: "none", dash: [11, 4] },
+  WhiteDawnLantana: LANTANA([7, 4]),
+  PurpleLantana: LANTANA([2, 3]),
+  YellowLantana: LANTANA([11, 4]),
 
   /* rock */
   AZBoulder1: { edge: "lumpy", n: 5, d: 0.15, centre: "none" },
