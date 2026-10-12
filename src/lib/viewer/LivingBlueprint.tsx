@@ -90,6 +90,31 @@ export type LivingBlueprintProps = {
 
 
 
+/** Convex hull, Andrew's monotone chain. A barrel cactus is a convex body,
+ *  so its outline on screen is the hull of its surface — which stays right
+ *  at any camera angle, where a drawn ellipse is only right from straight
+ *  on and goes wrong the moment the view tips. */
+function convexHull(pts: [number, number][]): [number, number][] {
+  if (pts.length < 3) return pts;
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (
+    o: [number, number],
+    a: [number, number],
+    b: [number, number],
+  ) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (src: [number, number][]) => {
+    const out: [number, number][] = [];
+    for (const q of src) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0)
+        out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
 /** How one agave species is put together, as fractions of its own mature
  *  width and height. Every number is a pair read [youngest, oldest]: a
  *  rosette's leaves differ by age, and the SPREAD between those two numbers
@@ -523,6 +548,112 @@ export function LivingBlueprint({
      *  is most of what you see of the wood. Drawn as tapered quads so the
      *  width can actually change along the limb, which a stroke cannot do.
      */
+    /** A barrel cactus, from the scan: a squat ribbed dome under a spiny
+     *  skin, with a woolly crown. It was a plain ellipse, which is the right
+     *  silhouette and nothing else — none of the ribbing that makes a barrel
+     *  a barrel, and no clue which way is up. */
+    function drawBarrelBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      stroke: string,
+      fill: string,
+      lw: number,
+    ) {
+      // The plant as a surface of revolution — a sphere squashed to its own
+      // height. t runs 0 at the crown to 1 at the soil.
+      const surf = (t: number, a: number) => {
+        const th = t * Math.PI;
+        const r = rw * Math.sin(th);
+        return P(x + Math.cos(a) * r, (h / 2) * (1 + Math.cos(th)), z + Math.sin(a) * r);
+      };
+
+      const cloud: [number, number][] = [];
+      for (let i = 0; i <= 8; i++)
+        for (let k = 0; k < 18; k++) {
+          const q = surf(i / 8, (k / 18) * Math.PI * 2);
+          cloud.push([q[0], q[1]]);
+        }
+      const hull = convexHull(cloud);
+      if (hull.length < 3) return;
+
+      ctx!.beginPath();
+      ctx!.moveTo(hull[0][0], hull[0][1]);
+      for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
+      ctx!.closePath();
+      ctx!.fillStyle = LEAF_BODY;
+      ctx!.fill();
+      ctx!.fillStyle = fill;
+      ctx!.fill();
+      ctx!.strokeStyle = stroke;
+      ctx!.lineWidth = lw;
+      ctx!.lineJoin = "round";
+      ctx!.stroke();
+
+      // Spines: short ticks standing off the rim at an even spacing round
+      // the outline, which is what the serrations in the plan mark are.
+      let perim = 0;
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i + 1) % hull.length];
+        perim += Math.hypot(b[0] - a[0], b[1] - a[1]);
+      }
+      const cxs = hull.reduce((t, q) => t + q[0], 0) / hull.length;
+      const cys = hull.reduce((t, q) => t + q[1], 0) / hull.length;
+      const spike = Math.max(2, Math.min(perim * 0.018, 9));
+      const step = perim / 26;
+      let carry = 0;
+      ctx!.lineWidth = lw * 0.6;
+      ctx!.beginPath();
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i];
+        const b = hull[(i + 1) % hull.length];
+        const seg = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        for (let d = carry; d < seg; d += step) {
+          const u = d / seg;
+          const px = a[0] + (b[0] - a[0]) * u;
+          const py = a[1] + (b[1] - a[1]) * u;
+          const nx = px - cxs;
+          const ny = py - cys;
+          const nl = Math.hypot(nx, ny) || 1;
+          ctx!.moveTo(px, py);
+          ctx!.lineTo(px + (nx / nl) * spike, py + (ny / nl) * spike);
+        }
+        carry = step - ((seg - carry) % step);
+      }
+      ctx!.stroke();
+
+      // Ribs, but only the ones facing us: the body is opaque, so drawing
+      // the far side as well would read as a wireframe.
+      const mid = P(x, h / 2, z);
+      ctx!.lineWidth = lw * 0.7;
+      for (let k = 0; k < 13; k++) {
+        const a = rot + (k / 13) * Math.PI * 2;
+        if (surf(0.5, a)[2] >= mid[2]) continue;
+        ctx!.beginPath();
+        for (let i = 0; i <= 9; i++) {
+          const q = surf(0.08 + (i / 9) * 0.86, a);
+          if (i) ctx!.lineTo(q[0], q[1]);
+          else ctx!.moveTo(q[0], q[1]);
+        }
+        ctx!.stroke();
+      }
+
+      // The crown: the wool and new spines sit in a tight ring on top.
+      ctx!.beginPath();
+      for (let k = 0; k <= 16; k++) {
+        const q = surf(0.17, (k / 16) * Math.PI * 2);
+        if (k) ctx!.lineTo(q[0], q[1]);
+        else ctx!.moveTo(q[0], q[1]);
+      }
+      ctx!.closePath();
+      ctx!.lineWidth = lw * 0.7;
+      ctx!.stroke();
+      ctx!.lineWidth = lw;
+    }
+
     function drawTrunk(
       x: number,
       z: number,
@@ -841,17 +972,7 @@ export function LivingBlueprint({
         }
         ctx!.lineCap = "butt";
       } else if (meta.kind === "barrel") {
-        const base = P(x, 0, z);
-        const top = P(x, h, z);
-        const rx = Math.max(ftPx(x, z, rw), 2);
-        const ry = Math.max(base[1] - top[1], 2);
-        ctx!.beginPath();
-        ctx!.ellipse(base[0], base[1] - ry / 2, rx, ry / 1.6, 0, 0, Math.PI * 2);
-        ctx!.fillStyle = fill;
-        ctx!.fill();
-        ctx!.strokeStyle = stroke;
-        ctx!.lineWidth = lw;
-        ctx!.stroke();
+        drawBarrelBody(x, z, h, rw, symRot, stroke, fill, lw);
       } else if (meta.kind === "boulder") {
         const w = Math.min(Math.max(1.2 * inst.scale, 0.8), 6);
         const bh = (w * meta.renderHeightFt) / meta.matureWidthFt;

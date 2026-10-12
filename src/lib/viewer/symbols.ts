@@ -67,6 +67,9 @@ export type PlanSymbol = {
   /** weight of the `lines` interior's `fine` set, against the main one.
    *  Defaults to the 0.6 most of the drawings use. */
   fineScale?: number;
+  /** centre mark radius as a fraction of the symbol's, when the drawing
+   *  calls for its own. A barrel's areole is a quarter of the plant. */
+  centreR?: number;
 };
 
 /* ---------- edges: r(theta) in [0,1] ---------- */
@@ -305,6 +308,39 @@ const quarters = (ring: [number, number][]): [number, number][][] =>
     return ring.map(([x, y]) => [x * c - y * s, x * s + y * c] as [number, number]);
   });
 
+// Golden Barrel — from golden-barrel-symbol.svg. That drawing is exactly
+// regular, so it is generated from its own figures rather than stored as 72
+// points: 36 teeth on five degree steps from straight up, alternating the
+// full radius with 0.915149 of it, six ribs on the sixties, and a solid
+// centre at 0.0909. Rebuilt this way every vertex lands within a thousandth
+// of a unit of the source — the shape IS the arithmetic.
+
+const GOLDEN_BARREL_RING: [number, number][] = Array.from(
+  { length: 72 },
+  (_, i): [number, number] => {
+    const a = -Math.PI / 2 + (i * Math.PI) / 36;
+    const r = i % 2 === 0 ? 1 : 0.915149;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  },
+);
+
+// Drawn at 5 against the outline's 4 in the source. They carry the symbol's
+// main weight here; a quarter more on a rib is not a difference a plan holds.
+const GOLDEN_BARREL_RIBS: Seg[] = Array.from({ length: 6 }, (_, k): Seg => {
+  const a = -Math.PI / 2 + (k * Math.PI) / 3;
+  return [0, 0, Math.cos(a), Math.sin(a)];
+});
+
+const GOLDEN_BARREL: PlanSymbol = {
+  edge: "poly",
+  n: 36,
+  d: 0,
+  polys: [GOLDEN_BARREL_RING],
+  interior: { kind: "lines", segs: GOLDEN_BARREL_RIBS },
+  centre: "dot",
+  centreR: 0.0909,
+};
+
 const MESQUITE: PlanSymbol = {
   edge: "poly",
   n: 4,
@@ -414,7 +450,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   MoroccanMound: CLUSTER(6, false, true),
   MadagascarPalm: { edge: "spiky", n: 14, d: 0.48, interior: radial(14, 1.1, 0.14, 0.96), centre: "hub" },
   TotemPole: { edge: "lumpy", n: 7, d: 0.19, centre: "hub" },
-  GoldenBarrel: { edge: "tooth", n: 34, d: 0.07, interior: radial(24, 0.8, 0.62, 0.94), centre: "dot" },
+  GoldenBarrel: GOLDEN_BARREL,
   Firebarrel: { edge: "tooth", n: 20, d: 0.11, interior: radial(14, 1.4, 0.55, 0.92), centre: "dot" },
 
   /* pads and wands — no canopy to outline */
@@ -685,7 +721,7 @@ export function drawPlanSymbol(
   // twenty-fifth of the radius, so that is the figure.
   if (sym.centre === "dot") {
     ctx.beginPath();
-    ctx.arc(c[0], c[1], Math.max(1.3, o.markR * 0.04), 0, 7);
+    ctx.arc(c[0], c[1], Math.max(1.3, o.markR * (sym.centreR ?? 0.04)), 0, 7);
     ctx.fill();
   } else if (sym.centre === "hub") {
     ctx.beginPath();
