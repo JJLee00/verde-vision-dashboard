@@ -414,9 +414,18 @@ export function LivingBlueprint({
         eye[2] + (fw[2] + rt[2] * u - up[2] * v) * t,
       ];
     };
+    /** How many screen pixels a foot covers at a point on the ground.
+     *
+     *  Measured ACROSS the view, never along the world's X axis. Measuring
+     *  along X was the bug behind flower heads and tree trunks that shrank
+     *  from some angles and not others: orbit until X points at the camera
+     *  and that offset foreshortens to nothing, so everything sized by it
+     *  collapsed. The camera's right vector is horizontal and always square
+     *  to the view, so a foot along it is never foreshortened — which is
+     *  what "a foot, on screen, here" has to mean. */
     const ftPx = (x: number, z: number, r: number) => {
       const a = P(x, 0, z);
-      const b = P(x + r, 0, z);
+      const b = P(x + rt[0] * r, 0, z + rt[2] * r);
       return Math.hypot(b[0] - a[0], b[1] - a[1]);
     };
 
@@ -591,16 +600,16 @@ export function LivingBlueprint({
       bloom: string | undefined,
     ) {
       const N = 24;
-      const headR = Math.max(ftPx(x, z, rw * 0.15), 1.6);
+      const headR = Math.max(ftPx(x, z, rw * 0.18), 1.6);
       const heads: { sx: number; sy: number; depth: number; r: number }[] = [];
       for (let k = 0; k < N; k++) {
         // sqrt spreads them evenly by area rather than crowding the middle
         const rr = Math.sqrt((k + 0.5) / N);
         const a = rot + k * 2.399963;
         const q = P(
-          x + Math.cos(a) * rw * rr * 0.9,
-          h * (0.85 - 0.6 * rr * rr),
-          z + Math.sin(a) * rw * rr * 0.9,
+          x + Math.cos(a) * rw * rr * 0.72,
+          h * (0.52 - 0.38 * rr * rr),
+          z + Math.sin(a) * rw * rr * 0.72,
         );
         // Clusters are not all one size, and drawing them that way reads as
         // a pattern rather than a plant. Varied off the index, so a given
