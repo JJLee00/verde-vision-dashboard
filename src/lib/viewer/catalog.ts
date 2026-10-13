@@ -555,17 +555,26 @@ export const CATALOG: Record<string, SpeciesMeta> = {
 
 /** Mature spread as the app states it, keyed by the model name a placement
  *  carries. Built once from the generated catalog. */
-const APP_WIDTH_FT: Record<string, number> = (() => {
+const APP_WIDTH_FT: Record<string, number> = appDims("matureWidthFt");
+
+/** Mature height as the app states it. This replaces renderHeightFt, which
+ *  was 29 hand-picked numbers overriding the real figure by anything from
+ *  0.73 to 0.35 — trees shrunk by a fifth, a fan palm by nearly two thirds,
+ *  boulders drawn TALLER than they are. A saguaro really does tower over a
+ *  lantana, and the drawing is more use when it says so. */
+const APP_HEIGHT_FT: Record<string, number> = appDims("matureHeightFt");
+
+function appDims(field: "matureWidthFt" | "matureHeightFt"): Record<string, number> {
   const out: Record<string, number> = {};
   for (const plant of appCatalog.plants) {
-    const w = plant.matureWidthFt;
-    if (typeof w !== "number") continue;
+    const v = plant[field];
+    if (typeof v !== "number") continue;
     for (const size of plant.sizes ?? []) {
-      if (size.modelName) out[size.modelName] = w;
+      if (size.modelName) out[size.modelName] = v;
     }
   }
   return out;
-})();
+}
 
 /** Meta for a model the catalog doesn't know yet (new scans land in the
  *  app before anyone updates this file). Draws a generic rosette at a
@@ -575,10 +584,15 @@ export function speciesMeta(modelName: string): SpeciesMeta {
   // The app's figure wins wherever it has one; the entry's own width is only
   // there for models the app has stopped shipping.
   const width = APP_WIDTH_FT[modelName];
+  const height = APP_HEIGHT_FT[modelName];
   if (known) {
-    return width != null && width !== known.matureWidthFt
-      ? { ...known, matureWidthFt: width }
-      : known;
+    if (width == null && height == null) return known;
+    return {
+      ...known,
+      matureWidthFt: width ?? known.matureWidthFt,
+      matureHeightFt: height ?? known.matureHeightFt,
+      renderHeightFt: height ?? known.renderHeightFt,
+    };
   }
   const code = modelName
     .replace(/[^A-Za-z]/g, "")
