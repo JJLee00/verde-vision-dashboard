@@ -1,10 +1,21 @@
 // Species metadata for the living-blueprint viewer, keyed by the app's
-// PlacedPlant.plantModelName. Mirrors Test/Test/Models/PlantItem.swift
-// (sampleCatalog) in the Vision Pro repo — keep the two in sync when a
-// species is added there.
+// PlacedPlant.plantModelName.
+//
+// MATURE SPREAD IS NOT KEPT HERE. It is read from catalog.json, which is
+// generated from the app's own PlantItem.sampleCatalog — the same figures
+// the app prints in its info panel. It used to be written out below as
+// well, and the two drifted: an Argentine Toothpick stood at ten feet here
+// and three on the printed sheet of the same design. One number per plant,
+// and the app owns it.
+//
+// What stays here is how a species is DRAWN — its glyph and its code —
+// which is a drawing decision rather than a fact about the plant. The
+// matureWidthFt written in each entry below is a fallback, used only for
+// models the app no longer ships.
 //
 // renderHeightFt caps how tall the stylized glyph draws; several species
-// (fan palm, saguaro) have mature heights that would dwarf the drawing.
+// have mature heights that would dwarf the drawing.
+import appCatalog from "@/lib/catalog.json";
 
 export type GlyphKind =
   | "tree"
@@ -516,7 +527,7 @@ export const CATALOG: Record<string, SpeciesMeta> = {
     botanical: "Lantana montevidensis",
     kind: "shrub",
     matureHeightFt: 2,
-    matureWidthFt: 3,
+    matureWidthFt: 6,
     renderHeightFt: 2,
     prices: {},
   },
@@ -526,7 +537,7 @@ export const CATALOG: Record<string, SpeciesMeta> = {
     botanical: "Lantana 'White Dawn'",
     kind: "shrub",
     matureHeightFt: 2,
-    matureWidthFt: 3,
+    matureWidthFt: 6,
     renderHeightFt: 2,
     prices: {},
   },
@@ -536,18 +547,39 @@ export const CATALOG: Record<string, SpeciesMeta> = {
     botanical: "Lantana 'New Gold'",
     kind: "shrub",
     matureHeightFt: 2,
-    matureWidthFt: 3,
+    matureWidthFt: 6,
     renderHeightFt: 2,
     prices: {},
   },
 };
+
+/** Mature spread as the app states it, keyed by the model name a placement
+ *  carries. Built once from the generated catalog. */
+const APP_WIDTH_FT: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  for (const plant of appCatalog.plants) {
+    const w = plant.matureWidthFt;
+    if (typeof w !== "number") continue;
+    for (const size of plant.sizes ?? []) {
+      if (size.modelName) out[size.modelName] = w;
+    }
+  }
+  return out;
+})();
 
 /** Meta for a model the catalog doesn't know yet (new scans land in the
  *  app before anyone updates this file). Draws a generic rosette at a
  *  modest size and shows the raw model name in the rail. */
 export function speciesMeta(modelName: string): SpeciesMeta {
   const known = CATALOG[modelName];
-  if (known) return known;
+  // The app's figure wins wherever it has one; the entry's own width is only
+  // there for models the app has stopped shipping.
+  const width = APP_WIDTH_FT[modelName];
+  if (known) {
+    return width != null && width !== known.matureWidthFt
+      ? { ...known, matureWidthFt: width }
+      : known;
+  }
   const code = modelName
     .replace(/[^A-Za-z]/g, "")
     .replace(/[a-z]/g, "")
