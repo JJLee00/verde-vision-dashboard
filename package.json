@@ -10,7 +10,9 @@
     "prepare": "husky",
     "gen:catalog": "node scripts/gen-catalog.mjs",
     "sync:catalog": "node scripts/gen-catalog.mjs && python3 scripts/sync-thumbs.py",
-    "check:estimate": "node scripts/check-estimate-parity.mjs"
+    "check:estimate": "node scripts/check-estimate-parity.mjs",
+    "gen:plan-symbols": "node scripts/gen-plan-symbols.mjs",
+    "check:plan-symbols": "node scripts/gen-plan-symbols.mjs --check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

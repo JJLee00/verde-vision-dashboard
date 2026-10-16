@@ -59,9 +59,13 @@ export function buildScene(project: ProjectFileJSON): Scene {
       meta: speciesMeta(p.plantModelName),
       x,
       z,
+      // A turn of +yaw about +Y carries the model's +X to (cos, -sin) on the
+      // ground, while everything here turns (x, z) by (cos, +sin) — so the
+      // yaw is SUBTRACTED. Adding it mirrored every turn: an uplight placed
+      // out along +X, its beam thrown along +X, drew that beam along +Z.
       yawDeg:
-        quatYawDeg(p.rotationX, p.rotationY, p.rotationZ, p.rotationW) +
-        (phi * 180) / Math.PI,
+        (phi * 180) / Math.PI -
+        quatYawDeg(p.rotationX, p.rotationY, p.rotationZ, p.rotationW),
       scale: p.scaleX || 1,
       containerType: p.containerType ?? null,
     };

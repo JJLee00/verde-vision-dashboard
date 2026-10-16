@@ -6,6 +6,13 @@
 // blueprint PDF in the visionOS app and this viewer, so that plan mode here
 // and the printed sheet are the same drawing.
 //
+// And it does: `npm run gen:plan-symbols` writes this table out as
+// Test/Test/Blueprint/plan-symbols.json in the app, whose PDF exporter draws
+// from it with a line-for-line port of drawPlanSymbol below. Change a symbol
+// here → rerun that, commit the JSON in the app. `npm run check:plan-symbols`
+// fails while the app's copy is behind. Change how a symbol is DRAWN (this
+// file's drawing code, not the table) → change PlanSymbols.swift to match.
+//
 // Keyed by PlacedPlant.plantModelName, with a fallback derived from the
 // viewer catalog's GlyphKind so a model nobody has classified yet still
 // draws something sensible.
@@ -133,7 +140,7 @@ function polyRadius(poly: [number, number][], t: number): number {
 
 /* ---------- stable per-plant jitter ---------- */
 
-function rngFor(seed: string): () => number {
+export function rngFor(seed: string): () => number {
   let h = 2166136261 >>> 0;
   for (let i = 0; i < seed.length; i++) {
     h ^= seed.charCodeAt(i);
@@ -643,7 +650,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   NightPathlight: { edge: "pathlight", n: 0, d: 0, centre: "none" },
 };
 
-const BY_KIND: Record<string, PlanSymbol> = {
+export const BY_KIND: Record<string, PlanSymbol> = {
   tree: TREE(14, 0.1, branch(4, 3, 130)),
   shrub: { edge: "scallop", n: 20, d: 0.09, interior: tex(8), centre: "dot" },
   rosette: ROSETTE(13, 0.33, 2.0),
@@ -1048,11 +1055,15 @@ function drawFixture(
     return;
   }
   const half = kind === "uplight" ? 0.38 : 0.8; // radians of beam
+  // A fixture throws its beam along its own +Z (NightLighting.facingYaw in
+  // the app turns +Z to face away from the designer), which in a symbol's
+  // frame is a quarter turn on from +X.
+  const aim = o.rot + Math.PI / 2;
   const c = P(x, z);
   ctx.beginPath();
   ctx.moveTo(c[0], c[1]);
   for (let k = 0; k <= 16; k++) {
-    const a = o.rot - half + (2 * half * k) / 16;
+    const a = aim - half + (2 * half * k) / 16;
     const s = P(x + Math.cos(a) * r * 2.2, z + Math.sin(a) * r * 2.2);
     ctx.lineTo(s[0], s[1]);
   }
@@ -1063,9 +1074,9 @@ function drawFixture(
   ctx.stroke();
   ctx.setLineDash([]);
   // the fixture itself: a small solid triangle pointing where it aims
-  const tip = P(x + Math.cos(o.rot) * r * 0.9, z + Math.sin(o.rot) * r * 0.9);
-  const b1 = P(x + Math.cos(o.rot + 2.4) * r * 0.7, z + Math.sin(o.rot + 2.4) * r * 0.7);
-  const b2 = P(x + Math.cos(o.rot - 2.4) * r * 0.7, z + Math.sin(o.rot - 2.4) * r * 0.7);
+  const tip = P(x + Math.cos(aim) * r * 0.9, z + Math.sin(aim) * r * 0.9);
+  const b1 = P(x + Math.cos(aim + 2.4) * r * 0.7, z + Math.sin(aim + 2.4) * r * 0.7);
+  const b2 = P(x + Math.cos(aim - 2.4) * r * 0.7, z + Math.sin(aim - 2.4) * r * 0.7);
   ctx.beginPath();
   ctx.moveTo(tip[0], tip[1]);
   ctx.lineTo(b1[0], b1[1]);
