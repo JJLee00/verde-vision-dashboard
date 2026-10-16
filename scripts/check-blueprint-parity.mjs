@@ -24,7 +24,10 @@ import { createJiti } from "jiti";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const jiti = createJiti(import.meta.url, { alias: { "@": join(root, "src") } });
-const { sheetLayout, plantMarks, plantSchedule } = await jiti.import(join(root, "src/lib/blueprint/sheet.ts"));
+const { sheetLayout, plantMarks, plantSchedule, scheduleFit, sheetCount, legendCounts } = await jiti.import(
+  join(root, "src/lib/blueprint/sheet.ts"),
+);
+const catalog = JSON.parse(readFileSync(join(root, "src/lib/catalog.json"), "utf8"));
 const { FIXTURE_PROJECT } = await jiti.import(join(root, "src/lib/viewer/fixture.ts"));
 
 const FILE = join(root, "src/lib/blueprint/blueprint-parity.json");
@@ -57,6 +60,12 @@ function expectFor(project) {
       rot: r4(wrap(m.rot)),
     })),
     schedule: plantSchedule(project.placements ?? []),
+    ...(() => {
+      const rows = plantSchedule(project.placements ?? []).length;
+      const { featureTypes, surfaceStyles } = legendCounts(project);
+      const fit = scheduleFit(rows, featureTypes, surfaceStyles);
+      return { fit, sheets: sheetCount(rows, fit) };
+    })(),
   };
 }
 
@@ -116,6 +125,27 @@ function turnedYard() {
   };
 }
 
+/** Every plant in every size it comes in: a schedule far too long for the
+ *  title column, so it has to continue on a second sheet. */
+function bigOrder() {
+  let n = 5000;
+  const placements = [];
+  for (const plant of catalog.plants) {
+    for (const size of plant.sizes) {
+      if (!size.modelName) continue;
+      const i = placements.length;
+      placements.push({
+        id: uuid(n++), plantModelName: size.modelName,
+        positionX: (i % 12) * 2.5, positionY: 0, positionZ: Math.floor(i / 12) * 2.5,
+        rotationX: 0, rotationY: 0, rotationZ: 0, rotationW: 1,
+        scaleX: size.heightMultiplier, scaleY: size.heightMultiplier, scaleZ: size.heightMultiplier,
+        containerType: size.size,
+      });
+    }
+  }
+  return { projectName: "Big order", northHeadingDegrees: null, placements };
+}
+
 function seed() {
   const subset = (p) => ({
     projectName: p.projectName,
@@ -126,7 +156,13 @@ function seed() {
     removalMarkers: p.removalMarkers ?? [],
     placements: p.placements ?? [],
   });
-  return { cases: [{ name: "sample yard", project: subset(FIXTURE_PROJECT) }, { name: "turned yard", project: subset(turnedYard()) }] };
+  return {
+    cases: [
+      { name: "sample yard", project: subset(FIXTURE_PROJECT) },
+      { name: "turned yard", project: subset(turnedYard()) },
+      { name: "big order", project: subset(bigOrder()) },
+    ],
+  };
 }
 
 // ── Run ───────────────────────────────────────────────────────────────────
@@ -141,7 +177,7 @@ for (const c of fixture.cases) {
   const got = expectFor(c.project);
   if (write) {
     c.expect = got;
-    console.log(`wrote  ${c.name}: ${got?.marks.length ?? 0} marks, ${got?.schedule.length ?? 0} schedule rows`);
+    console.log(`wrote  ${c.name}: ${got?.marks.length ?? 0} marks, ${got?.schedule.length ?? 0} schedule rows, fit ${JSON.stringify(got?.fit)}, ${got?.sheets} sheet(s)`);
   } else if (JSON.stringify(got) !== JSON.stringify(c.expect)) {
     failed++;
     console.log(`FAIL   ${c.name}\n  expected ${JSON.stringify(c.expect).slice(0, 400)}\n  got      ${JSON.stringify(got).slice(0, 400)}`);

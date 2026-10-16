@@ -12,6 +12,7 @@
 // `npm run check:blueprint -- --write` and copy the JSON across.
 
 import { plantForModel, type CatalogPlant, type CatalogSize } from "@/lib/design-edit";
+import { surfaceStyle } from "@/lib/surfaces";
 import { speciesMeta } from "@/lib/viewer/catalog";
 import { symbolFor, type PlanSymbol } from "@/lib/viewer/symbols";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
@@ -242,4 +243,91 @@ export function plantSchedule(placements: PlacedPlantJSON[]): ScheduleRow[] {
   return [...rows.values()]
     .sort((a, b) => cmp(a.code, b.code) || cmp(a.name, b.name) || cmp(a.rank, b.rank))
     .map(({ code, name, size, quantity }) => ({ code, name, size, quantity }));
+}
+
+// ── Fitting the schedule ──────────────────────────────────────────────────
+//
+// The title column is fixed: the schedule's heading at SCHEDULE_TOP, the
+// title block at TITLE_BLOCK_TOP. A long schedule used to run straight on
+// down — over the legends and into the title block — because its row size
+// was picked from the row COUNT alone, never from the room.
+//
+// Now, in order: the largest row size that fits with the legends; then the
+// legends go (they only repeat the map, where every feature and surface is
+// labelled by name) and the largest size that fits without them; then, at
+// the smallest size, as many rows as fit, the last line saying the rest
+// continue on the next sheet.
+
+/** The "PLANT SCHEDULE" heading. A fixed line, so the row maths can't hang
+ *  on how tall a font happens to set the logo above it. */
+export const SCHEDULE_TOP = SHEET.margin + 110;
+/** The first schedule row: heading, rule, column heads, rule. */
+export const SCHEDULE_FIRST_ROW = SCHEDULE_TOP + 25;
+export const TITLE_BLOCK_TOP = SHEET.height - SHEET.margin - 140;
+/** Row height and font size, largest first. */
+export const SCHEDULE_TIERS: [number, number][] = [
+  [11, 7],
+  [9, 6.5],
+  [8, 6],
+  [7, 5.5],
+];
+
+/** The legends under the schedule: each a gap, heading, rule and a row per
+ *  kind shown — and none at all for a kind the yard doesn't have. */
+export function legendsHeight(featureTypes: number, surfaceStyles: number): number {
+  const one = (n: number) => (n > 0 ? 14 + 10 + 5 + 14 * n : 0);
+  return one(featureTypes) + one(surfaceStyles);
+}
+
+export type ScheduleFit = {
+  rowHeight: number;
+  fontSize: number;
+  legends: boolean;
+  /** rows on the first sheet; any more continue on the next */
+  rowsOnSheet: number;
+};
+
+export function scheduleFit(rows: number, featureTypes: number, surfaceStyles: number): ScheduleFit {
+  const bottom = TITLE_BLOCK_TOP - 8;
+  for (const legends of [true, false]) {
+    const room = bottom - SCHEDULE_FIRST_ROW - (legends ? legendsHeight(featureTypes, surfaceStyles) : 0);
+    for (const [rowHeight, fontSize] of SCHEDULE_TIERS) {
+      if (rows * rowHeight <= room) return { rowHeight, fontSize, legends, rowsOnSheet: rows };
+    }
+  }
+  const [rowHeight, fontSize] = SCHEDULE_TIERS[SCHEDULE_TIERS.length - 1];
+  // One slot kept for the "continued" line.
+  const fit = Math.floor((bottom - SCHEDULE_FIRST_ROW) / rowHeight) - 1;
+  return { rowHeight, fontSize, legends: false, rowsOnSheet: Math.max(0, fit) };
+}
+
+/** The continuation sheets: the rest of the schedule in three columns of
+ *  11 pt rows, as many sheets as it takes. */
+export const CONTINUED = {
+  columns: 3,
+  top: SHEET.margin + 56,
+  rowHeight: 11,
+  fontSize: 7,
+  bottom: SHEET.height - SHEET.margin - 30,
+} as const;
+
+export const CONTINUED_ROWS_PER_COLUMN = Math.floor(
+  (CONTINUED.bottom - (CONTINUED.top + 11)) / CONTINUED.rowHeight,
+);
+
+/** How many sheets the whole blueprint runs to. */
+export function sheetCount(rows: number, fit: ScheduleFit): number {
+  const rest = rows - fit.rowsOnSheet;
+  return 1 + (rest > 0 ? Math.ceil(rest / (CONTINUED.columns * CONTINUED_ROWS_PER_COLUMN)) : 0);
+}
+
+/** The distinct feature kinds and surface styles the legends would show —
+ *  every traced shape counts, as on the headset, closed or not. */
+export function legendCounts(project: ProjectFileJSON) {
+  return {
+    featureTypes: new Set((project.featurePolygons ?? []).map((f) => f.featureType)).size,
+    surfaceStyles: new Set(
+      (project.hardscapeAreas ?? []).map((h) => surfaceStyle(h.style)?.case ?? "concrete"),
+    ).size,
+  };
 }

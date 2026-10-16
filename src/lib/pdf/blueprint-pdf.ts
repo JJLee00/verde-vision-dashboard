@@ -1,11 +1,18 @@
 import { createDoc, FONT, longDate, toBuffer, type Doc } from "./doc";
 import { PdfCanvas } from "./canvas-on-pdf";
 import {
+  CONTINUED,
+  CONTINUED_ROWS_PER_COLUMN,
   PX,
+  SCHEDULE_TOP,
   SHEET,
+  legendCounts,
   plantMarks,
   plantSchedule,
+  scheduleFit,
+  sheetCount,
   sheetLayout,
+  type ScheduleRow,
   type SheetLayout,
 } from "@/lib/blueprint/sheet";
 import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
@@ -587,7 +594,8 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
     hline(doc, colX + 6, colX + T - 6, colY, gray(0.55), 0.5);
   };
 
-  // Plant schedule.
+  // Plant schedule, from a fixed line so the fit below is the headset's.
+  colY = SCHEDULE_TOP;
   section("PLANT SCHEDULE");
   colY += 4;
   const codeColX = colX + 6;
@@ -603,54 +611,58 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   colY += 3;
 
   const schedule = plantSchedule(project.placements ?? []);
-  const n = schedule.length;
-  const [rowH, rowSize] = n <= 10 ? [11, 7] : n <= 16 ? [9, 6.5] : n <= 22 ? [8, 6] : [7, 5.5];
-  const body: Font = { name: FONT.sans, size: rowSize };
-  const nameWidth = sizeColX - nameColX - 3;
-  for (const row of schedule) {
-    text(doc, row.code, codeColX, colY, body, gray(0.15));
-    let name = row.name;
-    while (name.length > 1 && measure(doc, name, body).w > nameWidth) {
-      name = name.slice(0, name.endsWith("…") ? -2 : -1).trim() + "…";
-    }
-    text(doc, name, nameColX, colY, body, gray(0.15));
-    text(doc, row.size, sizeColX, colY, body, gray(0.15));
-    const qty = String(row.quantity);
-    text(doc, qty, qtyColX - measure(doc, qty, body).w, colY, body, gray(0.15));
-    colY += rowH;
-  }
-  colY += 14;
-
-  // Existing features legend: only the kinds this yard has.
-  section("EXISTING FEATURES");
-  colY += 5;
-  const usedFeatures = new Set(features.map((f) => f.featureType));
-  for (const type of FEATURE_ORDER.filter((t) => usedFeatures.has(t))) {
-    swatch(doc, colX + 6, colY, featureHatch(type));
-    text(doc, type, colX + 26, colY + 1, body, gray(0.15));
-    colY += 14;
+  const counts = legendCounts(project);
+  const fit = scheduleFit(schedule.length, counts.featureTypes, counts.surfaceStyles);
+  const body: Font = { name: FONT.sans, size: fit.fontSize };
+  scheduleRows(doc, schedule.slice(0, fit.rowsOnSheet), colY, body, fit.rowHeight, {
+    code: codeColX,
+    name: nameColX,
+    nameWidth: sizeColX - nameColX - 3,
+    size: sizeColX,
+    qtyRight: qtyColX,
+  });
+  colY += fit.rowsOnSheet * fit.rowHeight;
+  const more = schedule.length - fit.rowsOnSheet;
+  if (more > 0) {
+    text(doc, `Continued on sheet 2 — ${more} more`, codeColX, colY, { ...body, name: FONT.sansSemi }, gray(0.15));
+    colY += fit.rowHeight;
   }
 
-  // Hardscape legend, with each style's total.
-  const usedSurfaces = new Map<string, { name: string; sqFt: number }>();
-  for (const area of areas) {
-    const style = surfaceStyle(area.style);
-    const kase = style?.case ?? "concrete";
-    const prev = usedSurfaces.get(kase);
-    usedSurfaces.set(kase, {
-      name: style?.style ?? area.style,
-      sqFt: (prev?.sqFt ?? 0) + surfaceSqFt(area),
-    });
-  }
-  if (usedSurfaces.size) {
-    colY += 14;
-    section("HARDSCAPE");
-    colY += 5;
-    for (const kase of SURFACE_ORDER.filter((k) => usedSurfaces.has(k))) {
-      const used = usedSurfaces.get(kase)!;
-      swatch(doc, colX + 6, colY, surfaceHatch(kase));
-      text(doc, `${used.name} — ${Math.round(used.sqFt)} sq ft`, colX + 26, colY + 1, body, gray(0.15));
+  if (fit.legends) {
+    // Existing features: only the kinds this yard has.
+    const usedFeatures = new Set(features.map((f) => f.featureType));
+    if (usedFeatures.size) {
       colY += 14;
+      section("EXISTING FEATURES");
+      colY += 5;
+      for (const type of FEATURE_ORDER.filter((t) => usedFeatures.has(t))) {
+        swatch(doc, colX + 6, colY, featureHatch(type));
+        text(doc, type, colX + 26, colY + 1, body, gray(0.15));
+        colY += 14;
+      }
+    }
+
+    // Hardscape, with each style's total.
+    const usedSurfaces = new Map<string, { name: string; sqFt: number }>();
+    for (const area of areas) {
+      const style = surfaceStyle(area.style);
+      const kase = style?.case ?? "concrete";
+      const prev = usedSurfaces.get(kase);
+      usedSurfaces.set(kase, {
+        name: style?.style ?? area.style,
+        sqFt: (prev?.sqFt ?? 0) + surfaceSqFt(area),
+      });
+    }
+    if (usedSurfaces.size) {
+      colY += 14;
+      section("HARDSCAPE");
+      colY += 5;
+      for (const kase of SURFACE_ORDER.filter((k) => usedSurfaces.has(k))) {
+        const used = usedSurfaces.get(kase)!;
+        swatch(doc, colX + 6, colY, surfaceHatch(kase));
+        text(doc, `${used.name} — ${Math.round(used.sqFt)} sq ft`, colX + 26, colY + 1, body, gray(0.15));
+        colY += 14;
+      }
     }
   }
 
@@ -695,5 +707,67 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
 
   text(doc, "GENERATED BY VERDE VISION", colCX - 42, H - M - 10, F.footer, gray(0.7));
 
+  // The rest of a schedule too long for the title column: three columns
+  // of 11 pt rows a sheet, as many sheets as it takes.
+  const rest = schedule.slice(fit.rowsOnSheet);
+  const perSheet = CONTINUED.columns * CONTINUED_ROWS_PER_COLUMN;
+  const sheets = sheetCount(schedule.length, fit);
+  for (let sheet = 0; sheet * perSheet < rest.length; sheet++) {
+    doc.addPage({ size: [W, H], margin: 0 });
+    doc.save().rect(M, M, W - 2 * M, H - 2 * M).lineWidth(1.5).strokeColor(gray(0.6)).stroke().restore();
+    doc.save().rect(M + 6, M + 6, W - 2 * (M + 6), H - 2 * (M + 6)).lineWidth(0.5).strokeColor(gray(0.8)).stroke().restore();
+    text(doc, "PLANT SCHEDULE — CONTINUED", M + 16, M + 20, F.titleMain, gray(0.1));
+    text(doc, meta.name, M + 16, M + 34, F.titleValue, gray(0.5));
+
+    const colW = (W - 2 * (M + 16)) / CONTINUED.columns;
+    const cBody: Font = { name: FONT.sans, size: CONTINUED.fontSize };
+    const chunk = rest.slice(sheet * perSheet, (sheet + 1) * perSheet);
+    for (let c = 0; c < CONTINUED.columns; c++) {
+      const rows = chunk.slice(c * CONTINUED_ROWS_PER_COLUMN, (c + 1) * CONTINUED_ROWS_PER_COLUMN);
+      if (!rows.length) break;
+      const x0 = M + 16 + c * colW;
+      const y0 = CONTINUED.top;
+      const qtyRight = x0 + colW - 16;
+      text(doc, "CODE", x0, y0, F.tableHeader, gray(0.5));
+      text(doc, "COMMON NAME", x0 + 30, y0, F.tableHeader, gray(0.5));
+      text(doc, "SIZE", x0 + 150, y0, F.tableHeader, gray(0.5));
+      text(doc, "QTY", qtyRight - measure(doc, "QTY", F.tableHeader).w, y0, F.tableHeader, gray(0.5));
+      hline(doc, x0, qtyRight, y0 + 8, gray(0.8), 0.3);
+      scheduleRows(doc, rows, y0 + 11, cBody, CONTINUED.rowHeight, {
+        code: x0,
+        name: x0 + 30,
+        nameWidth: 117,
+        size: x0 + 150,
+        qtyRight,
+      });
+    }
+    const footer = `GENERATED BY VERDE VISION · SHEET ${sheet + 2} OF ${sheets}`;
+    text(doc, footer, W - M - 16 - measure(doc, footer, F.footer).w, H - M - 10, F.footer, gray(0.7));
+  }
+
   return toBuffer(doc);
+}
+
+/** Schedule rows from `y` down: the catalog's name cut to its column with
+ *  an ellipsis when it won't fit, the quantity right-aligned. */
+function scheduleRows(
+  doc: Doc,
+  rows: ScheduleRow[],
+  y: number,
+  body: Font,
+  rowHeight: number,
+  col: { code: number; name: number; nameWidth: number; size: number; qtyRight: number },
+) {
+  for (const row of rows) {
+    text(doc, row.code, col.code, y, body, gray(0.15));
+    let name = row.name;
+    while (name.length > 1 && measure(doc, name, body).w > col.nameWidth) {
+      name = name.slice(0, name.endsWith("…") ? -2 : -1).trim() + "…";
+    }
+    text(doc, name, col.name, y, body, gray(0.15));
+    text(doc, row.size, col.size, y, body, gray(0.15));
+    const qty = String(row.quantity);
+    text(doc, qty, col.qtyRight - measure(doc, qty, body).w, y, body, gray(0.15));
+    y += rowHeight;
+  }
 }
