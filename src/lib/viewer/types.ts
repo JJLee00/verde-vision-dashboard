@@ -70,6 +70,9 @@ export type ProjectFileJSON = {
   featurePolygons?: FeaturePolygonJSON[] | null;
   hardscapeAreas?: HardscapeAreaJSON[] | null;
   removalMarkers?: RemovalMarkerJSON[] | null;
+  // Registered alignment plates (MarkerRegistration in the app): "A" … "F",
+  // at a local [x, y, z]. The blueprint marks where each one is mounted.
+  markerRegistrations?: { markerID: string; localPosition: number[] }[] | null;
   // Degrees clockwise from the local +X axis to true north. Never captured
   // by the app today (reserved for the iPhone companion) — when present the
   // plan rotates so north is up.

@@ -65,7 +65,8 @@ export default async function SharePage({
   // The only correct proposal is the one the dashboard renders from the
   // estimate rows on demand, and that is a document the designer sends.
   const documents = {
-    blueprint: project.blueprint_path ? `/share/${token}/blueprint` : null,
+    blueprint:
+      project.blueprint_path || project.project_json ? `/share/${token}/blueprint` : null,
     estimate: null,
   };
 

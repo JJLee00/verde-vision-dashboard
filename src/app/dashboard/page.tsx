@@ -30,6 +30,7 @@ type Project = {
   project_date: string | null;
   estimate_amount: number | null;
   blueprint_path: string | null;
+  project_json_updated_at: string | null;
   client_id: string;
   plant_estimates: Estimate[];
 };
@@ -210,7 +211,7 @@ export default async function DashboardPage({
   let query = supabase
     .from("projects")
     .select(
-      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, client_id, plant_estimates(id, file_name, file_path, row_count, created_at)"
+      "id, name, description, status, created_at, project_date, estimate_amount, blueprint_path, project_json_updated_at, client_id, plant_estimates(id, file_name, file_path, row_count, created_at)"
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -360,25 +361,6 @@ export default async function DashboardPage({
       .createSignedUrls([...coverPathById.values()], 60 * 60);
     for (const item of data ?? []) {
       if (item.path && item.signedUrl) coverUrls.set(item.path, item.signedUrl);
-    }
-  }
-
-  // Signed URLs let clients open files from the private buckets. Only
-  // blueprints now: the estimate is a link to its own page, rendered from the
-  // rows, so there is no stored file to sign for it.
-  const filePaths = (projects ?? [])
-    .map((p) => p.blueprint_path)
-    .filter((p): p is string => Boolean(p));
-
-  const signedUrls = new Map<string, string>();
-  if (filePaths.length > 0) {
-    const { data } = await supabase.storage
-      .from("blueprints")
-      .createSignedUrls(filePaths, 60 * 60);
-    for (const item of data ?? []) {
-      if (item.path && item.signedUrl) {
-        signedUrls.set(`blueprints:${item.path}`, item.signedUrl);
-      }
     }
   }
 
@@ -582,9 +564,12 @@ export default async function DashboardPage({
 
       {(() => {
         const renderCard = (project: Project) => {
-          const blueprintUrl = project.blueprint_path
-            ? signedUrls.get(`blueprints:${project.blueprint_path}`)
-            : undefined;
+          // Drawn from the saved design when the project has one, the
+          // headset's uploaded PDF when it doesn't — the route decides.
+          const blueprintUrl =
+            project.blueprint_path || project.project_json_updated_at
+              ? `/dashboard/projects/${project.id}/blueprint/pdf`
+              : undefined;
 
           return (
             <section

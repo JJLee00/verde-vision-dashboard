@@ -361,9 +361,13 @@ async function loadPageData(id: string): Promise<PageData | null> {
     createdAt: base.created_at,
     projectDate: base.project_date,
     estimateAmount: base.estimate_amount,
-    blueprintUrl: base.blueprint_path
-      ? (docUrls.get(base.blueprint_path) ?? null)
-      : null,
+    // Drawn from the saved design on every open; the stored PDF only for a
+    // project that has none on the dashboard.
+    blueprintUrl: projectJson
+      ? `/dashboard/projects/${base.id}/blueprint/pdf`
+      : base.blueprint_path
+        ? (docUrls.get(base.blueprint_path) ?? null)
+        : null,
     estimateUrl: base.estimate_path
       ? (docUrls.get(base.estimate_path) ?? null)
       : null,

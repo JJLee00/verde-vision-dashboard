@@ -101,30 +101,19 @@ export default async function ViewerPage({
   const priceOverrides = pricesFromRows(priceRes.data);
 
   // Same PDF buttons the share page offers, so designers see exactly what
-  // clients get. Signed for an hour, like the project page's document links.
-  const docPaths = [project.blueprint_path, project.estimate_path].filter(
-    (p): p is string => Boolean(p)
-  );
-  let documents: { blueprint: string | null; estimate: string | null } | null =
-    null;
-  if (docPaths.length > 0) {
+  // clients get. The blueprint is drawn from the design this page needs
+  // anyway; the estimate is still the stored file, signed for an hour.
+  let estimateUrl: string | null = null;
+  if (project.estimate_path) {
     const { data: signed } = await supabase.storage
       .from("blueprints")
-      .createSignedUrls(docPaths, 60 * 60);
-    const byPath = new Map(
-      (signed ?? [])
-        .filter((s) => s.signedUrl)
-        .map((s) => [s.path, s.signedUrl])
-    );
-    documents = {
-      blueprint: project.blueprint_path
-        ? (byPath.get(project.blueprint_path) ?? null)
-        : null,
-      estimate: project.estimate_path
-        ? (byPath.get(project.estimate_path) ?? null)
-        : null,
-    };
+      .createSignedUrl(project.estimate_path, 60 * 60);
+    estimateUrl = signed?.signedUrl ?? null;
   }
+  const documents = {
+    blueprint: `/dashboard/projects/${project.id}/blueprint/pdf`,
+    estimate: estimateUrl,
+  };
 
   // Editing is org work: the designer who owns the project, or an owner.
   // Read tolerantly — a pre-016 database has no project_versions table, and

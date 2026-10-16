@@ -193,7 +193,7 @@ export default async function ShareLandingPage({
             />
           )}
 
-          {project.blueprint_path && (
+          {(project.blueprint_path || project.project_json) && (
             <a
               href={`/share/${token}/blueprint`}
               target="_blank"

@@ -1,0 +1,2314 @@
+{
+ "cases": [
+  {
+   "name": "sample yard",
+   "project": {
+    "projectName": "Rio Verde Residence (sample)",
+    "northHeadingDegrees": null,
+    "boundaryPoints": [
+     {
+      "id": "00000000-0000-4000-8000-000000000000",
+      "positionX": -9.4488,
+      "positionY": 0,
+      "positionZ": 3.048
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "positionX": -7.315200000000001,
+      "positionY": 0,
+      "positionZ": 7.315200000000001
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "positionX": 6.096,
+      "positionY": 0,
+      "positionZ": 7.315200000000001
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "positionX": 9.4488,
+      "positionY": 0,
+      "positionZ": 4.2672
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "positionX": 9.4488,
+      "positionY": 0,
+      "positionZ": -7.315200000000001
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "positionX": -9.4488,
+      "positionY": 0,
+      "positionZ": -7.315200000000001
+     }
+    ],
+    "featurePolygons": [
+     {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "featureType": "House",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "positionX": -9.4488,
+        "positionY": 0,
+        "positionZ": -7.315200000000001
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "positionX": -0.6096,
+        "positionY": 0,
+        "positionZ": -7.315200000000001
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "positionX": -0.6096,
+        "positionY": 0,
+        "positionZ": -3.6576000000000004
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "positionX": -9.4488,
+        "positionY": 0,
+        "positionZ": -3.6576000000000004
+       }
+      ]
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "featureType": "Patio",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "positionX": -0.6096,
+        "positionY": 0,
+        "positionZ": -7.315200000000001
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "positionX": 4.2672,
+        "positionY": 0,
+        "positionZ": -7.315200000000001
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "positionX": 4.2672,
+        "positionY": 0,
+        "positionZ": -3.048
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "positionX": -0.6096,
+        "positionY": 0,
+        "positionZ": -3.048
+       }
+      ]
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "featureType": "Walkway",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000000017",
+        "positionX": 2.7432000000000003,
+        "positionY": 0,
+        "positionZ": -3.048
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000018",
+        "positionX": 3.9624,
+        "positionY": 0,
+        "positionZ": -3.048
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000019",
+        "positionX": 3.9624,
+        "positionY": 0,
+        "positionZ": 0
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000020",
+        "positionX": 2.7432000000000003,
+        "positionY": 0,
+        "positionZ": 0
+       }
+      ]
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "featureType": "Pool",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000000022",
+        "positionX": 3.9624,
+        "positionY": 0,
+        "positionZ": 0.45720000000000005
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000023",
+        "positionX": 8.2296,
+        "positionY": 0,
+        "positionZ": 0.45720000000000005
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000024",
+        "positionX": 8.5344,
+        "positionY": 0,
+        "positionZ": 0
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000025",
+        "positionX": 8.5344,
+        "positionY": 0,
+        "positionZ": -1.8288000000000002
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000026",
+        "positionX": 8.2296,
+        "positionY": 0,
+        "positionZ": -2.286
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000027",
+        "positionX": 3.9624,
+        "positionY": 0,
+        "positionZ": -2.286
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000028",
+        "positionX": 3.6576000000000004,
+        "positionY": 0,
+        "positionZ": -1.8288000000000002
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000029",
+        "positionX": 3.6576000000000004,
+        "positionY": 0,
+        "positionZ": 0
+       }
+      ]
+     }
+    ],
+    "hardscapeAreas": [
+     {
+      "id": "00000000-0000-4000-8000-000000000030",
+      "style": "decomposedGranite",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000000031",
+        "positionX": -9.144,
+        "positionY": 0,
+        "positionZ": 3.6576000000000004
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000032",
+        "positionX": -4.2672,
+        "positionY": 0,
+        "positionZ": 4.8768
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000033",
+        "positionX": -4.8768,
+        "positionY": 0,
+        "positionZ": 6.7056000000000004
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000000034",
+        "positionX": -8.5344,
+        "positionY": 0,
+        "positionZ": 6.096
+       }
+      ]
+     }
+    ],
+    "removalMarkers": [
+     {
+      "id": "00000000-0000-4000-8000-000000000035",
+      "positionX": 5.1816,
+      "positionY": 0,
+      "positionZ": 5.486400000000001,
+      "radiusMeters": 0.45,
+      "heightMeters": 0.6
+     }
+    ],
+    "placements": [
+     {
+      "id": "00000000-0000-4000-8000-000000000036",
+      "plantModelName": "HoneyMesquite",
+      "positionX": -5.486400000000001,
+      "positionY": 0,
+      "positionZ": 4.2672,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 6,
+      "scaleY": 6,
+      "scaleZ": 6,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000037",
+      "plantModelName": "Orange_Tree",
+      "positionX": 7.62,
+      "positionY": 0,
+      "positionZ": -4.8768,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.75,
+      "scaleY": 0.75,
+      "scaleZ": 0.75,
+      "containerType": "24\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000038",
+      "plantModelName": "MexFanPalm",
+      "positionX": 3.048,
+      "positionY": 0,
+      "positionZ": 1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1.5,
+      "scaleY": 1.5,
+      "scaleZ": 1.5,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000039",
+      "plantModelName": "MexFanPalm",
+      "positionX": 8.2296,
+      "positionY": 0,
+      "positionZ": -3.81,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1.5,
+      "scaleY": 1.5,
+      "scaleZ": 1.5,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000040",
+      "plantModelName": "SaguaroSpear",
+      "positionX": -3.048,
+      "positionY": 0,
+      "positionZ": 1.8288000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1.5,
+      "scaleY": 1.5,
+      "scaleZ": 1.5,
+      "containerType": "Medium"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000041",
+      "plantModelName": "MexicanFencePost",
+      "positionX": -8.2296,
+      "positionY": 0,
+      "positionZ": 1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.6,
+      "scaleY": 0.6,
+      "scaleZ": 0.6,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000042",
+      "plantModelName": "MexicanFencePost",
+      "positionX": -7.68096,
+      "positionY": 0,
+      "positionZ": 0.3048,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.6,
+      "scaleY": 0.6,
+      "scaleZ": 0.6,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000043",
+      "plantModelName": "ArgentineToothpick",
+      "positionX": 1.2192,
+      "positionY": 0,
+      "positionZ": 5.486400000000001,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.15,
+      "scaleY": 0.15,
+      "scaleZ": 0.15,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000044",
+      "plantModelName": "GoldenBarrel",
+      "positionX": 0,
+      "positionY": 0,
+      "positionZ": -1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000045",
+      "plantModelName": "GoldenBarrel",
+      "positionX": 0.9144000000000001,
+      "positionY": 0,
+      "positionZ": -1.8288000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000046",
+      "plantModelName": "GoldenBarrel",
+      "positionX": 0.45720000000000005,
+      "positionY": 0,
+      "positionZ": -2.4384,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1.3,
+      "scaleY": 1.3,
+      "scaleZ": 1.3,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000047",
+      "plantModelName": "GoldenBarrel",
+      "positionX": 1.5849600000000001,
+      "positionY": 0,
+      "positionZ": -0.9144000000000001,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000048",
+      "plantModelName": "Aloe Vera",
+      "positionX": -1.8288000000000002,
+      "positionY": 0,
+      "positionZ": -2.7432000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.5,
+      "scaleY": 0.5,
+      "scaleZ": 0.5,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000049",
+      "plantModelName": "Aloe Vera",
+      "positionX": -1.2192,
+      "positionY": 0,
+      "positionZ": -3.3528000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.5,
+      "scaleY": 0.5,
+      "scaleZ": 0.5,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000050",
+      "plantModelName": "Aloe Vera",
+      "positionX": -2.286,
+      "positionY": 0,
+      "positionZ": -3.5052000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000051",
+      "plantModelName": "AgaveAmericana",
+      "positionX": -4.8768,
+      "positionY": 0,
+      "positionZ": -1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.7,
+      "scaleY": 0.7,
+      "scaleZ": 0.7,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000052",
+      "plantModelName": "AgaveAmericana",
+      "positionX": 2.4384,
+      "positionY": 0,
+      "positionZ": 3.6576000000000004,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.7,
+      "scaleY": 0.7,
+      "scaleZ": 0.7,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000053",
+      "plantModelName": "GrayBoulder",
+      "positionX": -6.7056000000000004,
+      "positionY": 0,
+      "positionZ": 5.486400000000001,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 2,
+      "scaleY": 2,
+      "scaleZ": 2,
+      "containerType": "Medium"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000054",
+      "plantModelName": "GrayBoulder",
+      "positionX": 7.315200000000001,
+      "positionY": 0,
+      "positionZ": 2.1336,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 4,
+      "scaleY": 4,
+      "scaleZ": 4,
+      "containerType": "Large"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000055",
+      "plantModelName": "FlatBoulder",
+      "positionX": 2.4384,
+      "positionY": 0,
+      "positionZ": -3.9624,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 0.7,
+      "scaleY": 0.7,
+      "scaleZ": 0.7,
+      "containerType": "Medium"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000056",
+      "plantModelName": "NightPathlight",
+      "positionX": 3.3528000000000002,
+      "positionY": 0,
+      "positionZ": -0.6096,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000057",
+      "plantModelName": "NightUplight",
+      "positionX": -5.7912,
+      "positionY": 0,
+      "positionZ": 3.6576000000000004,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000058",
+      "plantModelName": "TexasEbonyMd",
+      "positionX": -1.2192,
+      "positionY": 0,
+      "positionZ": 5.7912,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000059",
+      "plantModelName": "PaloVerde",
+      "positionX": 4.572,
+      "positionY": 0,
+      "positionZ": 6.096,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000060",
+      "plantModelName": "MulgaAcaciaLg",
+      "positionX": 7.9248,
+      "positionY": 0,
+      "positionZ": 4.8768,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "24\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000061",
+      "plantModelName": "Vitex",
+      "positionX": -7.315200000000001,
+      "positionY": 0,
+      "positionZ": 2.4384,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "24\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000062",
+      "plantModelName": "YellowBells",
+      "positionX": -8.5344,
+      "positionY": 0,
+      "positionZ": 0.3048,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000063",
+      "plantModelName": "TexasSage",
+      "positionX": -7.9248,
+      "positionY": 0,
+      "positionZ": -1.524,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000064",
+      "plantModelName": "GreenHopseed",
+      "positionX": -6.4008,
+      "positionY": 0,
+      "positionZ": -2.7432000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000065",
+      "plantModelName": "Jojoba",
+      "positionX": -9.144,
+      "positionY": 0,
+      "positionZ": -2.7432000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000066",
+      "plantModelName": "LittleJohnBottlebrush",
+      "positionX": -8.8392,
+      "positionY": 0,
+      "positionZ": -4.2672,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000067",
+      "plantModelName": "DesertSpoonLg",
+      "positionX": -8.8392,
+      "positionY": 0,
+      "positionZ": -1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000068",
+      "plantModelName": "AgaveTruncata",
+      "positionX": -9.144,
+      "positionY": 0,
+      "positionZ": 4.572,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000069",
+      "plantModelName": "BlackTipAgave",
+      "positionX": -3.6576000000000004,
+      "positionY": 0,
+      "positionZ": -1.8288000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000070",
+      "plantModelName": "BlueGlowAgave",
+      "positionX": -3.048,
+      "positionY": 0,
+      "positionZ": -3.9624,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "plantModelName": "YuccaRostrataMd",
+      "positionX": -6.7056000000000004,
+      "positionY": 0,
+      "positionZ": -3.9624,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000072",
+      "plantModelName": "AloeFerox",
+      "positionX": 0.3048,
+      "positionY": 0,
+      "positionZ": -4.8768,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000073",
+      "plantModelName": "HesperaloeMd",
+      "positionX": 5.1816,
+      "positionY": 0,
+      "positionZ": 4.572,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000074",
+      "plantModelName": "Ocotillo",
+      "positionX": 6.4008,
+      "positionY": 0,
+      "positionZ": 3.3528000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000075",
+      "plantModelName": "OrganPipe",
+      "positionX": 8.2296,
+      "positionY": 0,
+      "positionZ": 3.048,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000076",
+      "plantModelName": "SantaRitaPricklyPear",
+      "positionX": 5.486400000000001,
+      "positionY": 0,
+      "positionZ": 1.8288000000000002,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000077",
+      "plantModelName": "MoroccanMound",
+      "positionX": 1.8288000000000002,
+      "positionY": 0,
+      "positionZ": 2.7432000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000078",
+      "plantModelName": "TotemPole",
+      "positionX": 0.6096,
+      "positionY": 0,
+      "positionZ": 1.2192,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000079",
+      "plantModelName": "Firebarrel",
+      "positionX": -0.6096,
+      "positionY": 0,
+      "positionZ": -0.3048,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000080",
+      "plantModelName": "MadagascarPalm",
+      "positionX": -3.6576000000000004,
+      "positionY": 0,
+      "positionZ": 0.6096,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000081",
+      "plantModelName": "Firestick",
+      "positionX": -2.4384,
+      "positionY": 0,
+      "positionZ": 2.1336,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000082",
+      "plantModelName": "AZBoulder1",
+      "positionX": -5.486400000000001,
+      "positionY": 0,
+      "positionZ": 2.7432000000000003,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Medium"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000083",
+      "plantModelName": "PurpleLantana",
+      "positionX": 7.010400000000001,
+      "positionY": 0,
+      "positionZ": -4.2672,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000084",
+      "plantModelName": "YellowLantana",
+      "positionX": 8.2296,
+      "positionY": 0,
+      "positionZ": -5.7912,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000085",
+      "plantModelName": "WhiteDawnLantana",
+      "positionX": 5.486400000000001,
+      "positionY": 0,
+      "positionZ": -5.7912,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000086",
+      "plantModelName": "YellowLantana",
+      "positionX": 6.2484,
+      "positionY": 0,
+      "positionZ": -2.4384,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000087",
+      "plantModelName": "YellowLantana",
+      "positionX": 6.949440000000001,
+      "positionY": 0,
+      "positionZ": -2.68224,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000088",
+      "plantModelName": "PurpleLantana",
+      "positionX": 7.498080000000001,
+      "positionY": 0,
+      "positionZ": -2.19456,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000089",
+      "plantModelName": "YellowLantana",
+      "positionX": 6.76656,
+      "positionY": 0,
+      "positionZ": -1.92024,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000090",
+      "plantModelName": "PurpleLantana",
+      "positionX": 8.04672,
+      "positionY": 0,
+      "positionZ": -2.5603200000000004,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000091",
+      "plantModelName": "WhiteDawnLantana",
+      "positionX": 7.650480000000001,
+      "positionY": 0,
+      "positionZ": -1.70688,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000092",
+      "plantModelName": "NightFloodlight",
+      "positionX": 1.2192,
+      "positionY": 0,
+      "positionZ": -3.6576000000000004,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     }
+    ]
+   },
+   "expect": {
+    "mapScale": 24.9808,
+    "offX": 36,
+    "offY": 58.299,
+    "minRX": -11.4488,
+    "minRZ": -9.3152,
+    "marks": [
+     {
+      "id": "00000000-0000-4000-8000-000000000036",
+      "code": "HM",
+      "x": 184.9454,
+      "y": 397.598,
+      "R": 76.1414,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000037",
+      "code": "OT",
+      "x": 512.3536,
+      "y": 169.1737,
+      "R": 57.1061,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000038",
+      "code": "FP",
+      "x": 398.1414,
+      "y": 321.4566,
+      "R": 38.0707,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000039",
+      "code": "FP",
+      "x": 527.5819,
+      "y": 195.8232,
+      "R": 38.0707,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000040",
+      "code": "SG",
+      "x": 245.8586,
+      "y": 336.6849,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000041",
+      "code": "MFP",
+      "x": 116.4181,
+      "y": 321.4566,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000042",
+      "code": "MFP",
+      "x": 130.1236,
+      "y": 298.6141,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000043",
+      "code": "AT",
+      "x": 352.4566,
+      "y": 428.0546,
+      "R": 38.0707,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000044",
+      "code": "GB",
+      "x": 322,
+      "y": 260.5434,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000045",
+      "code": "GB",
+      "x": 344.8424,
+      "y": 245.3151,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000046",
+      "code": "GB",
+      "x": 333.4212,
+      "y": 230.0869,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000047",
+      "code": "GB",
+      "x": 361.5935,
+      "y": 268.1576,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000048",
+      "code": "AV",
+      "x": 276.3151,
+      "y": 222.4727,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000049",
+      "code": "AV",
+      "x": 291.5434,
+      "y": 207.2444,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000050",
+      "code": "AV",
+      "x": 264.8939,
+      "y": 203.4374,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000051",
+      "code": "AG",
+      "x": 200.1737,
+      "y": 260.5434,
+      "R": 30.4566,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000052",
+      "code": "AG",
+      "x": 382.9131,
+      "y": 382.3697,
+      "R": 30.4566,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000053",
+      "code": "RK",
+      "x": 154.4889,
+      "y": 428.0546,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000054",
+      "code": "RK",
+      "x": 504.7394,
+      "y": 344.299,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000055",
+      "code": "RKF",
+      "x": 382.9131,
+      "y": 192.0161,
+      "R": 15.2283,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000056",
+      "code": "PL",
+      "x": 405.7556,
+      "y": 275.7717,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000057",
+      "code": "UL",
+      "x": 177.3313,
+      "y": 382.3697,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000058",
+      "code": "TE",
+      "x": 291.5434,
+      "y": 435.6687,
+      "R": 95.1768,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000059",
+      "code": "PV",
+      "x": 436.2121,
+      "y": 443.2829,
+      "R": 114.2121,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000060",
+      "code": "MU",
+      "x": 519.9677,
+      "y": 412.8263,
+      "R": 57.1061,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000061",
+      "code": "CT",
+      "x": 139.2606,
+      "y": 351.9131,
+      "R": 76.1414,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000062",
+      "code": "YB",
+      "x": 108.804,
+      "y": 298.6141,
+      "R": 38.0707,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000063",
+      "code": "TX",
+      "x": 124.0323,
+      "y": 252.9293,
+      "R": 30.4566,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000064",
+      "code": "GH",
+      "x": 162.103,
+      "y": 222.4727,
+      "R": 30.4566,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000065",
+      "code": "JO",
+      "x": 93.5757,
+      "y": 222.4727,
+      "R": 30.4566,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000066",
+      "code": "LJ",
+      "x": 101.1899,
+      "y": 184.402,
+      "R": 15.2283,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000067",
+      "code": "DSP",
+      "x": 101.1899,
+      "y": 260.5434,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000068",
+      "code": "AGT",
+      "x": 93.5757,
+      "y": 405.2121,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000069",
+      "code": "AGB",
+      "x": 230.6303,
+      "y": 245.3151,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000070",
+      "code": "AGG",
+      "x": 245.8586,
+      "y": 192.0161,
+      "R": 11.4212,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000071",
+      "code": "BYU",
+      "x": 154.4889,
+      "y": 192.0161,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000072",
+      "code": "ALF",
+      "x": 329.6141,
+      "y": 169.1737,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000073",
+      "code": "RYU",
+      "x": 451.4404,
+      "y": 405.2121,
+      "R": 19.0354,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000074",
+      "code": "OCO",
+      "x": 481.897,
+      "y": 374.7556,
+      "R": 45.6849,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000075",
+      "code": "OPC",
+      "x": 527.5819,
+      "y": 367.1414,
+      "R": 45.6849,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000076",
+      "code": "SRP",
+      "x": 459.0546,
+      "y": 336.6849,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000077",
+      "code": "MOM",
+      "x": 367.6849,
+      "y": 359.5273,
+      "R": 19.0354,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000078",
+      "code": "TP",
+      "x": 337.2283,
+      "y": 321.4566,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000079",
+      "code": "FB",
+      "x": 306.7717,
+      "y": 283.3859,
+      "R": 7.6141,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000080",
+      "code": "MDP",
+      "x": 230.6303,
+      "y": 306.2283,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000081",
+      "code": "FST",
+      "x": 261.0869,
+      "y": 344.299,
+      "R": 15.2283,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000082",
+      "code": "AZ1",
+      "x": 184.9454,
+      "y": 359.5273,
+      "R": 15.2283,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000083",
+      "code": "LAP",
+      "x": 497.1253,
+      "y": 184.402,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000084",
+      "code": "LAY",
+      "x": 527.5819,
+      "y": 146.3313,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000085",
+      "code": "LAW",
+      "x": 459.0546,
+      "y": 146.3313,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000086",
+      "code": "LAY",
+      "x": 478.0899,
+      "y": 230.0869,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000087",
+      "code": "LAY",
+      "x": 495.6025,
+      "y": 223.9955,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000088",
+      "code": "LAP",
+      "x": 509.3079,
+      "y": 236.1782,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000089",
+      "code": "LAY",
+      "x": 491.034,
+      "y": 243.0309,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000090",
+      "code": "LAP",
+      "x": 523.0134,
+      "y": 227.0412,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000091",
+      "code": "LAW",
+      "x": 513.115,
+      "y": 248.3608,
+      "R": 22.8424,
+      "rot": 0
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000000092",
+      "code": "FL",
+      "x": 352.4566,
+      "y": 199.6303,
+      "R": 7.6141,
+      "rot": 0
+     }
+    ],
+    "schedule": [
+     {
+      "code": "AG",
+      "name": "Agave Americana",
+      "size": "15g",
+      "quantity": 2
+     },
+     {
+      "code": "AGB",
+      "name": "Black Tip Agave",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "AGG",
+      "name": "Blue Glow Agave",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "AGT",
+      "name": "Agave Truncata",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "ALF",
+      "name": "Aloe Ferox",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "AT",
+      "name": "Argentine Toothpick",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "AV",
+      "name": "Aloe Vera",
+      "size": "5g",
+      "quantity": 2
+     },
+     {
+      "code": "AV",
+      "name": "Aloe Vera",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "AZ1",
+      "name": "AZ Boulder 1",
+      "size": "Medium",
+      "quantity": 1
+     },
+     {
+      "code": "BYU",
+      "name": "Beaked Yucca",
+      "size": "36\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "CT",
+      "name": "Chaste Tree",
+      "size": "24\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "DSP",
+      "name": "Desert Spoon",
+      "size": "24\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "FB",
+      "name": "Fire Barrel Cactus",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "FL",
+      "name": "Flood Light",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "FST",
+      "name": "Firestick",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "GB",
+      "name": "Golden Barrel Cactus",
+      "size": "5g",
+      "quantity": 3
+     },
+     {
+      "code": "GB",
+      "name": "Golden Barrel Cactus",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "GH",
+      "name": "Green Hopseed",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "HM",
+      "name": "Honey Mesquite",
+      "size": "36\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "JO",
+      "name": "Jojoba",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "LAP",
+      "name": "Purple Lantana",
+      "size": "5g",
+      "quantity": 3
+     },
+     {
+      "code": "LAW",
+      "name": "White Dawn Lantana",
+      "size": "5g",
+      "quantity": 2
+     },
+     {
+      "code": "LAY",
+      "name": "Yellow Lantana",
+      "size": "5g",
+      "quantity": 4
+     },
+     {
+      "code": "LJ",
+      "name": "Little John Bottlebrush",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "MDP",
+      "name": "Madagascar Palm",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "MFP",
+      "name": "Mexican Fence Post",
+      "size": "15g",
+      "quantity": 2
+     },
+     {
+      "code": "MOM",
+      "name": "Moroccan Mound",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "MU",
+      "name": "Mulga",
+      "size": "48\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "OCO",
+      "name": "Ocotillo",
+      "size": "Large",
+      "quantity": 1
+     },
+     {
+      "code": "OPC",
+      "name": "Organ Pipe Cactus",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "OT",
+      "name": "Orange Tree",
+      "size": "24\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "PL",
+      "name": "Path Light",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "PV",
+      "name": "Blue Palo Verde",
+      "size": "36\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "RYU",
+      "name": "Red Yucca",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "SRP",
+      "name": "Santa Rita Prickly Pear",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "TE",
+      "name": "Texas Ebony",
+      "size": "36\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "TP",
+      "name": "Totem Pole Cactus",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "TX",
+      "name": "Texas Sage",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "UL",
+      "name": "Landscape Uplight",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "YB",
+      "name": "Yellow Bells",
+      "size": "15g",
+      "quantity": 1
+     }
+    ]
+   }
+  },
+  {
+   "name": "turned yard",
+   "project": {
+    "projectName": "Turned yard",
+    "northHeadingDegrees": 30,
+    "boundaryPoints": [
+     {
+      "id": "00000000-0000-4000-8000-000000001000",
+      "positionX": -3.5926415770969404,
+      "positionY": 0,
+      "positionZ": -6.719920125902867
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001001",
+      "positionX": 7.457062962453896,
+      "positionY": 0,
+      "positionZ": -1.5673582787602593
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001002",
+      "positionX": 3.5926415770969404,
+      "positionY": 0,
+      "positionZ": 6.719920125902867
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001003",
+      "positionX": -7.457062962453896,
+      "positionY": 0,
+      "positionZ": 1.5673582787602593
+     }
+    ],
+    "featurePolygons": [
+     {
+      "id": "00000000-0000-4000-8000-000000001004",
+      "featureType": "House",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000001005",
+        "positionX": -3.5926415770969404,
+        "positionY": 0,
+        "positionZ": -6.719920125902867
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001006",
+        "positionX": 1.932210692678478,
+        "positionY": 0,
+        "positionZ": -4.143639202331563
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001007",
+        "positionX": 1.0305123694285216,
+        "positionY": 0,
+        "positionZ": -2.2099409079101675
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001008",
+        "positionX": -4.494339900346897,
+        "positionY": 0,
+        "positionZ": -4.7862218314814715
+       }
+      ]
+     }
+    ],
+    "hardscapeAreas": [
+     {
+      "id": "00000000-0000-4000-8000-000000001009",
+      "style": "Pavers",
+      "vertices": [
+       {
+        "id": "00000000-0000-4000-8000-000000001010",
+        "positionX": 2.3558818734774545,
+        "positionY": 0,
+        "positionZ": -3.6097684964856622
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001011",
+        "positionX": 5.1183080083651635,
+        "positionY": 0,
+        "positionZ": -2.3216280347000104
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001012",
+        "positionX": 4.087795638936642,
+        "positionY": 0,
+        "positionZ": -0.11168712678984316
+       },
+       {
+        "id": "00000000-0000-4000-8000-000000001013",
+        "positionX": 1.325369504048933,
+        "positionY": 0,
+        "positionZ": -1.3998275885754952
+       }
+      ]
+     }
+    ],
+    "removalMarkers": [
+     {
+      "id": "00000000-0000-4000-8000-000000001014",
+      "positionX": 2.8554987405459116,
+      "positionY": 0,
+      "positionZ": 4.694636827566187,
+      "radiusMeters": 0.4,
+      "heightMeters": 0.5
+     }
+    ],
+    "placements": [
+     {
+      "id": "00000000-0000-4000-8000-000000001015",
+      "plantModelName": "HoneyMesquite",
+      "positionX": -3.5353104119591,
+      "positionY": 0,
+      "positionZ": 0.3693152191469735,
+      "rotationX": 0,
+      "rotationY": 0.3420201433256687,
+      "rotationZ": 0,
+      "rotationW": 0.9396926207859084,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "36\" Box"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001016",
+      "plantModelName": "AgaveAmericana",
+      "positionX": 1.1235849750867242,
+      "positionY": 0,
+      "positionZ": 1.1965554578703679,
+      "rotationX": 0,
+      "rotationY": 0.9238795325112867,
+      "rotationZ": 0,
+      "rotationW": 0.38268343236508984,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "15g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001017",
+      "plantModelName": "AgaveAmericana",
+      "positionX": 1.6946847231959068,
+      "positionY": 0,
+      "positionZ": 2.1354828233836054,
+      "rotationX": 0,
+      "rotationY": -0.573576436351046,
+      "rotationZ": 0,
+      "rotationW": 0.8191520442889918,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001018",
+      "plantModelName": "TexasEbonyMd",
+      "positionX": 2.708070173235706,
+      "positionY": 0,
+      "positionZ": 4.289580167898851,
+      "rotationX": 0,
+      "rotationY": 0.08715574274765817,
+      "rotationZ": 0,
+      "rotationW": 0.9961946980917455,
+      "scaleX": 6.5,
+      "scaleY": 6.5,
+      "scaleZ": 6.5
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001019",
+      "plantModelName": "Jojoba",
+      "positionX": -3.9046256311060743,
+      "positionY": 0,
+      "positionZ": -3.165995192812127,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001020",
+      "plantModelName": "TexasSage",
+      "positionX": -3.0572832695081207,
+      "positionY": 0,
+      "positionZ": -2.098253781120324,
+      "rotationX": 0,
+      "rotationY": 0.984807753012208,
+      "rotationZ": 0,
+      "rotationW": -0.1736481776669303,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001021",
+      "plantModelName": "YellowBells",
+      "positionX": -1.6946847231959068,
+      "positionY": 0,
+      "positionZ": -2.1354828233836054,
+      "rotationX": 0,
+      "rotationY": 0.7071067811865475,
+      "rotationZ": 0,
+      "rotationW": 0.7071067811865476,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001022",
+      "plantModelName": "HesperaloeMd",
+      "positionX": -1.288140461785652,
+      "positionY": 0,
+      "positionZ": 2.762426134887709,
+      "rotationX": 0,
+      "rotationY": 0.13052619222005157,
+      "rotationZ": 0,
+      "rotationW": 0.9914448613738104,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001023",
+      "plantModelName": "NightUplight",
+      "positionX": -0.7170407136764696,
+      "positionY": 0,
+      "positionZ": 3.7013535004009466,
+      "rotationX": 0,
+      "rotationY": 0.984807753012208,
+      "rotationZ": 0,
+      "rotationW": 0.17364817766693041,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001024",
+      "plantModelName": "NightFloodlight",
+      "positionX": -2.3744963946090953,
+      "positionY": 0,
+      "positionZ": 2.9284692233295555,
+      "rotationX": 0,
+      "rotationY": -0.3826834323650898,
+      "rotationZ": 0,
+      "rotationW": 0.9238795325112867,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001025",
+      "plantModelName": "NightPathlight",
+      "positionX": 1.6574556809326255,
+      "positionY": 0,
+      "positionZ": 0.7728842770713912,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "Small"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001026",
+      "plantModelName": "WhiteDawnLantana",
+      "positionX": 5.708022277605987,
+      "positionY": 0,
+      "positionZ": -0.7014013960306658,
+      "rotationX": 0,
+      "rotationY": 0.25881904510252074,
+      "rotationZ": 0,
+      "rotationW": 0.9659258262890683,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001027",
+      "plantModelName": "MysteryShrub",
+      "positionX": -6.518135596940659,
+      "positionY": 0,
+      "positionZ": 0.9962585306510774,
+      "rotationX": 0,
+      "rotationY": 0,
+      "rotationZ": 0,
+      "rotationW": 1,
+      "scaleX": 1,
+      "scaleY": 1,
+      "scaleZ": 1,
+      "containerType": "5g"
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001028",
+      "plantModelName": "SwimmingPool",
+      "positionX": 3.0200542272448394,
+      "positionY": 0,
+      "positionZ": 0.7356552348081101,
+      "rotationX": 0,
+      "rotationY": 0.17364817766693033,
+      "rotationZ": 0,
+      "rotationW": 0.984807753012208,
+      "scaleX": 1.2,
+      "scaleY": 1.2,
+      "scaleZ": 1.2,
+      "containerType": "Large"
+     }
+    ]
+   },
+   "expect": {
+    "mapScale": 29.6295,
+    "offX": 112.048,
+    "offY": 40,
+    "minRX": -7.0859,
+    "minRZ": -8.4713,
+    "marks": [
+     {
+      "id": "00000000-0000-4000-8000-000000001015",
+      "code": "HM",
+      "x": 383.8514,
+      "y": 376.2445,
+      "R": 90.3108,
+      "rot": -2.7925
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001016",
+      "code": "AG",
+      "x": 336.0579,
+      "y": 244.4422,
+      "R": 36.1243,
+      "rot": 1.8326
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001017",
+      "code": "AG",
+      "x": 351.69,
+      "y": 215.8778,
+      "R": 36.1243,
+      "rot": -0.8727
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001018",
+      "code": "TE",
+      "x": 391.9509,
+      "y": 157.962,
+      "R": 112.8885,
+      "rot": -2.2689
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001019",
+      "code": "JO",
+      "x": 298.6069,
+      "y": 438.0959,
+      "R": 36.1243,
+      "rot": -2.0944
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001020",
+      "code": "TX",
+      "x": 313.4519,
+      "y": 400.5348,
+      "R": 36.1243,
+      "rot": 0.6981
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001021",
+      "code": "YB",
+      "x": 292.31,
+      "y": 366.1222,
+      "R": 45.1554,
+      "rot": 2.618
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001022",
+      "code": "RYU",
+      "x": 411.9671,
+      "y": 283.1289,
+      "R": 22.5777,
+      "rot": -2.3562
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001023",
+      "code": "UL",
+      "x": 427.5992,
+      "y": 254.5645,
+      "R": 9.0311,
+      "rot": 1.3963
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001024",
+      "code": "FL",
+      "x": 432.3219,
+      "y": 308.5448,
+      "R": 9.0311,
+      "rot": -1.309
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001025",
+      "code": "PL",
+      "x": 317.2773,
+      "y": 237.0197,
+      "R": 9.0311,
+      "rot": -2.0944
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001026",
+      "code": "LAW",
+      "x": 219.4391,
+      "y": 154.9237,
+      "R": 27.0932,
+      "rot": -2.618
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001027",
+      "code": "MS",
+      "x": 444.1286,
+      "y": 443.4955,
+      "R": 18.0622,
+      "rot": -2.0944
+     },
+     {
+      "id": "00000000-0000-4000-8000-000000001028",
+      "code": "SP",
+      "x": 296.1355,
+      "y": 202.6071,
+      "R": 54.1865,
+      "rot": -2.4435
+     }
+    ],
+    "schedule": [
+     {
+      "code": "AG",
+      "name": "Agave Americana",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "AG",
+      "name": "Agave Americana",
+      "size": "15g",
+      "quantity": 1
+     },
+     {
+      "code": "FL",
+      "name": "Flood Light",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "HM",
+      "name": "Honey Mesquite",
+      "size": "36\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "JO",
+      "name": "Jojoba",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "LAW",
+      "name": "White Dawn Lantana",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "PL",
+      "name": "Path Light",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "RYU",
+      "name": "Red Yucca",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "TE",
+      "name": "Texas Ebony",
+      "size": "48\" Box",
+      "quantity": 1
+     },
+     {
+      "code": "TX",
+      "name": "Texas Sage",
+      "size": "5g",
+      "quantity": 1
+     },
+     {
+      "code": "UL",
+      "name": "Landscape Uplight",
+      "size": "Small",
+      "quantity": 1
+     },
+     {
+      "code": "YB",
+      "name": "Yellow Bells",
+      "size": "5g",
+      "quantity": 1
+     }
+    ]
+   }
+  }
+ ]
+}

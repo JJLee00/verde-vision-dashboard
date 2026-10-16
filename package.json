@@ -12,7 +12,8 @@
     "sync:catalog": "node scripts/gen-catalog.mjs && python3 scripts/sync-thumbs.py",
     "check:estimate": "node scripts/check-estimate-parity.mjs",
     "gen:plan-symbols": "node scripts/gen-plan-symbols.mjs",
-    "check:plan-symbols": "node scripts/gen-plan-symbols.mjs --check"
+    "check:plan-symbols": "node scripts/gen-plan-symbols.mjs --check",
+    "check:blueprint": "node scripts/check-blueprint-parity.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

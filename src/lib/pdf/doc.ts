@@ -54,13 +54,20 @@ const FONT_DIR = path.join(process.cwd(), "src/lib/pdf/fonts");
 // next.config.ts keeps pdfkit external and traces this folder into the
 // serverless bundle; without both, font registration throws in production
 // and works fine locally.
-export function createDoc(title: string): Doc {
-  const doc = new PDFDocument({
+export function createDoc(
+  title: string,
+  // The blueprint is one landscape sheet laid out edge to edge, with no
+  // footer to stamp; everything else is the letter-portrait default.
+  page: { size: [number, number]; margin: number; bufferPages: boolean } = {
     size: [PAGE.width, PAGE.height],
     margin: PAGE.margin,
     // Footers stamp "page N of M", which can't be known until the last page
     // exists — so pages are buffered and flushed at the end.
     bufferPages: true,
+  }
+): Doc {
+  const doc = new PDFDocument({
+    ...page,
     info: { Title: title, Creator: "Verde Vision" },
   });
 
