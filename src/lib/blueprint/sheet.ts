@@ -23,7 +23,9 @@ export const SHEET = {
   width: 792,
   height: 612,
   margin: 20,
-  titleColumnWidth: 148,
+  // 160, not the original 148: the schedule carries each plant's drawing
+  // as its key, and the extra 12 pt keeps the names as wide as they were.
+  titleColumnWidth: 160,
 } as const;
 
 /** One viewer pixel on paper. The viewer's 1 px plan line prints at 0.75 pt. */
@@ -188,7 +190,14 @@ export function plantMarks(project: ProjectFileJSON, layout: SheetLayout): Plant
   });
 }
 
-export type ScheduleRow = { code: string; name: string; size: string; quantity: number };
+export type ScheduleRow = {
+  code: string;
+  name: string;
+  size: string;
+  quantity: number;
+  /** the mesh the row's plant is drawn from — its symbol in the key */
+  model: string;
+};
 
 /**
  * The size the headset restores a placement to on reopen
@@ -231,6 +240,7 @@ export function plantSchedule(placements: PlacedPlantJSON[]): ScheduleRow[] {
     }
     rows.set(key, {
       code: speciesMeta(size.modelName).code,
+      model: size.modelName,
       name: plant.name,
       size: size.size,
       quantity: 1,
@@ -242,7 +252,7 @@ export function plantSchedule(placements: PlacedPlantJSON[]): ScheduleRow[] {
   const cmp = (a: string | number, b: string | number) => (a < b ? -1 : a > b ? 1 : 0);
   return [...rows.values()]
     .sort((a, b) => cmp(a.code, b.code) || cmp(a.name, b.name) || cmp(a.rank, b.rank))
-    .map(({ code, name, size, quantity }) => ({ code, name, size, quantity }));
+    .map(({ code, name, size, quantity, model }) => ({ code, name, size, quantity, model }));
 }
 
 // ── Fitting the schedule ──────────────────────────────────────────────────

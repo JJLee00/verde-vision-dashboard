@@ -16,7 +16,8 @@ import {
   type SheetLayout,
 } from "@/lib/blueprint/sheet";
 import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
-import { drawPlanSymbol } from "@/lib/viewer/symbols";
+import { speciesMeta } from "@/lib/viewer/catalog";
+import { drawPlanSymbol, symbolFor } from "@/lib/viewer/symbols";
 import type { LocalPoint, ProjectFileJSON } from "@/lib/viewer/types";
 import { METERS_TO_FEET } from "@/lib/viewer/types";
 
@@ -41,6 +42,9 @@ const rgb = (r: number, g: number, b: number): RGB => [r * 255, g * 255, b * 255
 const css = ([r, g, b]: RGB, a = 1) => `rgba(${r}, ${g}, ${b}, ${a})`;
 
 type Rect = { x: number; y: number; w: number; h: number };
+
+/** The plan symbols' ink: a green-black, the headset's planInkGreen. */
+const INK: RGB = rgb(0.15, 0.3, 0.12);
 type Hatch = { stroke: RGB; label: RGB; draw: (doc: Doc, r: Rect) => void };
 
 // ── Pattern helpers ──────────────────────────────────────────────────────
@@ -289,7 +293,7 @@ const F = {
   titleValueBold: { name: FONT.sansSemi, size: 8 },
   titleMain: { name: FONT.sansSemi, size: 10 },
   featureLabel: { name: FONT.sansSemi, size: 9 },
-  plantCode: { name: FONT.sans, size: 6.5 },
+  plantCode: { name: FONT.sansSemi, size: 7 },
   dimension: { name: FONT.sans, size: 6.5 },
   scale: { name: FONT.sans, size: 7 },
   footer: { name: FONT.sans, size: 5, spacing: 0.5 },
@@ -486,7 +490,7 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   // Plants: the viewer's own symbols, at mature spread. Drawn in a frame
   // scaled to a viewer pixel, so the few things the viewer sizes in pixels
   // (dashes, dots, the 1 px line) print at the same 0.75 pt the headset uses.
-  const ink = rgb(0.15, 0.3, 0.12);
+  const ink = INK;
   const canvas = new PdfCanvas(doc) as unknown as CanvasRenderingContext2D;
   const project3 = (wx: number, _y: number, wz: number): [number, number, number] => {
     const [x, y] = toPDF(wx / METERS_TO_FEET, wz / METERS_TO_FEET);
@@ -494,7 +498,8 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   };
   const poolStroke = featureHatch("Pool").stroke;
   const ptPerFt = layout.mapScale / METERS_TO_FEET;
-  for (const mark of plantMarks(project, layout)) {
+  const marks = plantMarks(project, layout);
+  for (const mark of marks) {
     const placement = (project.placements ?? []).find((p) => p.id === mark.id);
     if (mark.symbol && placement) {
       const [rx, rz] = layout.rotate(placement.positionX, placement.positionZ);
@@ -523,12 +528,21 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
         doc.restore();
       }
     }
-    // The code off the upper right, its baseline just above centre.
-    doc
-      .font(F.plantCode.name)
-      .fontSize(F.plantCode.size)
-      .fillColor(gray(0.25))
-      .text(mark.code, mark.x + mark.R * 0.72 + 4 * PX, mark.y - 4 * PX, { lineBreak: false, baseline: "alphabetic" });
+  }
+
+  // Codes, off each plant's upper right — drawn after every plant so no
+  // canopy lands on one, and on a white halo so they read over the busiest
+  // linework. They were light 6.5 pt type drawn plant by plant, and in a
+  // dense bed the next plant's lines went straight through them.
+  for (const mark of marks) {
+    const x = mark.x + mark.R * 0.72 + 4 * PX;
+    const y = mark.y - 4 * PX;
+    const opts = { lineBreak: false, baseline: "alphabetic" } as const;
+    doc.font(F.plantCode.name).fontSize(F.plantCode.size);
+    doc.save().lineWidth(CODE_HALO).lineJoin("round").strokeColor("#ffffff");
+    doc.text(mark.code, x, y, { ...opts, stroke: true, fill: false });
+    doc.restore();
+    doc.fillColor(gray(0.12)).text(mark.code, x, y, opts);
   }
 
   // Marker plates: a small square and its letter, wherever one is mounted
@@ -598,9 +612,10 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   colY = SCHEDULE_TOP;
   section("PLANT SCHEDULE");
   colY += 4;
-  const codeColX = colX + 6;
-  const nameColX = colX + 30;
-  const sizeColX = colX + 104;
+  const keyColX = colX + 6;
+  const codeColX = colX + 17;
+  const nameColX = colX + 40;
+  const sizeColX = colX + 116;
   const qtyColX = colX + T - 10;
   text(doc, "CODE", codeColX, colY, F.tableHeader, gray(0.5));
   text(doc, "COMMON NAME", nameColX, colY, F.tableHeader, gray(0.5));
@@ -614,7 +629,8 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   const counts = legendCounts(project);
   const fit = scheduleFit(schedule.length, counts.featureTypes, counts.surfaceStyles);
   const body: Font = { name: FONT.sans, size: fit.fontSize };
-  scheduleRows(doc, schedule.slice(0, fit.rowsOnSheet), colY, body, fit.rowHeight, {
+  scheduleRows(doc, canvas, schedule.slice(0, fit.rowsOnSheet), colY, body, fit.rowHeight, {
+    key: keyColX,
     code: codeColX,
     name: nameColX,
     nameWidth: sizeColX - nameColX - 3,
@@ -624,7 +640,7 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   colY += fit.rowsOnSheet * fit.rowHeight;
   const more = schedule.length - fit.rowsOnSheet;
   if (more > 0) {
-    text(doc, `Continued on sheet 2 — ${more} more`, codeColX, colY, { ...body, name: FONT.sansSemi }, gray(0.15));
+    text(doc, `Continued on sheet 2 — ${more} more`, keyColX, colY, { ...body, name: FONT.sansSemi }, gray(0.15));
     colY += fit.rowHeight;
   }
 
@@ -728,15 +744,16 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
       const x0 = M + 16 + c * colW;
       const y0 = CONTINUED.top;
       const qtyRight = x0 + colW - 16;
-      text(doc, "CODE", x0, y0, F.tableHeader, gray(0.5));
-      text(doc, "COMMON NAME", x0 + 30, y0, F.tableHeader, gray(0.5));
+      text(doc, "CODE", x0 + 14, y0, F.tableHeader, gray(0.5));
+      text(doc, "COMMON NAME", x0 + 44, y0, F.tableHeader, gray(0.5));
       text(doc, "SIZE", x0 + 150, y0, F.tableHeader, gray(0.5));
       text(doc, "QTY", qtyRight - measure(doc, "QTY", F.tableHeader).w, y0, F.tableHeader, gray(0.5));
       hline(doc, x0, qtyRight, y0 + 8, gray(0.8), 0.3);
-      scheduleRows(doc, rows, y0 + 11, cBody, CONTINUED.rowHeight, {
-        code: x0,
-        name: x0 + 30,
-        nameWidth: 117,
+      scheduleRows(doc, canvas, rows, y0 + 11, cBody, CONTINUED.rowHeight, {
+        key: x0,
+        code: x0 + 14,
+        name: x0 + 44,
+        nameWidth: 103,
         size: x0 + 150,
         qtyRight,
       });
@@ -748,17 +765,62 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   return toBuffer(doc);
 }
 
-/** Schedule rows from `y` down: the catalog's name cut to its column with
- *  an ellipsis when it won't fit, the quantity right-aligned. */
+/** The white halo behind a plan code, in points across. */
+const CODE_HALO = 1.8;
+/** The key's line weight: the map's 0.75 pt would clot a 9 pt drawing. */
+const KEY_PX = 0.35;
+
+/**
+ * A plant's drawing as the schedule's key: the same mark the map prints,
+ * unturned, sized to the row. A light's beam is turned to point along the
+ * row, and scaled so the whole fan fits.
+ */
+function keyIcon(doc: Doc, canvas: CanvasRenderingContext2D, model: string, cx: number, cy: number, r: number) {
+  const meta = speciesMeta(model);
+  const sym = symbolFor(model, meta.kind);
+  if (!sym) return;
+  const aimed = sym.edge === "uplight" || sym.edge === "flood";
+  // How far the mark reaches, in symbol radii: a fixture is drawn at 1.1
+  // and its beam at 2.2 of that.
+  const reach = aimed ? 2.42 : sym.edge === "pathlight" ? 1.045 : 1;
+  const u = r / reach;
+  const project = (wx: number, _y: number, wz: number): [number, number, number] => [
+    (cx + wx * u) / KEY_PX,
+    (cy + wz * u) / KEY_PX,
+    1,
+  ];
+  doc.save().scale(KEY_PX);
+  drawPlanSymbol(canvas, project, 0, 0, 1, sym, {
+    rot: aimed ? -Math.PI / 2 : 0,
+    stroke: css(INK, meta.kind === "boulder" ? 0.45 / 0.62 : 1),
+    detail: css(INK, 0.4 / 0.62),
+    lw: 1,
+    markR: u / KEY_PX,
+    seed: model,
+  });
+  doc.restore();
+}
+
+/** The key drawing's radius for a row: as big as the row allows, up to 4.5 pt. */
+export const keyRadius = (rowHeight: number) => Math.min(4.5, (rowHeight - 1.5) / 2);
+
+/** Schedule rows from `y` down: each plant's drawing as the key (once,
+ *  on its first row), the catalog's name cut to its column with an ellipsis
+ *  when it won't fit, the quantity right-aligned. */
 function scheduleRows(
   doc: Doc,
+  canvas: CanvasRenderingContext2D,
   rows: ScheduleRow[],
   y: number,
   body: Font,
   rowHeight: number,
-  col: { code: number; name: number; nameWidth: number; size: number; qtyRight: number },
+  col: { key: number; code: number; name: number; nameWidth: number; size: number; qtyRight: number },
 ) {
+  const r = keyRadius(rowHeight);
+  let previous = "";
   for (const row of rows) {
+    if (row.name !== previous) keyIcon(doc, canvas, row.model, col.key + r, y + body.size * 0.65, r);
+    previous = row.name;
     text(doc, row.code, col.code, y, body, gray(0.15));
     let name = row.name;
     while (name.length > 1 && measure(doc, name, body).w > col.nameWidth) {
