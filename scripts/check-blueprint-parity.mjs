@@ -24,7 +24,7 @@ import { createJiti } from "jiti";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const jiti = createJiti(import.meta.url, { alias: { "@": join(root, "src") } });
-const { sheetLayout, plantMarks, plantSchedule, scheduleFit, sheetCount, legendCounts } = await jiti.import(
+const { sheetLayout, plantMarks, plantSchedule, scheduleFit, sheetCount, legendCounts, planLabels } = await jiti.import(
   join(root, "src/lib/blueprint/sheet.ts"),
 );
 const catalog = JSON.parse(readFileSync(join(root, "src/lib/catalog.json"), "utf8"));
@@ -60,6 +60,13 @@ function expectFor(project) {
       rot: r4(wrap(m.rot)),
     })),
     schedule: plantSchedule(project.placements ?? []),
+    ...(() => {
+      const { labels, links } = planLabels(project, layout, plantMarks(project, layout));
+      return {
+        labels: labels.map((l) => ({ text: l.text, x: r4(l.x), y: r4(l.y), leader: l.leader?.map(r4) ?? null })),
+        links: links.map((l) => l.map(r4)),
+      };
+    })(),
     ...(() => {
       const rows = plantSchedule(project.placements ?? []).length;
       const { featureTypes, surfaceStyles } = legendCounts(project);

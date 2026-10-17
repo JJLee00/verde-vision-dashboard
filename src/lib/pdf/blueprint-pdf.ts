@@ -3,10 +3,13 @@ import { PdfCanvas } from "./canvas-on-pdf";
 import {
   CONTINUED,
   CONTINUED_ROWS_PER_COLUMN,
+  LABEL_BASELINE,
   PX,
+  TREE_KINDS,
   SCHEDULE_TOP,
   SHEET,
   legendCounts,
+  planLabels,
   plantMarks,
   plantSchedule,
   scheduleFit,
@@ -17,7 +20,7 @@ import {
 } from "@/lib/blueprint/sheet";
 import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
 import { speciesMeta } from "@/lib/viewer/catalog";
-import { drawPlanSymbol, symbolFor } from "@/lib/viewer/symbols";
+import { drawPlanSymbol, edgeRadius, symbolFor, type PlanSymbol } from "@/lib/viewer/symbols";
 import type { LocalPoint, ProjectFileJSON } from "@/lib/viewer/types";
 import { METERS_TO_FEET } from "@/lib/viewer/types";
 
@@ -405,6 +408,20 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   }
   doc.lineWidth(0.3).strokeColor(gray(0.95)).stroke().restore();
 
+  // Tree canopies, tinted — first, under everything, so a canopy over the
+  // patio still shows the patio's pattern through it, and overlapping
+  // canopies are one even tint rather than stacking into dark blotches.
+  // A mulga is left out: its drawing is branches and no outline, and a
+  // filled disc would be a shape the tree does not have.
+  const marks = plantMarks(project, layout);
+  for (const mark of marks) {
+    if (!TREE_KINDS.has(mark.kind) || !mark.symbol || mark.symbol.edge === "none") continue;
+    doc.save();
+    canopyPath(doc, mark.symbol, mark.x, mark.y, mark.R, mark.rot);
+    doc.fillColor(TREE_TINT).fill("nonzero");
+    doc.restore();
+  }
+
   // Surfaces, under the features.
   const areas = project.hardscapeAreas ?? [];
   for (const area of areas) {
@@ -498,17 +515,20 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   };
   const poolStroke = featureHatch("Pool").stroke;
   const ptPerFt = layout.mapScale / METERS_TO_FEET;
-  const marks = plantMarks(project, layout);
-  for (const mark of marks) {
+  // Trees first and lighter, so the shrubs and accents beneath their
+  // canopies read on top.
+  const drawOrder = [...marks.filter((m) => TREE_KINDS.has(m.kind)), ...marks.filter((m) => !TREE_KINDS.has(m.kind))];
+  for (const mark of drawOrder) {
     const placement = (project.placements ?? []).find((p) => p.id === mark.id);
     if (mark.symbol && placement) {
+      const tree = TREE_KINDS.has(mark.kind);
       const [rx, rz] = layout.rotate(placement.positionX, placement.positionZ);
       doc.save().scale(PX);
       drawPlanSymbol(canvas, project3, rx * METERS_TO_FEET, rz * METERS_TO_FEET, mark.radiusFt, mark.symbol, {
         rot: mark.rot,
-        stroke: css(ink, mark.kind === "boulder" ? 0.45 / 0.62 : 1),
-        detail: css(ink, 0.4 / 0.62),
-        lw: 1,
+        stroke: css(ink, tree ? TREE_STROKE : mark.kind === "boulder" ? 0.45 / 0.62 : 1),
+        detail: css(ink, tree ? TREE_DETAIL : 0.4 / 0.62),
+        lw: tree ? TREE_LW : 1,
         markR: mark.R / PX,
         seed: mark.model,
       });
@@ -530,19 +550,29 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
     }
   }
 
-  // Codes, off each plant's upper right — drawn after every plant so no
-  // canopy lands on one, and on a white halo so they read over the busiest
-  // linework. They were light 6.5 pt type drawn plant by plant, and in a
-  // dense bed the next plant's lines went straight through them.
-  for (const mark of marks) {
-    const x = mark.x + mark.R * 0.72 + 4 * PX;
-    const y = mark.y - 4 * PX;
-    const opts = { lineBreak: false, baseline: "alphabetic" } as const;
+  // Labels: one per group of touching plants of a kind, each where there's
+  // room (see planLabels). First the thin lines that join a group, then the
+  // leaders, then the codes themselves on a white halo, on top of it all.
+  const { labels, links } = planLabels(project, layout, marks);
+  doc.save();
+  for (const [x1, y1, x2, y2] of links) doc.moveTo(x1, y1).lineTo(x2, y2);
+  doc.lineWidth(0.4).strokeColor(ink, 0.55).stroke();
+  doc.restore();
+  for (const l of labels) {
+    if (!l.leader) continue;
+    const [x1, y1, x2, y2] = l.leader;
+    doc.save().moveTo(x1, y1).lineTo(x2, y2).lineWidth(0.45).strokeColor(gray(0.25)).stroke().restore();
+    doc.save().circle(x2, y2, 0.9).fillColor(gray(0.25)).fill().restore();
+  }
+  for (const l of labels) {
     doc.font(F.plantCode.name).fontSize(F.plantCode.size);
+    const x = l.x - doc.widthOfString(l.text) / 2;
+    const y = l.y + LABEL_BASELINE;
+    const opts = { lineBreak: false, baseline: "alphabetic" } as const;
     doc.save().lineWidth(CODE_HALO).lineJoin("round").strokeColor("#ffffff");
-    doc.text(mark.code, x, y, { ...opts, stroke: true, fill: false });
+    doc.text(l.text, x, y, { ...opts, stroke: true, fill: false });
     doc.restore();
-    doc.fillColor(gray(0.12)).text(mark.code, x, y, opts);
+    doc.fillColor(gray(0.12)).text(l.text, x, y, opts);
   }
 
   // Marker plates: a small square and its letter, wherever one is mounted
@@ -767,6 +797,39 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
 
 /** The white halo behind a plan code, in points across. */
 const CODE_HALO = 1.8;
+/** Trees: a pale sage under the canopy, and lighter, finer linework. */
+const TREE_TINT: RGB = rgb(0.9, 0.945, 0.875);
+const TREE_STROKE = 0.6;
+const TREE_DETAIL = 0.35;
+const TREE_LW = 0.85;
+
+/** A symbol's outline as a closed path on the page: its own polygons when
+ *  it has them, else its edge swept round in 96 steps. */
+function canopyPath(doc: Doc, sym: PlanSymbol, x: number, y: number, R: number, rot: number) {
+  const c = Math.cos(rot);
+  const s = Math.sin(rot);
+  if (sym.edge === "poly" && sym.polys) {
+    for (const poly of sym.polys) {
+      poly.forEach(([px, py], i) => {
+        const X = x + (px * c - py * s) * R;
+        const Y = y + (px * s + py * c) * R;
+        if (i) doc.lineTo(X, Y);
+        else doc.moveTo(X, Y);
+      });
+      doc.closePath();
+    }
+    return;
+  }
+  for (let k = 0; k <= 96; k++) {
+    const a = (k / 96) * Math.PI * 2;
+    const r = R * edgeRadius(sym, a - rot);
+    const X = x + Math.cos(a) * r;
+    const Y = y + Math.sin(a) * r;
+    if (k) doc.lineTo(X, Y);
+    else doc.moveTo(X, Y);
+  }
+  doc.closePath();
+}
 /** The key's line weight: the map's 0.75 pt would clot a 9 pt drawing. */
 const KEY_PX = 0.35;
 
