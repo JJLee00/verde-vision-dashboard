@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-10-09",
+  "generatedAt": "2026-10-21",
   "sizeOrder": [
     "1g",
     "5g",
@@ -232,7 +232,7 @@
           "modelName": "GoldenBarrel"
         }
       ],
-      "matureHeightFt": 3,
+      "matureHeightFt": 1.5,
       "matureWidthFt": 2,
       "sun": "Full Sun",
       "water": "Low",
@@ -345,7 +345,7 @@
           "modelName": "AZBoulder1"
         }
       ],
-      "matureHeightFt": 1,
+      "matureHeightFt": 2,
       "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
@@ -595,7 +595,7 @@
           "modelName": "Firebarrel"
         }
       ],
-      "matureHeightFt": 3,
+      "matureHeightFt": 1.5,
       "matureWidthFt": 2,
       "sun": "Full Sun",
       "water": "Low",
@@ -899,8 +899,8 @@
           "modelName": "WhiteDawnLantana"
         }
       ],
-      "matureHeightFt": 2,
-      "matureWidthFt": 6,
+      "matureHeightFt": 1,
+      "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "South America (cultivated selection)",
@@ -1172,8 +1172,8 @@
           "modelName": "PurpleLantana"
         }
       ],
-      "matureHeightFt": 2,
-      "matureWidthFt": 6,
+      "matureHeightFt": 1,
+      "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "South America",
@@ -1205,8 +1205,8 @@
           "modelName": "YellowLantana"
         }
       ],
-      "matureHeightFt": 2,
-      "matureWidthFt": 6,
+      "matureHeightFt": 1,
+      "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Tropical Americas (cultivated selection)",
