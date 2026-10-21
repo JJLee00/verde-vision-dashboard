@@ -1142,8 +1142,10 @@ export function LivingBlueprint({
         ctx!.fill();
         ctx!.fillStyle = tint(0.05 + 0.2 * (1 - f.lit));
         ctx!.fill();
-        ctx!.strokeStyle = tint(0.3);
-        ctx!.lineWidth = lw * 0.55;
+        // The facet edges carry the drawing: at a hairline they dissolved
+        // into the fills and the rock went back to being a blob.
+        ctx!.strokeStyle = tint(0.5);
+        ctx!.lineWidth = lw * 0.85;
         ctx!.stroke();
       }
 
@@ -1157,8 +1159,8 @@ export function LivingBlueprint({
       ctx!.moveTo(hull[0][0], hull[0][1]);
       for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
       ctx!.closePath();
-      ctx!.strokeStyle = sel ? GOLD : verde(0.5);
-      ctx!.lineWidth = lw;
+      ctx!.strokeStyle = sel ? GOLD : verde(0.7);
+      ctx!.lineWidth = lw * 1.2;
       ctx!.stroke();
     }
 
