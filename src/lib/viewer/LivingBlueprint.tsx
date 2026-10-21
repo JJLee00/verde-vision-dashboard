@@ -1109,7 +1109,7 @@ export function LivingBlueprint({
         if (closed) {
           const mid = (a: [number, number], b: [number, number]) =>
             [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as [number, number];
-          let m = mid(pts[pts.length - 1], pts[0]);
+          const m = mid(pts[pts.length - 1], pts[0]);
           ctx!.moveTo(m[0], m[1]);
           for (let i = 0; i < pts.length; i++) {
             const next = mid(pts[i], pts[(i + 1) % pts.length]);
