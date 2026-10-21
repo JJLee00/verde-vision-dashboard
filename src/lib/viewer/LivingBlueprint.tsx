@@ -1040,31 +1040,29 @@ export function LivingBlueprint({
       ctx!.lineCap = "butt";
     }
 
-    /** A boulder: the scanned rock, in planes.
+    /** A boulder, DRAWN — not rendered.
      *
-     *  Modelled on the AZ Boulder's own USDZ rather than on a rock in
-     *  general, because that scan has a shape: a low wide slab, steep
-     *  walled, its top NOT a dome or a lid but a ridge running off centre
-     *  with a high point about a third along, broken by a ledge where one
-     *  stretch of the top drops to a lower plateau. The outline is ragged —
-     *  notched in at two or three places, which is most of what tells a
-     *  rock from a pebble at fifty feet.
+     *  Five solids were built before this one and every one of them looked
+     *  foreign: an even net of facets (a cut gem), a smoothed gradient with
+     *  creases (a beanbag), fifteen planes round a flat lid (a die), the
+     *  height spent on the top (a tent), and the scan's own slab. The fault
+     *  was never the form. It is that a lit, flat-shaded polyhedron is the
+     *  only thing in this viewer that is one: an agave is leaves, a barrel
+     *  is a hull and some spines, a lantana is flower heads — ink and a
+     *  wash of paper, no light source anywhere. A rock rendered among them
+     *  reads as a screenshot pasted into a drawing.
      *
-     *  Three earlier passes, each recorded so nobody walks back into one:
-     *  forty equal facets in an even net read as a cut gem; smoothing that
-     *  into a gradient with creases read as a beanbag; fifteen planes round
-     *  a flat lid read as a die. The shape has to come from the rock, not
-     *  from the subdivision.
+     *  So this is how a rock is drawn on a landscape sheet: one confident
+     *  silhouette, a brow line across the top plane, hatching on the side
+     *  away from the light, and the soil line where it beds in. The
+     *  geometry underneath is still real and still turns with the camera —
+     *  the outline is the projected hull of three rings, widest at grade so
+     *  the rock sits IN the ground — but what gets drawn is a drawing.
      *
-     *  Still low-poly and still flat-shaded: every face takes its tone from
-     *  its true normal against a fixed light, so the step between planes IS
-     *  the edge, and every edge is drawn.
-     *
-     *  Widest at grade and narrowing up, because a boulder is set INTO the
-     *  soil: what shows is the top of a rock the ground cuts off, and the
-     *  near bottom edges are its soil line. Radii come from the plant's OWN
-     *  plan mark at the catalog's spread, so body and mark stay one rock,
-     *  and every vertex is jittered off the placement's id.
+     *  Radii come from the plant's OWN plan mark at the catalog's spread,
+     *  so the body and the mark it cross-fades into stay one rock, and
+     *  every vertex is jittered off the placement's id, so two boulders of
+     *  a model are not twins.
      */
     function drawBoulderBody(
       x: number,
@@ -1079,139 +1077,144 @@ export function LivingBlueprint({
     ) {
       const R = wFt / 2;
       const rng = rngFor("rock:" + seed);
-      const N = 12 + Math.floor(rng() * 3); // 12–14 sides
-      const ridgeA = rng() * Math.PI * 2; // which way the rock is long
-      const cosR = Math.cos(ridgeA);
-      const sinR = Math.sin(ridgeA);
+      const N = 18; // fine: the silhouette is a drawn line, not a facet count
 
-      // Where the top drops away to a lower plateau, and how far round it
-      // runs: the ledge in the scan, which is the one feature that stops
-      // the top reading as a single slab of cardboard.
-      const ledgeAt = Math.floor(rng() * N);
-      const ledgeRun = 2 + Math.floor(rng() * 2);
-      const onLedge = (i: number) => {
-        const d = (i - ledgeAt + N) % N;
-        return d < ledgeRun;
-      };
-
-      // The outline, cut once and shared by every ring: notched in at two
-      // or three vertices, so the rock has corners and bays rather than a
-      // smooth rim. Jittering each ring separately made a fringe instead.
-      const spoke = Array.from({ length: N }, (_, i) => {
-        const th = ((i + (rng() - 0.5) * 0.55) / N) * Math.PI * 2;
-        const notch = rng() < 0.22 ? 0.66 + rng() * 0.12 : 0.9 + rng() * 0.1;
-        return { th, notch };
-      });
-
-      type V = { sx: number; sy: number; d: number; wx: number; wy: number; wz: number };
-      const at = (wx: number, wy: number, wz: number): V => {
-        const q = P(wx, Math.max(wy, 0), wz);
-        return { sx: q[0], sy: q[1], d: q[2], wx, wy, wz };
-      };
-      const ring = (frac: number, yFrac: number): V[] =>
-        spoke.map(({ th, notch }, i) => {
+      // One outline, shared by every ring, so the rock has bays and corners
+      // rather than a fringe of independent noise.
+      const spoke = Array.from({ length: N }, (_, i) => ({
+        th: ((i + (rng() - 0.5) * 0.4) / N) * Math.PI * 2,
+        notch: rng() < 0.18 ? 0.74 + rng() * 0.1 : 0.92 + rng() * 0.08,
+      }));
+      const ring = (frac: number, yFrac: number): [number, number][] =>
+        spoke.map(({ th, notch }) => {
           const r = R * (sym ? edgeRadius(sym, th - rot) : 1) * frac * notch;
-          // The ledge stretch rides low; everything else carries a little
-          // jitter so no two walls are the same height.
-          const y = hFt * yFrac * (onLedge(i) ? 0.56 : 0.9 + rng() * 0.2);
-          return at(x + Math.cos(th) * r, y, z + Math.sin(th) * r);
+          const q = P(
+            x + Math.cos(th) * r,
+            hFt * yFrac * (0.9 + rng() * 0.2),
+            z + Math.sin(th) * r,
+          );
+          return [q[0], q[1]];
         });
-
-      // A slab: the wall takes half the height at nearly full width, the
-      // rim rolls over fast, and the top is a broad plateau with a shallow
-      // crest. Spending the height on the top instead — a wide rim low
-      // down and a crest well above it — builds a tent, and carrying the
-      // wall most of the way up at full radius builds a drum with a lid.
-      // Both were drawn before this one.
       const grade = ring(1, 0);
-      const wall = ring(0.97, 0.5);
-      const rim = ring(0.9, 0.82);
+      const brow = ring(0.78, 0.74);
+      const crest = ring(0.4, 0.97);
 
-      // The ridge: a line, not a point and not a plane. t runs -1 to 1 along
-      // it, the high point sits a third of the way towards one end, and the
-      // rim fans to it — so the top is two long slopes meeting in a crest.
-      const ridge = (t: number): V => {
-        const peak = Math.exp(-Math.pow((t - 0.22) / 0.66, 2));
-        return at(
-          x + cosR * t * R * 0.58,
-          hFt * (0.88 + 0.12 * peak),
-          z + sinR * t * R * 0.58,
-        );
-      };
-
-      // Up and to the left, the light every drawing on this sheet is under.
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const faces: { vs: V[]; d: number; lit: number }[] = [];
-      const face = (vs: V[]) => {
-        const ax = vs[1].wx - vs[0].wx;
-        const ay = vs[1].wy - vs[0].wy;
-        const az = vs[1].wz - vs[0].wz;
-        const bx = vs[2].wx - vs[0].wx;
-        const by = vs[2].wy - vs[0].wy;
-        const bz = vs[2].wz - vs[0].wz;
-        const nx = ay * bz - az * by;
-        const ny = az * bx - ax * bz;
-        const nz = ax * by - ay * bx;
-        const L = Math.hypot(nx, ny, nz) || 1;
-        // Absolute, so the winding — which flips round the back of the rock
-        // — cannot turn a face into a hole.
-        const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / L);
-        faces.push({ vs, d: vs.reduce((s, v) => s + v.d, 0) / vs.length, lit });
-      };
-      for (let i = 0; i < N; i++) {
-        const j = (i + 1) % N;
-        face([grade[i], grade[j], wall[j], wall[i]]);
-        face([wall[i], wall[j], rim[j], rim[i]]);
-        // Top: each rim edge runs back to the crest above it. Where both
-        // ends sit at the same point on the ridge this is a triangle, which
-        // a degenerate corner handles without a seam.
-        const ti = cosR * (rim[i].wx - x) + sinR * (rim[i].wz - z);
-        const tj = cosR * (rim[j].wx - x) + sinR * (rim[j].wz - z);
-        const unit = R || 1;
-        face([
-          rim[i],
-          rim[j],
-          ridge(Math.max(-1, Math.min(1, tj / unit))),
-          ridge(Math.max(-1, Math.min(1, ti / unit))),
-        ]);
-      }
-      faces.sort((p, q) => q.d - p.d); // far first, so near stone covers it
-
-      const tint = sel ? gold : verde;
-      ctx!.lineJoin = "round";
-      for (const f of faces) {
+      const hull = convexHull([...grade, ...brow, ...crest]);
+      if (hull.length < 3) return;
+      // Drawn as curves through the vertices, not as the segments between
+      // them: at any zoom past the thumbnail a polyline reads as a polygon,
+      // and the whole point of this rock is that it is a drawn line.
+      const path = (pts: [number, number][], closed = true) => {
         ctx!.beginPath();
-        ctx!.moveTo(f.vs[0].sx, f.vs[0].sy);
-        for (let i = 1; i < f.vs.length; i++) ctx!.lineTo(f.vs[i].sx, f.vs[i].sy);
-        ctx!.closePath();
-        // Paper under every plane, or the translucent tints stack and the
-        // far side of the rock shows through the near one.
-        ctx!.fillStyle = LEAF_BODY;
-        ctx!.fill();
-        // A wide range on purpose: with this few planes the tone step from
-        // one to the next is what draws the edge.
-        ctx!.fillStyle = tint(0.04 + 0.26 * (1 - f.lit));
-        ctx!.fill();
-        ctx!.strokeStyle = sel ? GOLD : verde(0.5);
-        ctx!.lineWidth = lw * 0.7;
+        if (closed) {
+          const mid = (a: [number, number], b: [number, number]) =>
+            [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as [number, number];
+          let m = mid(pts[pts.length - 1], pts[0]);
+          ctx!.moveTo(m[0], m[1]);
+          for (let i = 0; i < pts.length; i++) {
+            const next = mid(pts[i], pts[(i + 1) % pts.length]);
+            ctx!.quadraticCurveTo(pts[i][0], pts[i][1], next[0], next[1]);
+          }
+        } else {
+          ctx!.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length - 1; i++) {
+            const nx = (pts[i][0] + pts[i + 1][0]) / 2;
+            const ny = (pts[i][1] + pts[i + 1][1]) / 2;
+            ctx!.quadraticCurveTo(pts[i][0], pts[i][1], nx, ny);
+          }
+          const last = pts[pts.length - 1];
+          ctx!.lineTo(last[0], last[1]);
+        }
+      };
+
+      // 1 — the mass. Paper first, so what is behind the rock stops there,
+      // then the same wash every other body carries.
+      ctx!.lineJoin = "round";
+      path(hull);
+      ctx!.closePath();
+      ctx!.fillStyle = LEAF_BODY;
+      ctx!.fill();
+      ctx!.fillStyle = sel ? gold(0.16) : verde(0.09);
+      ctx!.fill();
+
+      // 2 — the shadow. Hatching, the way the rest of this sheet says
+      // texture: parallel strokes clipped to the mass, filling the outer
+      // half of it on the side away from the light, which falls from the
+      // upper left on every drawing here.
+      const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
+      const cy = hull.reduce((s, p) => s + p[1], 0) / hull.length;
+      const sx = 0.55; // down and to the right, in screen space
+      const sy = 0.84;
+      let lo = Infinity;
+      let hi = -Infinity;
+      let half = 0;
+      for (const p of hull) {
+        const d = (p[0] - cx) * sx + (p[1] - cy) * sy;
+        lo = Math.min(lo, d);
+        hi = Math.max(hi, d);
+        half = Math.max(half, Math.hypot(p[0] - cx, p[1] - cy));
+      }
+      ctx!.save();
+      path(hull);
+      ctx!.closePath();
+      ctx!.clip();
+      ctx!.strokeStyle = sel ? gold(0.5) : verde(0.34);
+      ctx!.lineWidth = lw * 0.5;
+      const gap = Math.max(2.6, lw * 1.9);
+      const from = lo + (hi - lo) * 0.42;
+      let n = 0;
+      for (let d = from; d <= hi; d += gap) {
+        // The first few are thinned, so the shadow starts rather than
+        // begins with an edge of its own.
+        if (n++ < 3 && (n & 1) === 0) continue;
+        // Perpendicular to the light, long enough to cross the mass at any
+        // angle; the clip does the shaping.
+        const mx = cx + sx * d;
+        const my = cy + sy * d;
+        ctx!.beginPath();
+        ctx!.moveTo(mx + sy * half * 1.6, my - sx * half * 1.6);
+        ctx!.lineTo(mx - sy * half * 1.6, my + sx * half * 1.6);
         ctx!.stroke();
       }
+      ctx!.restore();
 
-      // The silhouette, over the planes at full weight: the edge of a rock
-      // is the hardest line in the drawing.
-      const hull = convexHull(
-        [...grade, ...wall, ...rim].map((v): [number, number] => [v.sx, v.sy]),
-      );
-      if (hull.length < 3) return;
-      ctx!.beginPath();
-      ctx!.moveTo(hull[0][0], hull[0][1]);
-      for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
+      // 3 — the brow: the near arc of the top ring, which is the one line
+      // that says this is a rounded mass and not a cut-out. Near arc only;
+      // the far half is behind the rock.
+      const nearArc = (pts: [number, number][], w: number, col: string) => {
+        const midY = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+        // The longest unbroken run on the near side, drawn as ONE line. Run
+        // by run it came out as a dashed scribble.
+        let best: [number, number][] = [];
+        let run: [number, number][] = [];
+        for (let k = 0; k < pts.length * 2; k++) {
+          const p = pts[k % pts.length];
+          if (p[1] > midY) {
+            run.push(p);
+            if (run.length > best.length) best = [...run];
+          } else run = [];
+        }
+        if (best.length < 2) return;
+        ctx!.strokeStyle = col;
+        ctx!.lineWidth = w;
+        ctx!.lineCap = "round";
+        path(best, false);
+        ctx!.stroke();
+        ctx!.lineCap = "butt";
+      };
+      nearArc(brow, lw * 0.75, sel ? GOLD : verde(0.45));
+
+      // 4 — the outline, last and heaviest. On a drawing like this the
+      // silhouette carries the object; everything inside it is support.
+      path(hull);
       ctx!.closePath();
-      ctx!.strokeStyle = sel ? GOLD : verde(0.7);
-      ctx!.lineWidth = lw * 1.2;
+      ctx!.strokeStyle = sel ? GOLD : verde(0.78);
+      ctx!.lineWidth = lw * 1.3;
       ctx!.stroke();
+
+      // 5 — the soil line: the near arc of the grade ring, where the
+      // ground cuts the rock off.
+      nearArc(grade, lw * 0.9, sel ? GOLD : verde(0.5));
     }
 
     function drawInstance(inst: Instance, g: number, t: number) {
