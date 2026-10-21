@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 420" fill="none">
+  <title>AZ Boulder</title>
+  <desc>An irregular angular boulder with a large central face and surrounding facets, traced from the supplied sketch.</desc>
+  <g stroke="#202020" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M27 284 L121 125 L306 25 L449 88 L429 277 L167 391 L60 383 Z"/>
+    <path d="M143 183 L290 91 L349 113 L327 221 L186 291 L135 261 Z"/>
+    <path d="M121 125 L143 183 L27 284"/>
+    <path d="M306 25 L290 91"/>
+    <path d="M349 113 L449 88"/>
+    <path d="M327 221 L429 277"/>
+    <path d="M186 291 L167 391"/>
+    <path d="M135 261 L60 383"/>
+  </g>
+</svg>

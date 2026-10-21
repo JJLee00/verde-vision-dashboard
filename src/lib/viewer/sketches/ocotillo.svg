@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" fill="none">
+  <title>Ocotillo</title>
+  <desc>Eight curved stems radiate from a central crown, each ending in a round bud, traced from the supplied sketch.</desc>
+  <g stroke="#202020" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M230 237 C278 220 277 175 249 141 C202 111 198 66 247 35"/>
+    <path d="M230 237 C254 180 219 151 184 159 C117 175 65 190 85 102"/>
+    <path d="M230 237 C195 193 163 188 134 226 C108 268 51 282 32 231"/>
+    <path d="M230 237 C181 214 141 244 154 282 C172 327 207 365 79 382"/>
+    <path d="M230 237 C181 280 175 313 219 344 C269 379 284 414 223 448"/>
+    <path d="M230 237 C214 280 247 324 278 333 C338 343 426 292 386 400"/>
+    <path d="M230 237 C261 283 287 315 316 282 C349 246 365 194 406 198 C433 196 444 208 447 230"/>
+    <path d="M230 237 C279 242 324 251 320 208 C318 181 286 140 305 113 C327 82 366 81 396 102"/>
+  </g>
+  <g fill="#202020">
+    <circle cx="230" cy="237" r="12"/>
+    <circle cx="247" cy="35" r="11"/>
+    <circle cx="85" cy="102" r="11"/>
+    <circle cx="32" cy="231" r="11"/>
+    <circle cx="79" cy="382" r="11"/>
+    <circle cx="223" cy="448" r="11"/>
+    <circle cx="386" cy="400" r="11"/>
+    <circle cx="447" cy="230" r="11"/>
+    <circle cx="396" cy="102" r="11"/>
+  </g>
+</svg>

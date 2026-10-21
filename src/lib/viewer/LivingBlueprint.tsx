@@ -19,7 +19,13 @@ import {
 import Link from "next/link";
 import type { ProjectFileJSON } from "./types";
 import { buildScene, buildRail, type Instance } from "./scene";
-import { symbolFor, drawPlanSymbol, symbolPath3D } from "./symbols";
+import {
+  symbolFor,
+  drawPlanSymbol,
+  symbolPath3D,
+  edgeRadius,
+  type PlanSymbol,
+} from "./symbols";
 
 /* ── Brand-locked palette (matches globals.css / the marketing site).
       The viewer is a Verde Vision document — it does not follow the OS
@@ -935,6 +941,169 @@ export function LivingBlueprint({
       }
     }
 
+    /** Ocotillo: canes, and nothing else.
+     *
+     *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
+     *  rosette. It drew as a nine-blade agave until now, because its glyph
+     *  kind is `rosette` and that is the fallback body; with this plant the
+     *  silhouette IS the species, so it gets its own.
+     *
+     *  Every cane leaves the crown plumb and bends outward as it rises,
+     *  which is what a quadratic through (r0, 0) → (r0, 0.62 y) → (rTip, y)
+     *  draws. The tall canes are also the ones flung furthest out: that
+     *  pairing is the difference between an ocotillo and a sheaf of sticks.
+     *  Each one ends in the bud the plan mark draws.
+     */
+    function drawOcotilloBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      stroke: string,
+      fill: string,
+      lw: number,
+    ) {
+      const N = 15;
+      const S = 7; // samples per cane — the projection has to curve, not kink
+      const r0 = rw * 0.07;
+      const canes: { pts: [number, number][]; depth: number }[] = [];
+      for (let k = 0; k < N; k++) {
+        const a = rot + k * 2.399963; // golden angle — no two canes shadow
+        const vary = (k * 0.6180339887) % 1; // the same cane every frame
+        const yTip = h * (0.68 + 0.32 * vary);
+        const rTip = rw * (0.42 + 0.58 * vary);
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const pts: [number, number][] = [];
+        let depth = 0;
+        for (let i = 0; i <= S; i++) {
+          const t = i / S;
+          const u = 1 - t;
+          const r = u * u * r0 + 2 * u * t * r0 + t * t * rTip;
+          const y = 2 * u * t * yTip * 0.62 + t * t * yTip;
+          const q = P(x + ca * r, y, z + sa * r);
+          pts.push([q[0], q[1]]);
+          depth = q[2];
+        }
+        canes.push({ pts, depth });
+      }
+      canes.sort((p, q) => q.depth - p.depth);
+
+      const budR = Math.max(ftPx(x, z, rw * 0.045), 1.3);
+      ctx!.lineCap = "round";
+      ctx!.lineJoin = "round";
+      ctx!.strokeStyle = stroke;
+      for (const cane of canes) {
+        ctx!.beginPath();
+        ctx!.moveTo(cane.pts[0][0], cane.pts[0][1]);
+        for (let i = 1; i < cane.pts.length; i++)
+          ctx!.lineTo(cane.pts[i][0], cane.pts[i][1]);
+        ctx!.lineWidth = lw * 1.1;
+        ctx!.stroke();
+        const tip = cane.pts[cane.pts.length - 1];
+        ctx!.beginPath();
+        ctx!.arc(tip[0], tip[1], budR, 0, 7);
+        // Paper first, so a near cane's bud covers the one behind it.
+        ctx!.fillStyle = LEAF_BODY;
+        ctx!.fill();
+        ctx!.fillStyle = fill;
+        ctx!.fill();
+        ctx!.lineWidth = lw * 0.8;
+        ctx!.stroke();
+      }
+
+      // The crown: the one woody part of the plant, and what tells a viewer
+      // where the canes are rooted once the drawing tilts.
+      const c = P(x, 0, z);
+      const cr = Math.max(ftPx(x, z, r0 * 1.7), 1.6);
+      ctx!.beginPath();
+      ctx!.ellipse(c[0], c[1], cr, cr * 0.42, 0, 0, Math.PI * 2);
+      ctx!.fillStyle = fill;
+      ctx!.fill();
+      ctx!.lineWidth = lw;
+      ctx!.stroke();
+      ctx!.lineCap = "butt";
+    }
+
+    /** A boulder: silhouette, top face, and the facets between the two.
+     *
+     *  Two faults in one drawing before this. It drew at a hardcoded 1.2 ft
+     *  whatever the rock — an AZ Boulder is 3.4 ft across in the headset and
+     *  came out at a third of that, with a height derived from the same
+     *  wrong width — and it drew as a plain ellipse, which is the one shape
+     *  a rock is not.
+     *
+     *  The silhouette is now sampled from the plant's OWN plan mark, so the
+     *  body and the mark it cross-fades into are two drawings of one rock,
+     *  and the size is the catalog's spread, like every other species here.
+     */
+    function drawBoulderBody(
+      x: number,
+      z: number,
+      wFt: number,
+      hFt: number,
+      rot: number,
+      sym: PlanSymbol | null,
+      stroke: string,
+      fill: string,
+      lw: number,
+    ) {
+      const R = wFt / 2;
+      const N = 36;
+      const TOP = 0.56; // the top face against the silhouette, off the sketch
+      const ground: [number, number][] = [];
+      const top: [number, number][] = [];
+      for (let i = 0; i < N; i++) {
+        const th = (i / N) * Math.PI * 2;
+        // The mark is drawn turned by the plant's yaw, so the body has to
+        // read the edge at the same angle or the two disagree mid-fade.
+        const r = R * (sym ? edgeRadius(sym, th - rot) : 1);
+        // Widest a little above grade: a boulder settles into the soil.
+        const g = P(x + Math.cos(th) * r, hFt * 0.12, z + Math.sin(th) * r);
+        const t = P(
+          x + Math.cos(th) * r * TOP,
+          hFt,
+          z + Math.sin(th) * r * TOP,
+        );
+        ground.push([g[0], g[1]]);
+        top.push([t[0], t[1]]);
+      }
+
+      const hull = convexHull([...ground, ...top]);
+      if (hull.length < 3) return;
+      ctx!.beginPath();
+      ctx!.moveTo(hull[0][0], hull[0][1]);
+      for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
+      ctx!.closePath();
+      ctx!.fillStyle = LEAF_BODY;
+      ctx!.fill();
+      ctx!.fillStyle = fill;
+      ctx!.fill();
+      ctx!.strokeStyle = stroke;
+      ctx!.lineWidth = lw;
+      ctx!.lineJoin = "round";
+      ctx!.stroke();
+
+      // The top face, and then the facets falling away from its corners —
+      // the same three lines the plan mark is built from.
+      ctx!.beginPath();
+      ctx!.moveTo(top[0][0], top[0][1]);
+      for (let i = 1; i < N; i++) ctx!.lineTo(top[i][0], top[i][1]);
+      ctx!.closePath();
+      ctx!.lineWidth = lw * 0.8;
+      ctx!.stroke();
+      ctx!.lineWidth = lw * 0.7;
+      for (let k = 0; k < 6; k++) {
+        const i = Math.round((k / 6) * N) % N;
+        ctx!.beginPath();
+        ctx!.moveTo(top[i][0], top[i][1]);
+        ctx!.lineTo(ground[i][0], ground[i][1]);
+        ctx!.stroke();
+      }
+      ctx!.lineWidth = lw;
+    }
+
     function drawInstance(inst: Instance, g: number, t: number) {
       const { meta } = inst;
       const st = stateRef.current;
@@ -1072,19 +1241,14 @@ export function LivingBlueprint({
       } else if (meta.kind === "barrel") {
         drawBarrelBody(x, z, h, rw, symRot, stroke, fill, lw);
       } else if (meta.kind === "boulder") {
-        const w = Math.min(Math.max(1.2 * inst.scale, 0.8), 6);
-        const bh = (w * meta.renderHeightFt) / meta.matureWidthFt;
-        const base = P(x, 0, z);
-        const top = P(x, bh, z);
-        const rx = Math.max(ftPx(x, z, w / 2), 2);
-        const ry = Math.max(base[1] - top[1], 2);
-        ctx!.beginPath();
-        ctx!.ellipse(base[0], base[1] - ry / 2, rx, ry / 1.4, 0, 0, Math.PI * 2);
-        ctx!.fillStyle = sel ? gold(0.14) : ink(0.08);
-        ctx!.fill();
-        ctx!.strokeStyle = sel ? GOLD : verde(0.5);
-        ctx!.lineWidth = lw;
-        ctx!.stroke();
+        drawBoulderBody(
+          x, z, rw * 2, meta.renderHeightFt, symRot, planSym,
+          sel ? GOLD : verde(0.5),
+          sel ? gold(0.14) : ink(0.08),
+          lw,
+        );
+      } else if (inst.model === "Ocotillo") {
+        drawOcotilloBody(x, z, h, rw, symRot, stroke, fill, lw);
       } else if (meta.kind === "rosette" && AGAVE_SHAPES[inst.model]) {
         drawAgaveBody(x, z, h, rw, stroke, fill, lw, AGAVE_SHAPES[inst.model]);
       } else if (meta.kind === "rosette") {

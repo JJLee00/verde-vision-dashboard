@@ -540,6 +540,111 @@ const AGAVE_STAR: PlanSymbol = {
   centre: "dot",
 };
 
+/* ---------- AZ Boulder — traced from sketches/az-boulder.svg ---------- */
+
+// A rock in plan is three things: its silhouette, the top face that takes
+// the light, and the facets falling away between the two. The sketch draws
+// exactly that, and all of it in straight lines, so the mark is two closed
+// outlines and seven edges between them.
+//
+// Normalised to unit RADIUS, as the other traced outlines are, with the
+// short axis held at the scanned boulder's own footprint ratio (0.762 m
+// across against 1.029 m long) rather than the sketch's squarer one. At the
+// catalog's 4 ft spread the mark prints 3.6 x 2.7 ft, against the 3.4 x 2.5
+// ft rock the headset actually places at its middle size.
+const AZ_BOULDER_OUTLINE: [number, number][] = [
+  [-0.8996,0.2766], [-0.4988,-0.3021], [0.2899,-0.6661], [0.8996,-0.4368],
+  [0.8143,0.2512], [-0.3027,0.6661], [-0.7589,0.637],
+];
+
+const AZ_BOULDER_FACE: [number, number][] = [
+  [-0.405,-0.091], [0.2217,-0.4259], [0.4732,-0.3458], [0.3794,0.0473],
+  [-0.2217,0.3021], [-0.4391,0.1929],
+];
+
+// Each one runs from a corner of the top face out to the silhouette.
+const AZ_BOULDER_FACETS: Seg[] = [
+  [-0.4988,-0.3021,-0.405,-0.091], [-0.405,-0.091,-0.8996,0.2766],
+  [0.2899,-0.6661,0.2217,-0.4259], [0.4732,-0.3458,0.8996,-0.4368],
+  [0.3794,0.0473,0.8143,0.2512], [-0.2217,0.3021,-0.3027,0.6661],
+  [-0.4391,0.1929,-0.7589,0.637],
+];
+
+const AZ_BOULDER: PlanSymbol = {
+  edge: "poly",
+  n: 7,
+  d: 0,
+  polys: [AZ_BOULDER_OUTLINE, AZ_BOULDER_FACE],
+  interior: { kind: "lines", segs: AZ_BOULDER_FACETS },
+  centre: "none",
+};
+
+/* ---------- Ocotillo — traced from sketches/ocotillo.svg ---------- */
+
+// Eight canes out of one crown, each whipping to a bud. No outline, because
+// an ocotillo has none — the gaps between the canes ARE its edge, the same
+// reason the mulga is branches and nothing else.
+//
+// Each cane is 9 chained limbs sampled by arc length off the sketch's
+// beziers, tapering from the sketch's own stroke to half of it, and each
+// bud is a stub of its own so the limb's round cap draws it. Scaled so the
+// outermost bud's far edge lands on the spread exactly: at Ocotillo's 12 ft
+// that puts the cane at about an inch across where it leaves the crown,
+// which is what a cane measures — and the limbs scale with the symbol, so
+// unlike the rest of the linework the weight has to be the real figure or
+// the mark prints as the heaviest thing on the sheet. It did, at 1.45x.
+const OCOTILLO_CANES: Limb[] = [
+  [0,0,0.0127,0.1049,-0.063,0.012], [0.1049,-0.063,0.012,0.1588,-0.1646,0.0114],
+  [0.1588,-0.1646,0.0114,0.1495,-0.2818,0.0108], [0.1495,-0.2818,0.0108,0.0919,-0.3909,0.0101],
+  [0.0919,-0.3909,0.0101,0.0022,-0.4677,0.0095], [0.0022,-0.4677,0.0095,-0.0608,-0.5597,0.0089],
+  [-0.0608,-0.5597,0.0089,-0.0707,-0.6808,0.0082], [-0.0707,-0.6808,0.0082,-0.0144,-0.7826,0.0076],
+  [-0.0144,-0.7826,0.0076,0.0718,-0.8537,0.007], [0.0521,-0.8374,0.0465,0.0718,-0.8537,0.0465],
+  [0,0,0.0127,0.033,-0.132,0.012], [0.033,-0.132,0.012,0.0065,-0.2527,0.0114],
+  [0.0065,-0.2527,0.0114,-0.0993,-0.3296,0.0108], [-0.0993,-0.3296,0.0108,-0.223,-0.3228,0.0101],
+  [-0.223,-0.3228,0.0101,-0.3573,-0.2925,0.0095], [-0.3573,-0.2925,0.0095,-0.4824,-0.278,0.0089],
+  [-0.4824,-0.278,0.0089,-0.5983,-0.3194,0.0082], [-0.5983,-0.3194,0.0082,-0.631,-0.4422,0.0076],
+  [-0.631,-0.4422,0.0076,-0.6128,-0.5705,0.007], [-0.6164,-0.5452,0.0465,-0.6128,-0.5705,0.0465],
+  [0,0,0.0127,-0.0814,-0.0867,0.012], [-0.0814,-0.0867,0.012,-0.1812,-0.1463,0.0114],
+  [-0.1812,-0.1463,0.0114,-0.2966,-0.1404,0.0108], [-0.2966,-0.1404,0.0108,-0.3869,-0.0696,0.0101],
+  [-0.3869,-0.0696,0.0101,-0.4641,0.0259,0.0095], [-0.4641,0.0259,0.0095,-0.5597,0.091,0.0089],
+  [-0.5597,0.091,0.0089,-0.6704,0.1126,0.0082], [-0.6704,0.1126,0.0082,-0.777,0.0676,0.0076],
+  [-0.777,0.0676,0.0076,-0.8368,-0.0254,0.007], [-0.8229,-0.0038,0.0465,-0.8368,-0.0254,0.0465],
+  [0,0,0.0127,-0.1294,-0.0337,0.012], [-0.1294,-0.0337,0.012,-0.2619,0.0005,0.0114],
+  [-0.2619,0.0005,0.0114,-0.3298,0.1051,0.0108], [-0.3298,0.1051,0.0108,-0.3008,0.2379,0.0101],
+  [-0.3008,0.2379,0.0101,-0.2507,0.3627,0.0095], [-0.2507,0.3627,0.0095,-0.2688,0.485,0.0089],
+  [-0.2688,0.485,0.0089,-0.3872,0.5584,0.0082], [-0.3872,0.5584,0.0082,-0.515,0.5927,0.0076],
+  [-0.515,0.5927,0.0076,-0.6382,0.6128,0.007], [-0.6129,0.6087,0.0465,-0.6382,0.6128,0.0465],
+  [0,0,0.0127,-0.0967,0.0975,0.012], [-0.0967,0.0975,0.012,-0.1605,0.2031,0.0114],
+  [-0.1605,0.2031,0.0114,-0.1614,0.3219,0.0108], [-0.1614,0.3219,0.0108,-0.0814,0.4254,0.0101],
+  [-0.0814,0.4254,0.0101,0.0222,0.5048,0.0095], [0.0222,0.5048,0.0095,0.1059,0.595,0.0089],
+  [0.1059,0.595,0.0089,0.1372,0.7146,0.0082], [0.1372,0.7146,0.0082,0.0666,0.8257,0.0076],
+  [0.0666,0.8257,0.0076,-0.0296,0.8917,0.007], [-0.0085,0.8772,0.0465,-0.0296,0.8917,0.0465],
+  [0,0,0.0127,-0.0136,0.1457,0.012], [-0.0136,0.1457,0.012,0.0383,0.2751,0.0114],
+  [0.0383,0.2751,0.0114,0.1301,0.37,0.0108], [0.1301,0.37,0.0108,0.2695,0.4115,0.0101],
+  [0.2695,0.4115,0.0101,0.4084,0.4032,0.0095], [0.4084,0.4032,0.0095,0.5506,0.391,0.0089],
+  [0.5506,0.391,0.0089,0.6763,0.4259,0.0082], [0.6763,0.4259,0.0082,0.6948,0.5695,0.0076],
+  [0.6948,0.5695,0.0076,0.6593,0.6889,0.007], [0.6666,0.6643,0.0465,0.6593,0.6889,0.0465],
+  [0,0,0.0127,0.0839,0.1176,0.012], [0.0839,0.1176,0.012,0.1879,0.2223,0.0114],
+  [0.1879,0.2223,0.0114,0.3203,0.2286,0.0108], [0.3203,0.2286,0.0108,0.4167,0.1253,0.0101],
+  [0.4167,0.1253,0.0101,0.4987,0.0076,0.0095], [0.4987,0.0076,0.0095,0.5848,-0.1008,0.0089],
+  [0.5848,-0.1008,0.0089,0.71,-0.1651,0.0082], [0.71,-0.1651,0.0082,0.8518,-0.1469,0.0076],
+  [0.8518,-0.1469,0.0076,0.9171,-0.0296,0.007], [0.9046,-0.0519,0.0465,0.9171,-0.0296,0.0465],
+  [0,0,0.0127,0.1515,0.0155,0.012], [0.1515,0.0155,0.012,0.2983,0.0099,0.0114],
+  [0.2983,0.0099,0.0114,0.3814,-0.0965,0.0108], [0.3814,-0.0965,0.0108,0.3469,-0.2402,0.0101],
+  [0.3469,-0.2402,0.0101,0.2993,-0.3779,0.0095], [0.2993,-0.3779,0.0095,0.3131,-0.5182,0.0089],
+  [0.3131,-0.5182,0.0089,0.4255,-0.6123,0.0082], [0.4255,-0.6123,0.0082,0.5709,-0.6262,0.0076],
+  [0.5709,-0.6262,0.0076,0.7015,-0.5705,0.007], [0.678,-0.5806,0.0465,0.7015,-0.5705,0.0465],
+];
+
+const OCOTILLO: PlanSymbol = {
+  edge: "none",
+  n: 0,
+  d: 0,
+  interior: { kind: "limbs", limbs: OCOTILLO_CANES },
+  centre: "dot",
+  centreR: 0.0507,
+};
+
 /* ---------- the catalog ---------- */
 
 const radial = (
@@ -625,9 +730,9 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   GoldenBarrel: GOLDEN_BARREL,
   Firebarrel: { edge: "tooth", n: 20, d: 0.11, interior: radial(14, 1.4, 0.55, 0.92), centre: "dot" },
 
-  /* pads and wands — no canopy to outline */
+  /* pads, canes and wands — no canopy to outline */
   SantaRitaPricklyPear: { edge: "pads", n: 5, d: 0, centre: "none" },
-  Ocotillo: { edge: "wand", n: 14, d: 0, centre: "none" },
+  Ocotillo: OCOTILLO,
   Firestick: { edge: "wand", n: 9, d: 0, centre: "none" },
 
   /* groundcover masses — dash as well as colour, so they survive mono printing */
@@ -636,7 +741,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   YellowLantana: LANTANA([11, 4]),
 
   /* rock */
-  AZBoulder1: { edge: "lumpy", n: 5, d: 0.15, centre: "none" },
+  AZBoulder1: AZ_BOULDER,
   GrayBoulder: { edge: "lumpy", n: 5, d: 0.15, centre: "none" },
   FlatBoulder: { edge: "lumpy", n: 4, d: 0.11, centre: "none" },
 
