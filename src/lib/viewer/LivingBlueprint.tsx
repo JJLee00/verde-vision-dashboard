@@ -24,6 +24,7 @@ import {
   drawPlanSymbol,
   symbolPath3D,
   edgeRadius,
+  rngFor,
   type PlanSymbol,
 } from "./symbols";
 
@@ -948,11 +949,17 @@ export function LivingBlueprint({
      *  kind is `rosette` and that is the fallback body; with this plant the
      *  silhouette IS the species, so it gets its own.
      *
-     *  Every cane leaves the crown plumb and bends outward as it rises,
-     *  which is what a quadratic through (r0, 0) → (r0, 0.62 y) → (rTip, y)
-     *  draws. The tall canes are also the ones flung furthest out: that
-     *  pairing is the difference between an ocotillo and a sheaf of sticks.
-     *  Each one ends in the bud the plan mark draws.
+     *  The plant is a fountain: canes leave a crown barely a foot across
+     *  already leaning, rise steeply, and flare in the top third. So each
+     *  one is a near-straight whip whose control point is pulled INSIDE the
+     *  chord — bowing it the other way gave a splayed bowl, which is a yucca.
+     *
+     *  Height, lean and spacing are drawn independently of where a cane
+     *  stands. Tying them to its angle (the first pass took all three off a
+     *  golden-angle sweep) walked the tips around the plant in a spiral
+     *  staircase, which is the one thing an ocotillo never does: its canes
+     *  are a ragged handful of similar lengths, a few of them young and
+     *  short.
      */
     function drawOcotilloBody(
       x: number,
@@ -960,33 +967,40 @@ export function LivingBlueprint({
       h: number,
       rw: number,
       rot: number,
+      seed: string,
       stroke: string,
       fill: string,
       lw: number,
     ) {
-      const N = 15;
-      const S = 7; // samples per cane — the projection has to curve, not kink
-      const r0 = rw * 0.07;
-      const canes: { pts: [number, number][]; depth: number }[] = [];
+      const rng = rngFor("oco:" + seed);
+      const N = 17;
+      const S = 8; // samples per cane — the projection has to curve, not kink
+      const r0 = rw * 0.055; // the crown is a knot, not a ring
+      const canes: { pts: [number, number][]; depth: number; w: number }[] = [];
       for (let k = 0; k < N; k++) {
-        const a = rot + k * 2.399963; // golden angle — no two canes shadow
-        const vary = (k * 0.6180339887) % 1; // the same cane every frame
-        const yTip = h * (0.68 + 0.32 * vary);
-        const rTip = rw * (0.42 + 0.58 * vary);
+        // Even round the crown, then jittered: canes come in a ragged
+        // handful, and a perfect ring reads as a manufactured object.
+        const a = rot + ((k + 0.5) / N) * Math.PI * 2 + (rng() - 0.5) * 0.62;
+        const young = rng() < 0.28; // the short ones coming up through
+        const yTip = h * (young ? 0.4 + rng() * 0.22 : 0.76 + rng() * 0.24);
+        const rTip = rw * (young ? 0.3 + rng() * 0.22 : 0.52 + rng() * 0.48);
         const ca = Math.cos(a);
         const sa = Math.sin(a);
+        // Pulled inside the chord: steep out of the crown, flaring late.
+        const cr = (r0 + rTip) / 2 - rTip * (0.16 + rng() * 0.1);
+        const cy = yTip * 0.52;
         const pts: [number, number][] = [];
         let depth = 0;
         for (let i = 0; i <= S; i++) {
           const t = i / S;
           const u = 1 - t;
-          const r = u * u * r0 + 2 * u * t * r0 + t * t * rTip;
-          const y = 2 * u * t * yTip * 0.62 + t * t * yTip;
+          const r = u * u * r0 + 2 * u * t * cr + t * t * rTip;
+          const y = 2 * u * t * cy + t * t * yTip;
           const q = P(x + ca * r, y, z + sa * r);
           pts.push([q[0], q[1]]);
-          depth = q[2];
+          if (i === 0) depth = q[2];
         }
-        canes.push({ pts, depth });
+        canes.push({ pts, depth, w: lw * (0.85 + rng() * 0.45) });
       }
       canes.sort((p, q) => q.depth - p.depth);
 
@@ -999,7 +1013,7 @@ export function LivingBlueprint({
         ctx!.moveTo(cane.pts[0][0], cane.pts[0][1]);
         for (let i = 1; i < cane.pts.length; i++)
           ctx!.lineTo(cane.pts[i][0], cane.pts[i][1]);
-        ctx!.lineWidth = lw * 1.1;
+        ctx!.lineWidth = cane.w;
         ctx!.stroke();
         const tip = cane.pts[cane.pts.length - 1];
         ctx!.beginPath();
@@ -1016,7 +1030,7 @@ export function LivingBlueprint({
       // The crown: the one woody part of the plant, and what tells a viewer
       // where the canes are rooted once the drawing tilts.
       const c = P(x, 0, z);
-      const cr = Math.max(ftPx(x, z, r0 * 1.7), 1.6);
+      const cr = Math.max(ftPx(x, z, r0 * 2.1), 1.6);
       ctx!.beginPath();
       ctx!.ellipse(c[0], c[1], cr, cr * 0.42, 0, 0, Math.PI * 2);
       ctx!.fillStyle = fill;
@@ -1026,17 +1040,23 @@ export function LivingBlueprint({
       ctx!.lineCap = "butt";
     }
 
-    /** A boulder: silhouette, top face, and the facets between the two.
+    /** A boulder: a real faceted solid, lit.
      *
-     *  Two faults in one drawing before this. It drew at a hardcoded 1.2 ft
-     *  whatever the rock — an AZ Boulder is 3.4 ft across in the headset and
-     *  came out at a third of that, with a height derived from the same
-     *  wrong width — and it drew as a plain ellipse, which is the one shape
-     *  a rock is not.
+     *  It drew at a hardcoded 1.2 ft whatever the rock — an AZ Boulder is
+     *  3.4 ft across in the headset and came out at a third of that, with a
+     *  height derived from the same wrong width — and it drew as a plain
+     *  ellipse, which is the one shape a rock is not.
      *
-     *  The silhouette is now sampled from the plant's OWN plan mark, so the
-     *  body and the mark it cross-fades into are two drawings of one rock,
-     *  and the size is the catalog's spread, like every other species here.
+     *  Now it is built: four rings of vertices (a buried foot, the shoulder
+     *  where the rock is widest, a brow, and a cap that leans off centre),
+     *  every one of them jittered off the placement's own id, joined into
+     *  quads and painted far to near. Each face takes its tint from its true normal
+     *  against a fixed light, which is what makes a flat drawing read as
+     *  stone rather than a blob — one drawn ellipse has no faces to catch it.
+     *
+     *  The ring radii come from the plant's OWN plan mark, so the body and
+     *  the mark it cross-fades into stay one rock, and the size is the
+     *  catalog's spread, like every other species here.
      */
     function drawBoulderBody(
       x: number,
@@ -1045,63 +1065,101 @@ export function LivingBlueprint({
       hFt: number,
       rot: number,
       sym: PlanSymbol | null,
-      stroke: string,
-      fill: string,
+      seed: string,
+      sel: boolean,
       lw: number,
     ) {
       const R = wFt / 2;
-      const N = 36;
-      const TOP = 0.56; // the top face against the silhouette, off the sketch
-      const ground: [number, number][] = [];
-      const top: [number, number][] = [];
+      const N = 13; // facets around — enough to read as cut, not as a circle
+      const rng = rngFor("rock:" + seed);
+      const leanA = rng() * Math.PI * 2;
+      const lean = 0.13 + rng() * 0.12; // how far the crown sits off centre
+
+      type V = { sx: number; sy: number; d: number; wx: number; wy: number; wz: number };
+      const ring = (frac: number, yFrac: number, jitter: number, off: number): V[] =>
+        Array.from({ length: N }, (_, i) => {
+          // The spokes are jittered too. On even ones the facets came out
+          // as regular as a cut gem, and a 3 ft boulder read as a tent.
+          const th = ((i + (rng() - 0.5) * 0.45) / N) * Math.PI * 2;
+          const r =
+            R * (sym ? edgeRadius(sym, th - rot) : 1) * frac *
+            (1 - jitter / 2 + rng() * jitter);
+          const wx = x + Math.cos(leanA) * R * off + Math.cos(th) * r;
+          const wz = z + Math.sin(leanA) * R * off + Math.sin(th) * r;
+          const wy = hFt * yFrac * (0.84 + rng() * 0.32);
+          const q = P(wx, wy, wz);
+          return { sx: q[0], sy: q[1], d: q[2], wx, wy, wz };
+        });
+      // Four rings, not three: a rock has a shoulder AND a brow, and the
+      // band between them is where most of its faces are. With the crown
+      // taken straight off the shoulder, every face ran the full height and
+      // the drawing came out a cone.
+      const foot = ring(0.88, 0, 0.1, 0); // the rock settles into the soil
+      const shoulder = ring(1, 0.3, 0.17, lean * 0.3);
+      const brow = ring(0.82, 0.63, 0.2, lean * 0.7);
+      const cap = ring(0.5, 0.86, 0.26, lean);
+
+      // Up and to the left, the light every drawing on this sheet is under.
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const faces: { vs: V[]; d: number; lit: number }[] = [];
+      const face = (vs: V[]) => {
+        const ax = vs[1].wx - vs[0].wx;
+        const ay = vs[1].wy - vs[0].wy;
+        const az = vs[1].wz - vs[0].wz;
+        const bx = vs[2].wx - vs[0].wx;
+        const by = vs[2].wy - vs[0].wy;
+        const bz = vs[2].wz - vs[0].wz;
+        const nx = ay * bz - az * by;
+        const ny = az * bx - ax * bz;
+        const nz = ax * by - ay * bx;
+        const L = Math.hypot(nx, ny, nz) || 1;
+        // Absolute, so the quad's winding — which flips round the back of
+        // the rock — cannot turn a face into a hole.
+        const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / L);
+        faces.push({ vs, d: vs.reduce((s, v) => s + v.d, 0) / vs.length, lit });
+      };
       for (let i = 0; i < N; i++) {
-        const th = (i / N) * Math.PI * 2;
-        // The mark is drawn turned by the plant's yaw, so the body has to
-        // read the edge at the same angle or the two disagree mid-fade.
-        const r = R * (sym ? edgeRadius(sym, th - rot) : 1);
-        // Widest a little above grade: a boulder settles into the soil.
-        const g = P(x + Math.cos(th) * r, hFt * 0.12, z + Math.sin(th) * r);
-        const t = P(
-          x + Math.cos(th) * r * TOP,
-          hFt,
-          z + Math.sin(th) * r * TOP,
-        );
-        ground.push([g[0], g[1]]);
-        top.push([t[0], t[1]]);
+        const j = (i + 1) % N;
+        face([foot[i], foot[j], shoulder[j], shoulder[i]]);
+        face([shoulder[i], shoulder[j], brow[j], brow[i]]);
+        face([brow[i], brow[j], cap[j], cap[i]]);
+      }
+      face(cap);
+      faces.sort((p, q) => q.d - p.d); // far first, so near stone covers it
+
+      const tint = sel ? gold : verde;
+      ctx!.lineJoin = "round";
+      for (const f of faces) {
+        ctx!.beginPath();
+        ctx!.moveTo(f.vs[0].sx, f.vs[0].sy);
+        for (let i = 1; i < f.vs.length; i++) ctx!.lineTo(f.vs[i].sx, f.vs[i].sy);
+        ctx!.closePath();
+        // Paper under every face, or the translucent tints stack and the
+        // far side of the rock shows through the near one.
+        ctx!.fillStyle = LEAF_BODY;
+        ctx!.fill();
+        ctx!.fillStyle = tint(0.05 + 0.2 * (1 - f.lit));
+        ctx!.fill();
+        ctx!.strokeStyle = tint(0.3);
+        ctx!.lineWidth = lw * 0.55;
+        ctx!.stroke();
       }
 
-      const hull = convexHull([...ground, ...top]);
+      // The silhouette, drawn over the facets at full weight: the edge of a
+      // rock is a hard line, and face strokes alone leave it furry.
+      const hull = convexHull(
+        [...foot, ...shoulder, ...brow, ...cap].map((v): [number, number] => [v.sx, v.sy]),
+      );
       if (hull.length < 3) return;
       ctx!.beginPath();
       ctx!.moveTo(hull[0][0], hull[0][1]);
       for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
       ctx!.closePath();
-      ctx!.fillStyle = LEAF_BODY;
-      ctx!.fill();
-      ctx!.fillStyle = fill;
-      ctx!.fill();
-      ctx!.strokeStyle = stroke;
+      ctx!.strokeStyle = sel ? GOLD : verde(0.5);
       ctx!.lineWidth = lw;
-      ctx!.lineJoin = "round";
       ctx!.stroke();
-
-      // The top face, and then the facets falling away from its corners —
-      // the same three lines the plan mark is built from.
-      ctx!.beginPath();
-      ctx!.moveTo(top[0][0], top[0][1]);
-      for (let i = 1; i < N; i++) ctx!.lineTo(top[i][0], top[i][1]);
-      ctx!.closePath();
-      ctx!.lineWidth = lw * 0.8;
-      ctx!.stroke();
-      ctx!.lineWidth = lw * 0.7;
-      for (let k = 0; k < 6; k++) {
-        const i = Math.round((k / 6) * N) % N;
-        ctx!.beginPath();
-        ctx!.moveTo(top[i][0], top[i][1]);
-        ctx!.lineTo(ground[i][0], ground[i][1]);
-        ctx!.stroke();
-      }
-      ctx!.lineWidth = lw;
     }
 
     function drawInstance(inst: Instance, g: number, t: number) {
@@ -1241,14 +1299,9 @@ export function LivingBlueprint({
       } else if (meta.kind === "barrel") {
         drawBarrelBody(x, z, h, rw, symRot, stroke, fill, lw);
       } else if (meta.kind === "boulder") {
-        drawBoulderBody(
-          x, z, rw * 2, meta.renderHeightFt, symRot, planSym,
-          sel ? GOLD : verde(0.5),
-          sel ? gold(0.14) : ink(0.08),
-          lw,
-        );
+        drawBoulderBody(x, z, rw * 2, meta.renderHeightFt, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
-        drawOcotilloBody(x, z, h, rw, symRot, stroke, fill, lw);
+        drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
       } else if (meta.kind === "rosette" && AGAVE_SHAPES[inst.model]) {
         drawAgaveBody(x, z, h, rw, stroke, fill, lw, AGAVE_SHAPES[inst.model]);
       } else if (meta.kind === "rosette") {
