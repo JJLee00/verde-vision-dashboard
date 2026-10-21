@@ -1094,10 +1094,20 @@ export function LivingBlueprint({
       // band between them is where most of its faces are. With the crown
       // taken straight off the shoulder, every face ran the full height and
       // the drawing came out a cone.
-      const foot = ring(0.88, 0, 0.1, 0); // the rock settles into the soil
-      const shoulder = ring(1, 0.3, 0.17, lean * 0.3);
-      const brow = ring(0.82, 0.63, 0.2, lean * 0.7);
-      const cap = ring(0.5, 0.86, 0.26, lean);
+      //
+      // WIDEST AT GRADE, narrowing all the way up. A boulder is set into
+      // the ground, not stood on it: what shows is the top of a rock the
+      // soil cuts off, so the silhouette must not tuck back in at the
+      // bottom. It did — the widest ring sat a third of the way up with a
+      // narrower foot under it, which from the side read as a whole round
+      // rock resting on the lawn.
+      const grade = ring(1, 0, 0.12, 0); // where soil meets stone
+      const shoulder = ring(0.94, 0.26, 0.17, lean * 0.3);
+      const brow = ring(0.79, 0.56, 0.2, lean * 0.7);
+      // A broad, uneven crown. Pulled in much past this the top closes to a
+      // point and the rock reads as a mountain — which a 3 ft boulder
+      // standing 2.4 ft tall will do at the slightest excuse.
+      const cap = ring(0.55, 0.8, 0.3, lean);
 
       // Up and to the left, the light every drawing on this sheet is under.
       const LX = -0.44;
@@ -1122,7 +1132,7 @@ export function LivingBlueprint({
       };
       for (let i = 0; i < N; i++) {
         const j = (i + 1) % N;
-        face([foot[i], foot[j], shoulder[j], shoulder[i]]);
+        face([grade[i], grade[j], shoulder[j], shoulder[i]]);
         face([shoulder[i], shoulder[j], brow[j], brow[i]]);
         face([brow[i], brow[j], cap[j], cap[i]]);
       }
@@ -1152,7 +1162,7 @@ export function LivingBlueprint({
       // The silhouette, drawn over the facets at full weight: the edge of a
       // rock is a hard line, and face strokes alone leave it furry.
       const hull = convexHull(
-        [...foot, ...shoulder, ...brow, ...cap].map((v): [number, number] => [v.sx, v.sy]),
+        [...grade, ...shoulder, ...brow, ...cap].map((v): [number, number] => [v.sx, v.sy]),
       );
       if (hull.length < 3) return;
       ctx!.beginPath();
@@ -1162,6 +1172,22 @@ export function LivingBlueprint({
       ctx!.strokeStyle = sel ? GOLD : verde(0.7);
       ctx!.lineWidth = lw * 1.2;
       ctx!.stroke();
+
+      // The waterline: the near half of the grade ring, which is the line
+      // where the soil cuts the rock off. Near half only — the far half is
+      // behind the stone, and drawing the whole ring put a hoop through it.
+      const midY = grade.reduce((s, v) => s + v.sy, 0) / N;
+      ctx!.lineWidth = lw * 0.9;
+      ctx!.strokeStyle = sel ? GOLD : verde(0.55);
+      for (let i = 0; i < N; i++) {
+        const a = grade[i];
+        const b = grade[(i + 1) % N];
+        if ((a.sy + b.sy) / 2 <= midY) continue;
+        ctx!.beginPath();
+        ctx!.moveTo(a.sx, a.sy);
+        ctx!.lineTo(b.sx, b.sy);
+        ctx!.stroke();
+      }
     }
 
     function drawInstance(inst: Instance, g: number, t: number) {
