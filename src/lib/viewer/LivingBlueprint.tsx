@@ -1040,23 +1040,28 @@ export function LivingBlueprint({
       ctx!.lineCap = "butt";
     }
 
-    /** A boulder: a real faceted solid, lit.
+    /** A boulder: a weathered mass, bedded in the ground.
      *
-     *  It drew at a hardcoded 1.2 ft whatever the rock — an AZ Boulder is
-     *  3.4 ft across in the headset and came out at a third of that, with a
-     *  height derived from the same wrong width — and it drew as a plain
-     *  ellipse, which is the one shape a rock is not.
+     *  Granite like this is not crystalline to look at — it is a few big
+     *  smooth masses meeting along a handful of long creases, with gravel
+     *  heaped against an irregular waterline. So the surface is built fine
+     *  (five rings, twenty round) and painted WITHOUT seams, for a gradient
+     *  rather than a net; the only lines drawn on the rock are three or
+     *  four creases running up a column of vertices, the silhouette, and
+     *  the ground contact. An even net of forty facet edges — which is what
+     *  this was — reads as a cut gem or a geodesic dome, however good the
+     *  solid underneath it is.
      *
-     *  Now it is built: four rings of vertices (a buried foot, the shoulder
-     *  where the rock is widest, a brow, and a cap that leans off centre),
-     *  every one of them jittered off the placement's own id, joined into
-     *  quads and painted far to near. Each face takes its tint from its true normal
-     *  against a fixed light, which is what makes a flat drawing read as
-     *  stone rather than a blob — one drawn ellipse has no faces to catch it.
+     *  It is also widest at grade and narrows all the way up: a boulder is
+     *  set INTO the soil, so what shows is the top of a rock the ground
+     *  cuts off, and the silhouette must not tuck back in at the bottom.
      *
-     *  The ring radii come from the plant's OWN plan mark, so the body and
-     *  the mark it cross-fades into stay one rock, and the size is the
-     *  catalog's spread, like every other species here.
+     *  The mass leans, and the crown tips with it, so no two sides of the
+     *  rock are the same drawing. Every vertex is jittered in radius,
+     *  height and angle off the placement's own id, so two boulders of one
+     *  model are not twins — while the ring radii still come from the
+     *  plant's OWN plan mark, keeping the body and the mark it cross-fades
+     *  into one rock at the catalog's spread.
      */
     function drawBoulderBody(
       x: number,
@@ -1070,44 +1075,63 @@ export function LivingBlueprint({
       lw: number,
     ) {
       const R = wFt / 2;
-      const N = 13; // facets around — enough to read as cut, not as a circle
+      const N = 22; // fine enough that the silhouette curves, not polygons
       const rng = rngFor("rock:" + seed);
       const leanA = rng() * Math.PI * 2;
       const lean = 0.13 + rng() * 0.12; // how far the crown sits off centre
+      const tip = 0.1 + rng() * 0.14; // and how far the whole mass tips with it
+
+      // The lumps. Per-vertex jitter alone gives a fuzzy dome: the noise is
+      // high frequency, so it reads as a bumpy surface on a round thing.
+      // A boulder is a few big lobes — a shoulder out here, a flank fallen
+      // away there — so the shape is carried by three low harmonics that
+      // every ring shares, which is what makes the lumps belong to one mass
+      // instead of to each ring separately.
+      const lobe = [1, 2, 3].map((k) => ({
+        k,
+        amp: (0.16 / k) * (0.6 + rng() * 0.8),
+        phase: rng() * Math.PI * 2,
+      }));
+      const rawLobes = (th: number) =>
+        lobe.reduce((s, l) => s + l.amp * Math.cos(l.k * th + l.phase), 1);
+      // Scaled so the widest lobe lands ON the catalog's spread rather than
+      // outside it: the harmonics average to one but peak well above it,
+      // and a rock a third wider than the mark it cross-fades into is two
+      // rocks.
+      let peak = 0;
+      for (let i = 0; i < 64; i++) peak = Math.max(peak, rawLobes((i / 64) * Math.PI * 2));
+      const lobes = (th: number) => rawLobes(th) / peak;
 
       type V = { sx: number; sy: number; d: number; wx: number; wy: number; wz: number };
       const ring = (frac: number, yFrac: number, jitter: number, off: number): V[] =>
         Array.from({ length: N }, (_, i) => {
-          // The spokes are jittered too. On even ones the facets came out
-          // as regular as a cut gem, and a 3 ft boulder read as a tent.
-          const th = ((i + (rng() - 0.5) * 0.45) / N) * Math.PI * 2;
+          const th = ((i + (rng() - 0.5) * 0.5) / N) * Math.PI * 2;
           const r =
-            R * (sym ? edgeRadius(sym, th - rot) : 1) * frac *
+            R * (sym ? edgeRadius(sym, th - rot) : 1) * frac * lobes(th) *
             (1 - jitter / 2 + rng() * jitter);
           const wx = x + Math.cos(leanA) * R * off + Math.cos(th) * r;
           const wz = z + Math.sin(leanA) * R * off + Math.sin(th) * r;
-          const wy = hFt * yFrac * (0.84 + rng() * 0.32);
-          const q = P(wx, wy, wz);
+          // Tipped: the side the rock leans towards rides lower, the far
+          // side rides high, which is what keeps the crown off level.
+          const wy =
+            hFt * yFrac * (0.86 + rng() * 0.28) *
+            (1 + tip * Math.cos(th - leanA));
+          const q = P(wx, Math.max(wy, 0), wz);
           return { sx: q[0], sy: q[1], d: q[2], wx, wy, wz };
         });
-      // Four rings, not three: a rock has a shoulder AND a brow, and the
-      // band between them is where most of its faces are. With the crown
-      // taken straight off the shoulder, every face ran the full height and
-      // the drawing came out a cone.
-      //
-      // WIDEST AT GRADE, narrowing all the way up. A boulder is set into
-      // the ground, not stood on it: what shows is the top of a rock the
-      // soil cuts off, so the silhouette must not tuck back in at the
-      // bottom. It did — the widest ring sat a third of the way up with a
-      // narrower foot under it, which from the side read as a whole round
-      // rock resting on the lawn.
-      const grade = ring(1, 0, 0.12, 0); // where soil meets stone
-      const shoulder = ring(0.94, 0.26, 0.17, lean * 0.3);
-      const brow = ring(0.79, 0.56, 0.2, lean * 0.7);
-      // A broad, uneven crown. Pulled in much past this the top closes to a
-      // point and the rock reads as a mountain — which a 3 ft boulder
-      // standing 2.4 ft tall will do at the slightest excuse.
-      const cap = ring(0.55, 0.8, 0.3, lean);
+      // Six rings on a profile that holds its width and rounds over late.
+      // A boulder is a mass, not a hill: taken in steadily from the ground
+      // up, the silhouette climbs to a peak however smooth the surface is.
+      const rings = [
+        ring(1, 0, 0.12, 0), // grade: where soil meets stone
+        ring(0.99, 0.14, 0.13, lean * 0.15),
+        ring(0.95, 0.32, 0.15, lean * 0.35),
+        ring(0.86, 0.52, 0.17, lean * 0.6),
+        ring(0.68, 0.72, 0.19, lean * 0.85),
+        // Broad and nearly level: a boulder this size wears a top, not a
+        // summit, and it is usually the flattest thing about it.
+        ring(0.44, 0.88, 0.14, lean),
+      ];
 
       // Up and to the left, the light every drawing on this sheet is under.
       const LX = -0.44;
@@ -1130,13 +1154,12 @@ export function LivingBlueprint({
         const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / L);
         faces.push({ vs, d: vs.reduce((s, v) => s + v.d, 0) / vs.length, lit });
       };
-      for (let i = 0; i < N; i++) {
-        const j = (i + 1) % N;
-        face([grade[i], grade[j], shoulder[j], shoulder[i]]);
-        face([shoulder[i], shoulder[j], brow[j], brow[i]]);
-        face([brow[i], brow[j], cap[j], cap[i]]);
-      }
-      face(cap);
+      for (let b = 0; b < rings.length - 1; b++)
+        for (let i = 0; i < N; i++) {
+          const j = (i + 1) % N;
+          face([rings[b][i], rings[b][j], rings[b + 1][j], rings[b + 1][i]]);
+        }
+      face(rings[rings.length - 1]);
       faces.sort((p, q) => q.d - p.d); // far first, so near stone covers it
 
       const tint = sel ? gold : verde;
@@ -1150,19 +1173,43 @@ export function LivingBlueprint({
         // far side of the rock shows through the near one.
         ctx!.fillStyle = LEAF_BODY;
         ctx!.fill();
-        ctx!.fillStyle = tint(0.05 + 0.2 * (1 - f.lit));
+        // A narrow range on purpose: flat-shaded quads with a wide one
+        // band into a net, which is the look this drawing is getting away
+        // from. Enough to turn the form, not enough to draw a facet.
+        const shade = tint(0.06 + 0.13 * (1 - f.lit));
+        ctx!.fillStyle = shade;
         ctx!.fill();
-        // The facet edges carry the drawing: at a hairline they dissolved
-        // into the fills and the rock went back to being a blob.
-        ctx!.strokeStyle = tint(0.5);
-        ctx!.lineWidth = lw * 0.85;
+        // Stroked in its own colour: it closes the hairline the canvas
+        // leaves between two filled polygons without drawing a seam.
+        ctx!.strokeStyle = shade;
+        ctx!.lineWidth = lw * 0.5;
         ctx!.stroke();
       }
 
-      // The silhouette, drawn over the facets at full weight: the edge of a
-      // rock is a hard line, and face strokes alone leave it furry.
+      // The creases: three or four lines where big planes meet, running up
+      // a column of vertices from the soil to the crown. These are the only
+      // marks ON the rock, and they are what the eye reads as stone.
+      const creases = 3 + Math.floor(rng() * 2);
+      const start = Math.floor(rng() * N);
+      ctx!.strokeStyle = sel ? GOLD : verde(0.55);
+      ctx!.lineWidth = lw * 0.9;
+      ctx!.lineCap = "round";
+      for (let c = 0; c < creases; c++) {
+        const i = (start + Math.round((c * N) / creases) + Math.floor(rng() * 3)) % N;
+        // Not always the whole way up: a crease that dies out partway is
+        // what a weathered face actually does.
+        const top = rings.length - (rng() < 0.4 ? 2 : 1);
+        ctx!.beginPath();
+        ctx!.moveTo(rings[0][i].sx, rings[0][i].sy);
+        for (let b = 1; b <= top; b++) ctx!.lineTo(rings[b][i].sx, rings[b][i].sy);
+        ctx!.stroke();
+      }
+      ctx!.lineCap = "butt";
+
+      // The silhouette, over the facets at full weight: the edge of a rock
+      // is a hard line, and shaded faces alone leave it furry.
       const hull = convexHull(
-        [...grade, ...shoulder, ...brow, ...cap].map((v): [number, number] => [v.sx, v.sy]),
+        rings.flat().map((v): [number, number] => [v.sx, v.sy]),
       );
       if (hull.length < 3) return;
       ctx!.beginPath();
@@ -1176,6 +1223,7 @@ export function LivingBlueprint({
       // The waterline: the near half of the grade ring, which is the line
       // where the soil cuts the rock off. Near half only — the far half is
       // behind the stone, and drawing the whole ring put a hoop through it.
+      const grade = rings[0];
       const midY = grade.reduce((s, v) => s + v.sy, 0) / N;
       ctx!.lineWidth = lw * 0.9;
       ctx!.strokeStyle = sel ? GOLD : verde(0.55);
