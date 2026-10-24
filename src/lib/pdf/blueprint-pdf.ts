@@ -46,8 +46,10 @@ const css = ([r, g, b]: RGB, a = 1) => `rgba(${r}, ${g}, ${b}, ${a})`;
 
 type Rect = { x: number; y: number; w: number; h: number };
 
-/** The plan symbols' ink: a green-black, the headset's planInkGreen. */
-const INK: RGB = rgb(0.15, 0.3, 0.12);
+/** The plan symbols' ink: black, the headset's planInk. A green-black until
+ *  Oct 24 2026 — the printed sheet is monochrome now, so a plant reads by its
+ *  drawing and its code, never by hue. */
+const INK: RGB = rgb(0, 0, 0);
 type Hatch = { stroke: RGB; label: RGB; draw: (doc: Doc, r: Rect) => void };
 
 // ── Pattern helpers ──────────────────────────────────────────────────────
@@ -797,8 +799,10 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
 
 /** The white halo behind a plan code, in points across. */
 const CODE_HALO = 1.8;
-/** Trees: a pale sage under the canopy, and lighter, finer linework. */
-const TREE_TINT: RGB = rgb(0.9, 0.945, 0.875);
+/** Trees: a pale grey under the canopy, and lighter, finer linework.
+ *  Neutral since the ink went black, at the sage's own lightness — it is
+ *  there to separate a canopy from what grows under it, not to be green. */
+const TREE_TINT: RGB = rgb(0.93, 0.93, 0.93);
 const TREE_STROKE = 0.6;
 const TREE_DETAIL = 0.35;
 const TREE_LW = 0.85;
