@@ -50,10 +50,6 @@ const LEAF_BODY = "rgba(235,224,203,0.93)";
 const verde = (a: number) => `rgba(46,93,67,${a})`;
 const gold = (a: number) => `rgba(168,123,47,${a})`;
 const ink = (a: number) => `rgba(28,42,33,${a})`;
-// Plan mode draws plants in the printed sheet's ink, which went black on
-// Oct 24 2026 (the headset's planInk). The rest of the viewer keeps the
-// brand palette — only the mark the blueprint prints follows the sheet.
-const planInk = (a: number) => `rgba(0,0,0,${a})`;
 
 /* ── Component ──────────────────────────────────────────────────── */
 
@@ -1379,8 +1375,8 @@ export function LivingBlueprint({
       if (planSym && markA > 0.004) {
         drawPlanSymbol(ctx!, P, x, z, symR, planSym, {
           rot: symRot,
-          stroke: sel ? GOLD : planInk(meta.kind === "boulder" ? 0.45 : 0.62),
-          detail: sel ? GOLD : planInk(0.4),
+          stroke: sel ? GOLD : verde(meta.kind === "boulder" ? 0.45 : 0.62),
+          detail: sel ? GOLD : verde(0.4),
           lw: sel ? 1.6 : 1,
           markR: ftPx(x, z, symR),
           seed: inst.model,
