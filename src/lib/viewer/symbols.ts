@@ -540,6 +540,49 @@ const AGAVE_STAR: PlanSymbol = {
   centre: "dot",
 };
 
+// Aloe Vera — from a pencil sketch (Oct 26 2026). Eight long leaves meeting
+// at the crown, each its own closed outline, and nothing else: no folds and
+// no centre mark, because the sixteen edges running together ARE the centre.
+//
+// The sketch is a photo of a notebook page, so its leaves are as long as the
+// camera's angle made them. Only the leaf is taken from it — its half-width
+// measured at 21 stations along all sixteen sides. The leaf is a kite with a
+// soft shoulder: a straight side out from the crown, a straight side in to
+// the tip, and a smooth minimum of the two between. Fitted to the stations
+// within 0.004 of the radius — widest (0.128) at 0.42 of the way out. A
+// harder shoulder fits the numbers a little closer and looks less like the
+// drawing, which has no corner in it. The leaves are then set regular,
+// every 45 degrees, half a step off the axes as drawn. The crown side opens
+// at 0.405, just under tan 22.5 (0.414), so neighbours run together at the
+// centre, as drawn, without crossing.
+
+const ALOE_VERA_LEAVES: [number, number][][] = (() => {
+  const n = 3; // how hard the shoulder turns
+  const width = (s: number) => Math.pow(Math.pow(0.405 * s, -n) + Math.pow(0.265 * (1 - s), -n), -1 / n);
+  const N = 20; // stations a side; the straight runs need none, the shoulder gets a twentieth
+  const stations = Array.from({ length: N - 1 }, (_, i) => (i + 1) / N);
+  return Array.from({ length: 8 }, (_, k) => {
+    const a = Math.PI / 8 + (k * Math.PI) / 4;
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const at = (s: number, w: number): [number, number] => [s * c - w * sn, s * sn + w * c];
+    return [
+      [0, 0],
+      ...stations.map((s) => at(s, width(s))),
+      at(1, 0),
+      ...stations.map((s) => at(s, -width(s))).reverse(),
+    ];
+  });
+})();
+
+const ALOE_VERA: PlanSymbol = {
+  edge: "poly",
+  n: 8,
+  d: 0,
+  polys: ALOE_VERA_LEAVES,
+  centre: "none",
+};
+
 /* ---------- AZ Boulder — traced from sketches/az-boulder.svg ---------- */
 
 // A rock in plan is three things: its silhouette, the top face that takes
@@ -708,7 +751,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   AgaveTruncata: AGAVE_TRUNCATA,
   TropicalAgave: ROSETTE(12, 0.36, 2.4),
   AloeFerox: ROSETTE(13, 0.34, 2.2),
-  "Aloe Vera": ROSETTE(11, 0.32, 2.0),
+  "Aloe Vera": ALOE_VERA,
   BlueGlowAgave: ROSETTE(14, 0.3, 1.6),
   BlackTipAgave: ROSETTE(16, 0.3, 1.3),
   AgaveGeminiflora: ROSETTE(24, 0.3, 0.9),
