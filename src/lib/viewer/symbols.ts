@@ -583,6 +583,49 @@ const ALOE_VERA: PlanSymbol = {
   centre: "none",
 };
 
+// Green Hopseed — from a pencil sketch (Oct 26 2026): a rim of sixteen
+// points joined by arcs that bow IN, and a dot at the centre. Nothing inside
+// it; the old branching interior read as a small tree.
+//
+// Measured off the photo: the points are evenly spaced, and the deepest part
+// of each arc sits at 0.905 of the points' radius (median of all sixteen).
+// So the rim is generated, as the lantana's is: each arc a quadratic from
+// one point to the next through a control pulled in to 0.829, which is what
+// puts its midpoint at 0.905. Six samples an arc. The dot is 0.09 of the
+// radius, as drawn.
+const GREEN_HOPSEED_RIM: [number, number][] = (() => {
+  const N = 16;
+  const ctrl = 0.829;
+  const at = (k: number, r: number): [number, number] => {
+    const a = -Math.PI / 2 + (k * Math.PI * 2) / N;
+    return [Math.cos(a) * r, Math.sin(a) * r];
+  };
+  const out: [number, number][] = [];
+  for (let k = 0; k < N; k++) {
+    const p0 = at(k, 1);
+    const c = at(k + 0.5, ctrl);
+    const p1 = at(k + 1, 1);
+    for (let i = 0; i < 6; i++) {
+      const t = i / 6;
+      const m = 1 - t;
+      out.push([
+        m * m * p0[0] + 2 * m * t * c[0] + t * t * p1[0],
+        m * m * p0[1] + 2 * m * t * c[1] + t * t * p1[1],
+      ]);
+    }
+  }
+  return out;
+})();
+
+const GREEN_HOPSEED: PlanSymbol = {
+  edge: "poly",
+  n: 16,
+  d: 0,
+  polys: [GREEN_HOPSEED_RIM],
+  centre: "dot",
+  centreR: 0.09,
+};
+
 /* ---------- AZ Boulder — traced from sketches/az-boulder.svg ---------- */
 
 // A rock in plan is three things: its silhouette, the top face that takes
@@ -743,7 +786,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   YellowBells: { edge: "scallop", n: 16, d: 0.13, interior: branch(4, 2, 130), centre: "dot" },
   Jojoba: { edge: "scallop", n: 26, d: 0.06, interior: tex(7), centre: "dot" },
   TexasSage: { edge: "tooth", n: 30, d: 0.08, interior: tex(13), centre: "dot" },
-  GreenHopseed: { edge: "tooth", n: 18, d: 0.11, interior: branch(3, 2, 118), centre: "dot" },
+  GreenHopseed: GREEN_HOPSEED,
   LittleJohnBottlebrush: { edge: "double", n: 0, d: 0, centre: "dot" },
 
   /* rosettes — leaf count and thickness ARE the species */
