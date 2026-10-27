@@ -942,26 +942,28 @@ export function LivingBlueprint({
       }
     }
 
-    /** Aloe vera.
+    /** Aloe vera, after the app's model.
      *
      *  It drew as the generic rosette: nine bare strokes, a tuft of grass.
-     *  An aloe is the opposite of grass — a handful of thick, fleshy leaves,
-     *  broad where they clasp the crown and running straight to a point, held
-     *  up in a vase rather than flung out flat like an agave's skirt.
+     *  The headset's Aloe Vera is a low fountain, about two-thirds as tall
+     *  as it is wide (0.53 m by 0.81 m): an upright core of young leaves,
+     *  older ones arching out around it, and the oldest swept nearly flat
+     *  at the edge, some with their tips hooked over. Fifteen leaves on the
+     *  golden angle, aged outward, reproduce that.
      *
-     *  What makes a leaf read as fleshy is its channel. Each one is folded
-     *  along the midline with the margins raised, so it is drawn as two
-     *  halves, each tinted by its own normal against the sheet's light (the
-     *  boulder's): one half catches it, the other falls away, and a flat
-     *  strap becomes a leaf with a body. Then the details a grower would
-     *  name: small teeth on the older leaves' margins, the pale flecks vera
-     *  carries, and a pup at its foot — it offsets freely, and that pup is
-     *  the quickest tell that this is vera and not another aloe.
+     *  An aloe leaf is a succulent's: thick and full of water, where an
+     *  agave's is a hard flat blade. So each leaf is drawn as a solid — a
+     *  channelled upper face (two halves, margins raised above the midline)
+     *  over a rounded underside that bellies out below the margins — four
+     *  faces, each tinted by its own outward normal against the sheet's
+     *  light (the boulder's). Seen from above it is a trough; from the side or
+     *  from under its arch it shows its depth, which is what reads as
+     *  fleshy. Small teeth on the older leaves' margins, and the pale flecks
+     *  vera carries.
      *
-     *  Built to the catalog's own size, two feet by two, which makes it an
-     *  upright plant: the oldest leaves open to about forty degrees and the
-     *  rest stand up the middle. The pup stays inside that spread, so a mass
-     *  planting at the plan's spacing doesn't grow into its neighbours.
+     *  Spread is the catalog's, so the outermost tips land on the plan mark's
+     *  rim; height follows the model's proportion from there, capped by the
+     *  catalog's.
      */
     function drawAloeBody(
       x: number,
@@ -979,167 +981,206 @@ export function LivingBlueprint({
       const LX = -0.44;
       const LY = 0.79;
       const LZ = -0.43;
-      const FOLD = 0.4; // how far the margins stand above the midline, of the half-width
-      const S = 20; // stations along a leaf; the odd ones carry the teeth
+      const N = 15;
+      const S = 14; // stations along a leaf; the odd ones carry the teeth
+      const FOLD = 0.3; // margins above the midline, of the half-width
+      const BELLY = 0.95; // underside below the margins, of the half-width
+      const deg = Math.PI / 180;
 
+      type V3 = [number, number, number];
       type Pt = [number, number];
-      type Half = { pts: Pt[]; margin: Pt[]; fold: Pt[]; flecks: Pt[][]; d: number; lit: number };
-      const halves: Half[] = [];
+      type Face = { pts: Pt[]; edges: { line: Pt[]; w: number; a: number | null }[]; flecks: Pt[][]; d: number; lit: number };
 
-      const rosette = (
-        cx: number,
-        cz: number,
-        H: number,
-        RW: number,
-        n: number,
-        turn: number,
-        teeth: boolean,
-        speckled: number, // chance a leaf carries flecks
-        broad: number, // a pup's leaves are stubbier than a scaled-down adult's
-      ) => {
-        for (let k = 0; k < n; k++) {
-          const age = 1 - k / (n - 1); // 1 = oldest and outermost, 0 = youngest
-          const a = turn + k * 2.399963 + (rng() - 0.5) * 0.25; // golden angle
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          // The old leaves open out, the middle ones stand tallest, and the
-          // youngest are still coming up the centre, short and upright.
-          const reach = RW * (0.3 + 0.68 * Math.pow(age, 0.7)) * (0.93 + 0.1 * rng());
-          const yTip =
-            H * 1.08 * (1 - 0.6 * Math.pow(age, 1.5) - 0.25 * Math.pow(1 - age, 5)) *
-            (0.95 + 0.08 * rng());
-          // Drawn a little broader than life (a hand across, not three
-          // fingers): at plan scale a true-width aloe leaf is a line again.
-          const halfW = RW * (0.14 + 0.12 * age) * broad;
-          // The leaves clasp a crown, overlapping round it like a cup; run
-          // them all into one point and the base is a pinched knot of ink.
-          const r0 = RW * 0.12;
-          const y0 = H * 0.02;
-          // The centre line is a quadratic bowed so the leaf leaves the
-          // crown steep and opens outward toward the tip: stiff, not arched.
-          const kr = reach * (0.4 + 0.02 * age);
-          const ky = yTip * (0.58 + 0.2 * age);
-          const centre = (t: number): [number, number, number] => {
-            const m = 1 - t;
-            const r = m * m * r0 + 2 * m * t * kr + t * t * reach;
-            return [cx + ca * r, m * m * y0 + 2 * m * t * ky + t * t * yTip, cz + sa * r];
-          };
-          const frame = (t: number) => {
-            const dr = 2 * (1 - t) * (kr - r0) + 2 * t * (reach - kr);
-            const dy = 2 * (1 - t) * (ky - y0) + 2 * t * (yTip - ky);
-            const tl = Math.hypot(dr, dy) || 1;
-            const T = [(ca * dr) / tl, dy / tl, (sa * dr) / tl];
-            const Sd = [-sa, 0, ca]; // across the leaf, level
-            // Sd x T: the upper face's normal, which points in toward the
-            // crown on an upright leaf and up on an open one.
-            const N = [Sd[1] * T[2] - Sd[2] * T[1], Sd[2] * T[0] - Sd[0] * T[2], Sd[0] * T[1] - Sd[1] * T[0]];
-            return { T, Sd, N };
-          };
-          // Broad at the clasp, holding its width, and closing to a point.
-          const width = (t: number) => halfW * Math.pow(1 - t, 0.62);
-          const onLeaf = (t: number, side: number, across: number, out = 0) => {
-            const c = centre(t);
-            const { Sd, N } = frame(t);
-            const w = width(t);
-            const sx = side * (w * across + out);
-            const up = w * FOLD * across;
-            return P(c[0] + Sd[0] * sx + N[0] * up, c[1] + N[1] * up, c[2] + Sd[2] * sx + N[2] * up);
-          };
-
-          const fold: Pt[] = [];
-          for (let i = 0; i <= S; i++) {
-            const q = P(...centre(i / S));
-            fold.push([q[0], q[1]]);
+      // Centre lines first, in feet: a leaf leaves the crown at its own
+      // angle and bends down along its length, the old ones the most.
+      const leaves: { c: V3[]; psi: number[]; halfW: number; age: number; flecked: boolean }[] = [];
+      let top = 0;
+      for (let k = 0; k < N; k++) {
+        const age = 1 - k / (N - 1); // 1 = oldest and outermost, 0 = youngest
+        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.35; // golden angle
+        // Most leaves fan out long and open, as the model's do; only the
+        // last few stand up in the core.
+        const e0 = (80 - 44 * Math.pow(age, 0.7) + (rng() - 0.5) * 10) * deg;
+        const bend = (8 + 56 * Math.pow(age, 1.2) + (rng() - 0.5) * 12) * deg;
+        // A few tips hook over, as the model's do.
+        const hook = rng() < 0.35 ? (15 + rng() * 25) * deg : 0;
+        const sway = (rng() - 0.5) * 28 * deg;
+        const L =
+          rw * (1.45 - 0.45 * age) * (0.78 + 0.22 * Math.min(1, age / 0.2)) * (0.92 + 0.16 * rng());
+        const r0 = rw * 0.08; // a crown, not a point
+        const c: V3[] = [];
+        const psi: number[] = [];
+        let y = 0;
+        let px = x + Math.cos(a) * r0;
+        let pz = z + Math.sin(a) * r0;
+        for (let i = 0; i <= S; i++) {
+          const t = i / S;
+          const ps = a + sway * t * t;
+          if (i > 0) {
+            const tm = (i - 0.5) / S;
+            const e =
+              e0 - bend * Math.pow(tm, 1.5) - hook * Math.max(0, (tm - 0.7) / 0.3) ** 2;
+            const step = L / S;
+            px += Math.cos(e) * Math.cos(ps) * step;
+            pz += Math.cos(e) * Math.sin(ps) * step;
+            y += Math.sin(e) * step;
           }
-          const flecked = rng() < speckled;
-          for (const side of [1, -1]) {
-            const margin: Pt[] = [];
-            let depth = 0;
-            for (let i = 0; i <= S; i++) {
-              const t = i / S;
-              // A tooth is a margin vertex pushed out and a little forward,
-              // so it reads as pointing up the leaf the way aloe teeth do.
-              const tooth = teeth && age > 0.3 && i % 2 === 1 && i > 1 && i < S - 1;
-              const q = tooth
-                ? onLeaf(Math.min(1, t + 0.35 / S), side, 1, halfW * 0.1 * (1 - 0.6 * t))
-                : onLeaf(t, side, 1);
-              margin.push([q[0], q[1]]);
-              depth += q[2];
-            }
-            // Lit by the half's own normal: across the half is the level
-            // side vector tipped up by the fold, along it is the leaf.
-            const { T, Sd, N } = frame(0.35);
-            const ac = [side * Sd[0] + FOLD * N[0], FOLD * N[1], side * Sd[2] + FOLD * N[2]];
-            const nx = T[1] * ac[2] - T[2] * ac[1];
-            const ny = T[2] * ac[0] - T[0] * ac[2];
-            const nz = T[0] * ac[1] - T[1] * ac[0];
-            const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / (Math.hypot(nx, ny, nz) || 1));
-            // Flecks: short pale dashes across the lower half of the leaf.
-            const flecks: Pt[][] = [];
-            if (flecked) {
-              const count = 2 + Math.floor(rng() * 3);
-              for (let f = 0; f < count; f++) {
-                const t = 0.12 + rng() * 0.5;
-                const s0 = 0.25 + rng() * 0.4;
-                const p0 = onLeaf(t, side, s0);
-                const p1 = onLeaf(t + 0.012, side, s0 + 0.22);
-                flecks.push([[p0[0], p0[1]], [p1[0], p1[1]]]);
-              }
-            }
-            halves.push({
-              pts: [...fold, ...[...margin].reverse()],
-              margin,
-              fold,
-              flecks,
-              d: depth / (S + 1),
-              lit,
-            });
-          }
+          c.push([px, Math.max(y, 0), pz]);
+          psi.push(ps);
+          top = Math.max(top, y);
         }
+        // Drawn broader than life, as the agaves are: at plan scale a
+        // true-width leaf thins back into a stroke and the succulent is lost.
+        const halfW = rw * (0.11 + 0.07 * age) * (0.9 + 0.2 * rng());
+        leaves.push({ c, psi, halfW, age, flecked: rng() < 0.35 });
+      }
+      // Height follows the model's proportion; the catalog's is a ceiling.
+      const ys = top > h * 0.95 ? (h * 0.95) / top : 1;
+
+      const faces: Face[] = [];
+      const proj = (v: V3): Pt => {
+        const q = P(v[0], v[1], v[2]);
+        return [q[0], q[1]];
       };
+      const depth = (v: V3) => P(v[0], v[1], v[2])[2];
+      for (const lf of leaves) {
+        const c = lf.c.map(([cx, cy, cz]): V3 => [cx, cy * ys, cz]);
+        // Broad at the clasp and holding its width most of the way out —
+        // a fleshy leaf, not a needle — then closing to a point.
+        const width = (t: number) => lf.halfW * Math.pow(1 - t, 0.7) * (0.85 + 0.15 * Math.min(1, t / 0.07));
+        const marginL: V3[] = [];
+        const marginR: V3[] = [];
+        const keel: V3[] = [];
+        const frames: { T: V3; Sd: V3; Nn: V3 }[] = [];
+        for (let i = 0; i <= S; i++) {
+          const t = i / S;
+          const p0 = c[Math.max(0, i - 1)];
+          const p1 = c[Math.min(S, i + 1)];
+          const dx = p1[0] - p0[0];
+          const dy = p1[1] - p0[1];
+          const dz = p1[2] - p0[2];
+          const tl = Math.hypot(dx, dy, dz) || 1;
+          const T: V3 = [dx / tl, dy / tl, dz / tl];
+          const Sd: V3 = [-Math.sin(lf.psi[i]), 0, Math.cos(lf.psi[i])]; // across, level
+          // Sd x T: the upper face's normal — in toward the crown on an
+          // upright leaf, up on an open one.
+          let Nn: V3 = [Sd[1] * T[2] - Sd[2] * T[1], Sd[2] * T[0] - Sd[0] * T[2], Sd[0] * T[1] - Sd[1] * T[0]];
+          const nl = Math.hypot(...Nn) || 1;
+          Nn = [Nn[0] / nl, Nn[1] / nl, Nn[2] / nl];
+          frames.push({ T, Sd, Nn });
+          const w = width(t);
+          // A tooth is a margin vertex pushed out, on the older leaves.
+          const tooth = lf.age > 0.25 && i % 2 === 1 && i > 1 && i < S - 1 ? lf.halfW * 0.12 * (1 - 0.6 * t) : 0;
+          const at = (side: number, across: number, up: number): V3 => [
+            c[i][0] + Sd[0] * side * across + Nn[0] * up,
+            c[i][1] + Nn[1] * up,
+            c[i][2] + Sd[2] * side * across + Nn[2] * up,
+          ];
+          marginL.push(at(1, w + tooth, FOLD * w));
+          marginR.push(at(-1, w + tooth, FOLD * w));
+          keel.push(at(1, 0, -BELLY * w));
+        }
+        const fold = c;
+        const k = Math.round(S * 0.35);
+        // The middle of the leaf's section, for pointing each face's normal
+        // OUT of the leaf. Not the boulder's absolute value: that lights an
+        // underside facing the ground as brightly as a top facing the sky,
+        // and the dark belly under a light trough is what reads as thick.
+        const mid: V3 = [
+          c[k][0] - frames[k].Nn[0] * BELLY * width(k / S) * 0.4,
+          c[k][1] - frames[k].Nn[1] * BELLY * width(k / S) * 0.4,
+          c[k][2] - frames[k].Nn[2] * BELLY * width(k / S) * 0.4,
+        ];
+        const litOf = (a: V3, b: V3) => {
+          const T = frames[k].T;
+          const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+          let nx = T[1] * ac[2] - T[2] * ac[1];
+          let ny = T[2] * ac[0] - T[0] * ac[2];
+          let nz = T[0] * ac[1] - T[1] * ac[0];
+          const out = [(a[0] + b[0]) / 2 - mid[0], (a[1] + b[1]) / 2 - mid[1], (a[2] + b[2]) / 2 - mid[2]];
+          if (nx * out[0] + ny * out[1] + nz * out[2] < 0) [nx, ny, nz] = [-nx, -ny, -nz];
+          const d = (nx * LX + ny * LY + nz * LZ) / (Math.hypot(nx, ny, nz) || 1);
+          return 0.3 + 0.7 * Math.max(0, d); // a floor, so a face in shade is still paper
+        };
+        const strip = (a: V3[], b: V3[]) => [...a.map(proj), ...[...b].reverse().map(proj)];
+        const meanDepth = (a: V3[], b: V3[]) =>
+          (a.reduce((s, v) => s + depth(v), 0) + b.reduce((s, v) => s + depth(v), 0)) / (a.length + b.length);
+        for (const [margin, side] of [[marginL, 1], [marginR, -1]] as [V3[], number][]) {
+          // Upper half: the midline to the raised margin. Flecks sit here.
+          const flecks: Pt[][] = [];
+          if (lf.flecked) {
+            const n = 2 + Math.floor(rng() * 2);
+            for (let f = 0; f < n; f++) {
+              const i = 2 + Math.floor(rng() * (S * 0.45));
+              const s0 = 0.25 + rng() * 0.35;
+              const w = width(i / S);
+              const { Sd, Nn } = frames[i];
+              const pt = (s: number): V3 => [
+                c[i][0] + Sd[0] * side * w * s + Nn[0] * FOLD * w * s,
+                c[i][1] + Nn[1] * FOLD * w * s,
+                c[i][2] + Sd[2] * side * w * s + Nn[2] * FOLD * w * s,
+              ];
+              flecks.push([proj(pt(s0)), proj(pt(s0 + 0.28))]);
+            }
+          }
+          faces.push({
+            pts: strip(fold, margin),
+            edges: [
+              { line: fold.map(proj), w: 0.5, a: 0.45 },
+              { line: margin.map(proj), w: 1, a: null },
+            ],
+            flecks,
+            d: meanDepth(fold, margin),
+            lit: litOf(fold[k], margin[k]),
+          });
+          // Underside half: the margin round to the keel. This is the
+          // succulent's body, and what an agave blade has no room for.
+          faces.push({
+            pts: strip(margin, keel),
+            edges: [
+              { line: keel.map(proj), w: 0.6, a: 0.55 },
+              { line: margin.map(proj), w: 1, a: null },
+            ],
+            flecks: [],
+            d: meanDepth(margin, keel),
+            lit: litOf(margin[k], keel[k]),
+          });
+        }
+      }
 
-      rosette(x, z, h, rw, 12, rot, true, 0.45, 1);
-      const pa = rot + 0.9 + rng() * 4.4;
-      rosette(x + Math.cos(pa) * rw * 0.58, z + Math.sin(pa) * rw * 0.58, h * 0.4, rw * 0.4, 6, pa, false, 0.9, 1.4);
-
-      // Far halves first, so the near ones lie over them.
-      halves.sort((p, q) => q.d - p.d);
+      // Far faces first, so the near ones lie over them.
+      faces.sort((p, q) => q.d - p.d);
       const line = (pts: Pt[]) => {
         ctx!.beginPath();
         ctx!.moveTo(pts[0][0], pts[0][1]);
         for (let i = 1; i < pts.length; i++) ctx!.lineTo(pts[i][0], pts[i][1]);
       };
       ctx!.lineJoin = "round";
-      for (const hf of halves) {
-        line(hf.pts);
+      for (const f of faces) {
+        line(f.pts);
         ctx!.closePath();
-        // Paper under every half, or the translucent tints stack and the
+        // Paper under every face, or the translucent tints stack and the
         // far leaves show through the near ones.
         ctx!.fillStyle = LEAF_BODY;
         ctx!.fill();
-        // Strong enough between the two halves that the fold reads as a
-        // thick leaf turning away from the light, not a printed stripe.
-        ctx!.fillStyle = tint(0.04 + 0.42 * (1 - hf.lit));
+        ctx!.fillStyle = tint(0.04 + 0.42 * (1 - f.lit));
         ctx!.fill();
-        if (hf.flecks.length) {
+        if (f.flecks.length) {
           ctx!.strokeStyle = "rgba(246,240,226,0.85)";
           ctx!.lineWidth = Math.max(lw * 0.8, 1);
           ctx!.lineCap = "round";
-          for (const f of hf.flecks) {
-            line(f);
+          for (const fl of f.flecks) {
+            line(fl);
             ctx!.stroke();
           }
           ctx!.lineCap = "butt";
         }
-        // The fold is a crease, lighter than the margin that bounds the leaf.
-        line(hf.fold);
-        ctx!.strokeStyle = tint(0.45);
-        ctx!.lineWidth = lw * 0.55;
-        ctx!.stroke();
-        line(hf.margin);
-        ctx!.strokeStyle = stroke;
-        ctx!.lineWidth = lw;
-        ctx!.stroke();
+        for (const e of f.edges) {
+          line(e.line);
+          ctx!.strokeStyle = e.a === null ? stroke : tint(e.a);
+          ctx!.lineWidth = lw * e.w;
+          ctx!.stroke();
+        }
       }
     }
 
