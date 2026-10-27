@@ -1238,8 +1238,8 @@
           "modelName": "TexasSage"
         }
       ],
-      "matureHeightFt": 8,
-      "matureWidthFt": 8,
+      "matureHeightFt": 5,
+      "matureWidthFt": 5.5,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Chihuahuan Desert — West Texas and northern Mexico",
