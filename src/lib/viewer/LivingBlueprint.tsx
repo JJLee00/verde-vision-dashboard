@@ -162,7 +162,8 @@ type AgaveShape = {
  *  shows and what the plan symbol's scalloped rim says. */
 const LANTANAS = new Set(["WhiteDawnLantana", "PurpleLantana", "YellowLantana"]);
 
-/** The one place this viewer leaves its ink-on-sand palette.
+/** One of the two places this viewer leaves its ink-on-sand palette (the
+ *  other is the aloe's bloom, below).
  *
  *  With lantana the colour IS the species — three plants identical in habit
  *  and size, told apart by nothing else — so a client looking at the 3D view
@@ -179,6 +180,14 @@ const LANTANA_BLOOM: Record<string, string> = {
   PurpleLantana: "rgba(138,118,176,0.78)",
   YellowLantana: "rgba(216,166,63,0.8)",
 };
+
+/** The aloe's flower spikes, on the lantana's terms: confined to the flowers,
+ *  muted to sit on the sand, and absent from the plan symbol. A tall stalk of
+ *  hanging yellow tubes is what tells an aloe from an agave at a glance —
+ *  in ink alone the spike is a bottle brush of any colour. Open flowers, and
+ *  the greener buds still closed at the tip. */
+const ALOE_BLOOM = "rgba(222,184,74,0.88)";
+const ALOE_BUD = "rgba(178,180,98,0.88)";
 
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
@@ -961,6 +970,11 @@ export function LivingBlueprint({
      *  fleshy. Small teeth on the older leaves' margins, and the pale flecks
      *  vera carries.
      *
+     *  And it is in flower: two slender stalks out of the crown, about twice
+     *  the height of the leaves, each ending in a spike of hanging yellow
+     *  tubes with the buds still pointing up at the tip. Nothing else in the
+     *  yard has that, so it is the quickest way to know the plant is an aloe.
+     *
      *  Spread is the catalog's, so the outermost tips land on the plan mark's
      *  rim; height follows the model's proportion from there, capped by the
      *  catalog's.
@@ -975,6 +989,7 @@ export function LivingBlueprint({
       tint: (a: number) => string,
       stroke: string,
       lw: number,
+      inColour: boolean,
     ) {
       const rng = rngFor("aloe:" + seed);
       // Up and to the left, the light every drawing on this sheet is under.
@@ -1148,15 +1163,12 @@ export function LivingBlueprint({
         }
       }
 
-      // Far faces first, so the near ones lie over them.
-      faces.sort((p, q) => q.d - p.d);
       const line = (pts: Pt[]) => {
         ctx!.beginPath();
         ctx!.moveTo(pts[0][0], pts[0][1]);
         for (let i = 1; i < pts.length; i++) ctx!.lineTo(pts[i][0], pts[i][1]);
       };
-      ctx!.lineJoin = "round";
-      for (const f of faces) {
+      const drawFace = (f: Face) => {
         line(f.pts);
         ctx!.closePath();
         // Paper under every face, or the translucent tints stack and the
@@ -1181,7 +1193,87 @@ export function LivingBlueprint({
           ctx!.lineWidth = lw * e.w;
           ctx!.stroke();
         }
+      };
+      // Leaves, stalks and flowers go through one depth sort, so a near leaf
+      // still covers the foot of a stalk rising behind it.
+      const items: { d: number; draw: () => void }[] = faces.map((f) => ({ d: f.d, draw: () => drawFace(f) }));
+      const seg = (a: V3, b: V3, w: number, col: string, cap: CanvasLineCap = "round") => {
+        const pa = proj(a);
+        const pb = proj(b);
+        ctx!.beginPath();
+        ctx!.moveTo(pa[0], pa[1]);
+        ctx!.lineTo(pb[0], pb[1]);
+        ctx!.lineWidth = w;
+        ctx!.strokeStyle = col;
+        ctx!.lineCap = cap;
+        ctx!.stroke();
+        ctx!.lineCap = "butt";
+      };
+
+      // The blooms. Each stalk leaves the crown from among the leaves, leans
+      // a little outward and away from its partner, and carries its flowers
+      // on the top third: open tubes hanging at the bottom of the spike,
+      // shorter and turning up toward the buds at the tip.
+      const leafTop = top * ys;
+      const stalkW = Math.max(ftPx(x, z, 0.04), lw * 0.9);
+      const tubeW = Math.max(ftPx(x, z, 0.035), 1.6);
+      const open = inColour ? ALOE_BLOOM : tint(0.3);
+      const bud = inColour ? ALOE_BUD : tint(0.22);
+      const lean0 = rot + rng() * Math.PI * 2;
+      for (let st = 0; st < 2; st++) {
+        const la = lean0 + st * (Math.PI * 0.8 + rng() * 0.6);
+        const lean = Math.sin((5 + rng() * 9) * deg);
+        const tall = leafTop * (1.85 + rng() * 0.3);
+        const bx = x + Math.cos(la) * rw * 0.05;
+        const bz = z + Math.sin(la) * rw * 0.05;
+        const by = leafTop * 0.08;
+        const along = (t: number): V3 => {
+          const off = tall * lean * Math.pow(t, 1.4); // bends out more toward the top
+          return [bx + Math.cos(la) * off, by + (tall - by) * t, bz + Math.sin(la) * off];
+        };
+        const SEGS = 10;
+        for (let i = 0; i < SEGS; i++) {
+          const a = along(i / SEGS);
+          const b = along((i + 1) / SEGS);
+          const w = stalkW * (1 - 0.35 * (i / SEGS));
+          // Butt ends: the stalk is drawn in pieces for the depth sort, and
+          // round caps on a translucent ink overlap into beads at every joint.
+          items.push({ d: (depth(a) + depth(b)) / 2, draw: () => seg(a, b, w, tint(0.7), "butt") });
+        }
+        const M = 16; // whorls up the spike
+        for (let j = 0; j < M; j++) {
+          const u = j / (M - 1); // 0 = the lowest, open flowers; 1 = the tip
+          const ax = along(0.68 + 0.315 * u);
+          const tilt = (-62 + 102 * Math.pow(u, 1.3)) * deg; // hanging, then up
+          const len = rw * (0.12 - 0.075 * u);
+          const col = u > 0.72 ? bud : open;
+          for (let m = 0; m < 3; m++) {
+            const phi = st * 1.3 + j * 2.399963 + (m * Math.PI * 2) / 3;
+            const hx = Math.cos(phi);
+            const hz = Math.sin(phi);
+            const base: V3 = [ax[0] + hx * rw * 0.02, ax[1], ax[2] + hz * rw * 0.02];
+            const tip: V3 = [
+              base[0] + hx * Math.cos(tilt) * len,
+              base[1] + Math.sin(tilt) * len,
+              base[2] + hz * Math.cos(tilt) * len,
+            ];
+            items.push({
+              d: (depth(base) + depth(tip)) / 2,
+              draw: () => {
+                // The lantana's order: ink edge, paper, then the colour.
+                seg(base, tip, tubeW + lw * 0.7, tint(0.6));
+                seg(base, tip, tubeW, LEAF_BODY);
+                seg(base, tip, tubeW, col);
+              },
+            });
+          }
+        }
       }
+
+      // Far first, so the near ones lie over them.
+      items.sort((p, q) => q.d - p.d);
+      ctx!.lineJoin = "round";
+      for (const it of items) it.draw();
     }
 
     /** Ocotillo: canes, and nothing else.
@@ -1547,7 +1639,7 @@ export function LivingBlueprint({
       } else if (inst.model === "Ocotillo") {
         drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
       } else if (inst.model === "Aloe Vera") {
-        drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw);
+        drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw, !(sel || hover));
       } else if (meta.kind === "rosette" && AGAVE_SHAPES[inst.model]) {
         drawAgaveBody(x, z, h, rw, stroke, fill, lw, AGAVE_SHAPES[inst.model]);
       } else if (meta.kind === "rosette") {
