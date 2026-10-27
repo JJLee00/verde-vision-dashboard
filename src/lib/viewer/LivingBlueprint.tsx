@@ -942,6 +942,207 @@ export function LivingBlueprint({
       }
     }
 
+    /** Aloe vera.
+     *
+     *  It drew as the generic rosette: nine bare strokes, a tuft of grass.
+     *  An aloe is the opposite of grass — a handful of thick, fleshy leaves,
+     *  broad where they clasp the crown and running straight to a point, held
+     *  up in a vase rather than flung out flat like an agave's skirt.
+     *
+     *  What makes a leaf read as fleshy is its channel. Each one is folded
+     *  along the midline with the margins raised, so it is drawn as two
+     *  halves, each tinted by its own normal against the sheet's light (the
+     *  boulder's): one half catches it, the other falls away, and a flat
+     *  strap becomes a leaf with a body. Then the details a grower would
+     *  name: small teeth on the older leaves' margins, the pale flecks vera
+     *  carries, and a pup at its foot — it offsets freely, and that pup is
+     *  the quickest tell that this is vera and not another aloe.
+     *
+     *  Built to the catalog's own size, two feet by two, which makes it an
+     *  upright plant: the oldest leaves open to about forty degrees and the
+     *  rest stand up the middle. The pup stays inside that spread, so a mass
+     *  planting at the plan's spacing doesn't grow into its neighbours.
+     */
+    function drawAloeBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      tint: (a: number) => string,
+      stroke: string,
+      lw: number,
+    ) {
+      const rng = rngFor("aloe:" + seed);
+      // Up and to the left, the light every drawing on this sheet is under.
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const FOLD = 0.4; // how far the margins stand above the midline, of the half-width
+      const S = 20; // stations along a leaf; the odd ones carry the teeth
+
+      type Pt = [number, number];
+      type Half = { pts: Pt[]; margin: Pt[]; fold: Pt[]; flecks: Pt[][]; d: number; lit: number };
+      const halves: Half[] = [];
+
+      const rosette = (
+        cx: number,
+        cz: number,
+        H: number,
+        RW: number,
+        n: number,
+        turn: number,
+        teeth: boolean,
+        speckled: number, // chance a leaf carries flecks
+        broad: number, // a pup's leaves are stubbier than a scaled-down adult's
+      ) => {
+        for (let k = 0; k < n; k++) {
+          const age = 1 - k / (n - 1); // 1 = oldest and outermost, 0 = youngest
+          const a = turn + k * 2.399963 + (rng() - 0.5) * 0.25; // golden angle
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          // The old leaves open out, the middle ones stand tallest, and the
+          // youngest are still coming up the centre, short and upright.
+          const reach = RW * (0.3 + 0.68 * Math.pow(age, 0.7)) * (0.93 + 0.1 * rng());
+          const yTip =
+            H * 1.08 * (1 - 0.6 * Math.pow(age, 1.5) - 0.25 * Math.pow(1 - age, 5)) *
+            (0.95 + 0.08 * rng());
+          // Drawn a little broader than life (a hand across, not three
+          // fingers): at plan scale a true-width aloe leaf is a line again.
+          const halfW = RW * (0.14 + 0.12 * age) * broad;
+          // The leaves clasp a crown, overlapping round it like a cup; run
+          // them all into one point and the base is a pinched knot of ink.
+          const r0 = RW * 0.12;
+          const y0 = H * 0.02;
+          // The centre line is a quadratic bowed so the leaf leaves the
+          // crown steep and opens outward toward the tip: stiff, not arched.
+          const kr = reach * (0.4 + 0.02 * age);
+          const ky = yTip * (0.58 + 0.2 * age);
+          const centre = (t: number): [number, number, number] => {
+            const m = 1 - t;
+            const r = m * m * r0 + 2 * m * t * kr + t * t * reach;
+            return [cx + ca * r, m * m * y0 + 2 * m * t * ky + t * t * yTip, cz + sa * r];
+          };
+          const frame = (t: number) => {
+            const dr = 2 * (1 - t) * (kr - r0) + 2 * t * (reach - kr);
+            const dy = 2 * (1 - t) * (ky - y0) + 2 * t * (yTip - ky);
+            const tl = Math.hypot(dr, dy) || 1;
+            const T = [(ca * dr) / tl, dy / tl, (sa * dr) / tl];
+            const Sd = [-sa, 0, ca]; // across the leaf, level
+            // Sd x T: the upper face's normal, which points in toward the
+            // crown on an upright leaf and up on an open one.
+            const N = [Sd[1] * T[2] - Sd[2] * T[1], Sd[2] * T[0] - Sd[0] * T[2], Sd[0] * T[1] - Sd[1] * T[0]];
+            return { T, Sd, N };
+          };
+          // Broad at the clasp, holding its width, and closing to a point.
+          const width = (t: number) => halfW * Math.pow(1 - t, 0.62);
+          const onLeaf = (t: number, side: number, across: number, out = 0) => {
+            const c = centre(t);
+            const { Sd, N } = frame(t);
+            const w = width(t);
+            const sx = side * (w * across + out);
+            const up = w * FOLD * across;
+            return P(c[0] + Sd[0] * sx + N[0] * up, c[1] + N[1] * up, c[2] + Sd[2] * sx + N[2] * up);
+          };
+
+          const fold: Pt[] = [];
+          for (let i = 0; i <= S; i++) {
+            const q = P(...centre(i / S));
+            fold.push([q[0], q[1]]);
+          }
+          const flecked = rng() < speckled;
+          for (const side of [1, -1]) {
+            const margin: Pt[] = [];
+            let depth = 0;
+            for (let i = 0; i <= S; i++) {
+              const t = i / S;
+              // A tooth is a margin vertex pushed out and a little forward,
+              // so it reads as pointing up the leaf the way aloe teeth do.
+              const tooth = teeth && age > 0.3 && i % 2 === 1 && i > 1 && i < S - 1;
+              const q = tooth
+                ? onLeaf(Math.min(1, t + 0.35 / S), side, 1, halfW * 0.1 * (1 - 0.6 * t))
+                : onLeaf(t, side, 1);
+              margin.push([q[0], q[1]]);
+              depth += q[2];
+            }
+            // Lit by the half's own normal: across the half is the level
+            // side vector tipped up by the fold, along it is the leaf.
+            const { T, Sd, N } = frame(0.35);
+            const ac = [side * Sd[0] + FOLD * N[0], FOLD * N[1], side * Sd[2] + FOLD * N[2]];
+            const nx = T[1] * ac[2] - T[2] * ac[1];
+            const ny = T[2] * ac[0] - T[0] * ac[2];
+            const nz = T[0] * ac[1] - T[1] * ac[0];
+            const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / (Math.hypot(nx, ny, nz) || 1));
+            // Flecks: short pale dashes across the lower half of the leaf.
+            const flecks: Pt[][] = [];
+            if (flecked) {
+              const count = 2 + Math.floor(rng() * 3);
+              for (let f = 0; f < count; f++) {
+                const t = 0.12 + rng() * 0.5;
+                const s0 = 0.25 + rng() * 0.4;
+                const p0 = onLeaf(t, side, s0);
+                const p1 = onLeaf(t + 0.012, side, s0 + 0.22);
+                flecks.push([[p0[0], p0[1]], [p1[0], p1[1]]]);
+              }
+            }
+            halves.push({
+              pts: [...fold, ...[...margin].reverse()],
+              margin,
+              fold,
+              flecks,
+              d: depth / (S + 1),
+              lit,
+            });
+          }
+        }
+      };
+
+      rosette(x, z, h, rw, 12, rot, true, 0.45, 1);
+      const pa = rot + 0.9 + rng() * 4.4;
+      rosette(x + Math.cos(pa) * rw * 0.58, z + Math.sin(pa) * rw * 0.58, h * 0.4, rw * 0.4, 6, pa, false, 0.9, 1.4);
+
+      // Far halves first, so the near ones lie over them.
+      halves.sort((p, q) => q.d - p.d);
+      const line = (pts: Pt[]) => {
+        ctx!.beginPath();
+        ctx!.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx!.lineTo(pts[i][0], pts[i][1]);
+      };
+      ctx!.lineJoin = "round";
+      for (const hf of halves) {
+        line(hf.pts);
+        ctx!.closePath();
+        // Paper under every half, or the translucent tints stack and the
+        // far leaves show through the near ones.
+        ctx!.fillStyle = LEAF_BODY;
+        ctx!.fill();
+        // Strong enough between the two halves that the fold reads as a
+        // thick leaf turning away from the light, not a printed stripe.
+        ctx!.fillStyle = tint(0.04 + 0.42 * (1 - hf.lit));
+        ctx!.fill();
+        if (hf.flecks.length) {
+          ctx!.strokeStyle = "rgba(246,240,226,0.85)";
+          ctx!.lineWidth = Math.max(lw * 0.8, 1);
+          ctx!.lineCap = "round";
+          for (const f of hf.flecks) {
+            line(f);
+            ctx!.stroke();
+          }
+          ctx!.lineCap = "butt";
+        }
+        // The fold is a crease, lighter than the margin that bounds the leaf.
+        line(hf.fold);
+        ctx!.strokeStyle = tint(0.45);
+        ctx!.lineWidth = lw * 0.55;
+        ctx!.stroke();
+        line(hf.margin);
+        ctx!.strokeStyle = stroke;
+        ctx!.lineWidth = lw;
+        ctx!.stroke();
+      }
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -1304,6 +1505,8 @@ export function LivingBlueprint({
         drawBoulderBody(x, z, rw * 2, meta.renderHeightFt, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
         drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
+      } else if (inst.model === "Aloe Vera") {
+        drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw);
       } else if (meta.kind === "rosette" && AGAVE_SHAPES[inst.model]) {
         drawAgaveBody(x, z, h, rw, stroke, fill, lw, AGAVE_SHAPES[inst.model]);
       } else if (meta.kind === "rosette") {
