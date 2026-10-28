@@ -583,25 +583,17 @@ const ALOE_VERA: PlanSymbol = {
   centre: "none",
 };
 
-// Green Hopseed — from a pencil sketch (Oct 26 2026): a rim of sixteen
-// points joined by arcs that bow IN, and a dot at the centre. Nothing inside
-// it; the old branching interior read as a small tree.
-//
-// Measured off the photo: the points are evenly spaced, and the deepest part
-// of each arc sits at 0.905 of the points' radius (median of all sixteen).
-// So the rim is generated, as the lantana's is: each arc a quadratic from
-// one point to the next through a control pulled in to 0.829, which is what
-// puts its midpoint at 0.905. Six samples an arc. The dot is 0.09 of the
-// radius, as drawn.
-const GREEN_HOPSEED_RIM: [number, number][] = (() => {
-  const N = 16;
-  const ctrl = 0.829;
+/** A rim of `n` evenly spaced points joined by arcs that bow IN: each arc a
+ *  quadratic from one point to the next through a control pulled in to
+ *  `ctrl`, six samples an arc. Generated, as the lantana's rim is. The
+ *  midpoint of each arc lands at (cos(pi/n) + ctrl) / 2 of the radius. */
+const cuspedRim = (n: number, ctrl: number): [number, number][] => {
   const at = (k: number, r: number): [number, number] => {
-    const a = -Math.PI / 2 + (k * Math.PI * 2) / N;
+    const a = -Math.PI / 2 + (k * Math.PI * 2) / n;
     return [Math.cos(a) * r, Math.sin(a) * r];
   };
   const out: [number, number][] = [];
-  for (let k = 0; k < N; k++) {
+  for (let k = 0; k < n; k++) {
     const p0 = at(k, 1);
     const c = at(k + 0.5, ctrl);
     const p1 = at(k + 1, 1);
@@ -615,7 +607,16 @@ const GREEN_HOPSEED_RIM: [number, number][] = (() => {
     }
   }
   return out;
-})();
+};
+
+// Green Hopseed — from a pencil sketch (Oct 26 2026): a rim of sixteen
+// points joined by arcs that bow IN, and a dot at the centre. Nothing inside
+// it; the old branching interior read as a small tree.
+//
+// Measured off the photo: the points are evenly spaced, and the deepest part
+// of each arc sits at 0.905 of the points' radius (median of all sixteen),
+// which a control at 0.829 gives. The dot is 0.09 of the radius, as drawn.
+const GREEN_HOPSEED_RIM = cuspedRim(16, 0.829);
 
 const GREEN_HOPSEED: PlanSymbol = {
   edge: "poly",
@@ -624,6 +625,41 @@ const GREEN_HOPSEED: PlanSymbol = {
   polys: [GREEN_HOPSEED_RIM],
   centre: "dot",
   centreR: 0.09,
+};
+
+// Yellow Bells ('Sundance') — from a pencil sketch (Oct 27 2026): the same
+// kind of rim as the hopseed's, sixteen points with arcs bowing in, but a
+// little deeper (each arc's deepest point at 0.895 of the radius, median of
+// all sixteen; a control at 0.809), a smaller centre dot (0.072), and nine
+// small upright Ys scattered inside — the flowers on their stalks.
+//
+// The Ys keep the places they were drawn in (their junctions, read off the
+// photo and normalised to the rim's radius, y down as on the page); their
+// shape is the sketch's average, so all nine are one mark: a stem 0.13 of
+// the radius below the junction and two arms 0.12 long, spread 60 degrees
+// either side of upright.
+const YELLOW_BELLS_FLOWERS: Seg[] = (() => {
+  const at: [number, number][] = [
+    [-0.16, -0.692], [0.36, -0.538], [-0.435, -0.297], [0.488, 0], [-0.525, 0.253],
+    [-0.134, 0.253], [0.301, 0.451], [0.631, 0.484], [-0.338, 0.648],
+  ];
+  const ax = 0.12 * Math.sin(Math.PI / 3);
+  const ay = 0.12 * Math.cos(Math.PI / 3);
+  return at.flatMap(([x, y]): Seg[] => [
+    [x, y, x, y + 0.13],
+    [x, y, x - ax, y - ay],
+    [x, y, x + ax, y - ay],
+  ]);
+})();
+
+const YELLOW_BELLS: PlanSymbol = {
+  edge: "poly",
+  n: 16,
+  d: 0,
+  polys: [cuspedRim(16, 0.809)],
+  interior: { kind: "lines", segs: YELLOW_BELLS_FLOWERS },
+  centre: "dot",
+  centreR: 0.072,
 };
 
 /* ---------- AZ Boulder — traced from sketches/az-boulder.svg ---------- */
@@ -783,7 +819,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   MulgaAcaciaSm: MULGA,
 
   /* shrubs */
-  YellowBells: { edge: "scallop", n: 16, d: 0.13, interior: branch(4, 2, 130), centre: "dot" },
+  YellowBells: YELLOW_BELLS,
   Jojoba: { edge: "scallop", n: 26, d: 0.06, interior: tex(7), centre: "dot" },
   TexasSage: { edge: "tooth", n: 30, d: 0.08, interior: tex(13), centre: "dot" },
   GreenHopseed: GREEN_HOPSEED,
