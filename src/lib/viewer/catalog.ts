@@ -351,6 +351,16 @@ export const CATALOG: Record<string, SpeciesMeta> = {
     renderHeightFt: 10,
     prices: {},
   },
+  RedBirdOfParadise: {
+    code: "RBP",
+    name: "Red Bird of Paradise",
+    botanical: "Caesalpinia pulcherrima",
+    kind: "shrub",
+    matureHeightFt: 8,
+    matureWidthFt: 8,
+    renderHeightFt: 7,
+    prices: {},
+  },
   LittleJohnBottlebrush: {
     code: "LJ",
     name: "Little John Bottlebrush",

@@ -823,6 +823,7 @@ export const SYMBOLS: Record<string, PlanSymbol> = {
   Jojoba: { edge: "scallop", n: 26, d: 0.06, interior: tex(7), centre: "dot" },
   TexasSage: { edge: "tooth", n: 30, d: 0.08, interior: tex(13), centre: "dot" },
   GreenHopseed: GREEN_HOPSEED,
+  RedBirdOfParadise: { edge: "scallop", n: 28, d: 0.09, interior: branch(6, 2, 150), centre: "dot" },
   LittleJohnBottlebrush: { edge: "double", n: 0, d: 0, centre: "dot" },
 
   /* rosettes — leaf count and thickness ARE the species */

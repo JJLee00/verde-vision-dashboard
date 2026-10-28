@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-10-21",
+  "generatedAt": "2026-10-28",
   "sizeOrder": [
     "1g",
     "5g",
@@ -1281,6 +1281,39 @@
       "bloomPeriod": "Spring (inconspicuous) — pink-tan winged seed capsules through summer",
       "growthRate": "Fast",
       "lifespan": "Long-lived (25+ yrs)"
+    },
+    {
+      "key": "red bird of paradise",
+      "name": "Red Bird of Paradise",
+      "botanicalName": "Caesalpinia pulcherrima",
+      "category": "Shrub",
+      "thumbnail": "redbirdofparadise_thumb",
+      "sizes": [
+        {
+          "size": "5g",
+          "price": 55,
+          "laborCost": 45,
+          "heightMultiplier": 0.35,
+          "modelName": "RedBirdOfParadise"
+        },
+        {
+          "size": "15g",
+          "price": 125,
+          "laborCost": 85,
+          "heightMultiplier": 0.6,
+          "modelName": "RedBirdOfParadise"
+        }
+      ],
+      "matureHeightFt": 8,
+      "matureWidthFt": 8,
+      "sun": "Full Sun",
+      "water": "Low",
+      "origin": "Tropical Americas — likely the West Indies and Central America",
+      "description": "Also sold as Pride of Barbados or Dwarf Poinciana, and the plant that makes a desert summer look tropical. An open vase of stems carries fine, fern-like bipinnate leaves and, from late spring until frost, upright clusters of ruffled scarlet flowers edged in gold with long red stamens arching out of them. It blooms hardest in the hottest, most reflected spot in the yard, and hummingbirds and butterflies work it all season. It is frost-tender: the top dies back in a hard freeze and regrows fast from the roots, so most Arizona designers cut it to about a foot in late winter and let it rebuild each spring. Full sun, sharp drainage, deep occasional summer water. The seeds and pods are toxic, so keep it away from play areas. Use it in threes along a hot wall or pool deck, or singly as a summer focal point.",
+      "coldToleranceFahrenheit": 20,
+      "bloomPeriod": "Late spring – frost (peaks in summer heat)",
+      "growthRate": "Fast",
+      "lifespan": "Perennial"
     },
     {
       "key": "beaked yucca",
