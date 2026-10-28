@@ -241,6 +241,29 @@ const YELLOW_BELLS_GOLD = {
   bloomShade: [196, 158, 86],
 };
 
+/** Red bird of paradise: dark fern-green fronds, scarlet ruffled blooms
+ *  edged in gold, and the pale bark of its open stems. */
+const RED_BIRD_COLOURS = {
+  deep: [40, 70, 44], // fronds inside the canopy
+  leafLit: [98, 140, 84],
+  leafShade: [50, 88, 56],
+  bloomLit: [228, 82, 52],
+  bloomShade: [176, 50, 36],
+  edge: "rgba(236,170,56,0.95)", // the gold rim of the petals
+  stamen: "rgba(196,40,32,0.85)",
+  stem: "rgba(150,132,112,0.9)",
+};
+const RED_BIRD_GOLD = {
+  deep: [118, 86, 40],
+  leafLit: [226, 192, 120],
+  leafShade: [152, 114, 54],
+  bloomLit: [244, 222, 160],
+  bloomShade: [196, 158, 86],
+  edge: "rgba(168,123,47,0.9)",
+  stamen: "rgba(168,123,47,0.8)",
+  stem: "rgba(168,123,47,0.8)",
+};
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -1985,6 +2008,257 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per plant and kept, as the other shrubs are.
+    type RedBirdPart = {
+      c: [number, number, number];
+      /** shapes as offsets from c, xyz; `corners` points each */
+      pts: Float32Array;
+      corners: number;
+      /** for blooms: stamen strokes, pairs of offsets from c */
+      lines?: Float32Array;
+      kind: "inner" | "frond" | "bloom" | "stalk";
+      col: [string, string]; // [plain, gold]
+    };
+    const redBirdGrown = new Map<string, { stems: [number, number, number][][]; parts: RedBirdPart[] }>();
+
+    function growRedBird(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
+      const rng = rngFor("redbird:" + seed);
+      const LX = -0.44;
+      const LZ = -0.43;
+      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
+      const smooth = (e0: number, e1: number, v: number) => {
+        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+      };
+      type V3 = [number, number, number];
+      // An open vase: narrow where the stems leave the ground, opening out
+      // to full spread by a little over half its height and staying there —
+      // the top is flat, tiers of fronds rather than a dome.
+      const prof = (u: number) => (0.12 + 0.88 * smooth(0.04, 0.6, u)) * (u > 0.92 ? 1 - 0.35 * (u - 0.92) / 0.08 : 1);
+
+      const stems: V3[][] = [];
+      for (let k = 0; k < 9; k++) {
+        const a = rot + k * 2.399963 + rng() * 0.5;
+        const reach = rw * (0.3 + 0.3 * rng());
+        stems.push([
+          [x + Math.cos(a) * rw * 0.04, 0, z + Math.sin(a) * rw * 0.04],
+          [x + Math.cos(a) * reach, h * (0.5 + 0.2 * rng()), z + Math.sin(a) * reach],
+        ]);
+      }
+
+      // A frond seen flat: a narrow feathery spray, its outline finely
+      // scalloped by the small round leaflets along it. Broad and coarsely
+      // toothed, the first ones read as a different plant's leaves; the fern
+      // texture is in the fineness. Corners along (1, 0), width on the
+      // second axis.
+      const FROND: [number, number][] = (() => {
+        const out: [number, number][] = [];
+        const S = 15;
+        const w = (i: number) => Math.pow(Math.sin(Math.PI * Math.min(1, (i / S) * 1.04)), 0.5) * (i % 2 ? 1 : 0.5);
+        for (let i = 0; i <= S; i++) out.push([i / S, w(i)]);
+        for (let i = S - 1; i >= 1; i--) out.push([i / S, -w(i)]);
+        return out;
+      })();
+      // A ruffled bloom, face on: five broad rounded petals, not a star.
+      const BLOOM: [number, number][] = Array.from({ length: 15 }, (_, i): [number, number] => {
+        const a = (i / 15) * Math.PI * 2;
+        const r = i % 3 === 0 ? 0.78 : 1;
+        return [0.5 + 0.5 * r * Math.cos(a), 0.5 * r * Math.sin(a) * 2];
+      });
+
+      const parts: RedBirdPart[] = [];
+      const NI = 140;
+      const NF = 320;
+      const NB = 30;
+      for (let tries = 0; parts.length < NI + NF + NB && tries < (NI + NF + NB) * 4; tries++) {
+        const i = parts.length;
+        const kind = i < NI ? "inner" : i < NI + NF ? "frond" : "bloom";
+        if (kind !== "bloom") {
+          // Fronds sit in tiers from a third of the way up to the top,
+          // weighted to the broad upper canopy.
+          const u = 0.3 + 0.68 * Math.sqrt(rng());
+          const th = rng() * Math.PI * 2;
+          const reach = kind === "inner" ? 0.25 + 0.4 * rng() : 0.55 + 0.45 * rng();
+          const r = rw * prof(u) * reach;
+          const c: V3 = [x + Math.cos(th) * r, u * h, z + Math.sin(th) * r];
+          // Held out nearly level, along the way it grows, the tip dipping.
+          const a = th + (rng() - 0.5) * 0.9;
+          const dir: V3 = [Math.cos(a), -0.12 - 0.12 * rng(), Math.sin(a)];
+          const dl = Math.hypot(...dir);
+          const d: V3 = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
+          const perp: V3 = [-Math.sin(a), 0, Math.cos(a)];
+          const L = rw * 0.24 * (0.8 + 0.4 * rng()) * (kind === "inner" ? 0.85 : 1);
+          const W = L * 0.12;
+          const pts: number[] = [];
+          for (const [f, q] of FROND) {
+            for (let k = 0; k < 3; k++) pts.push(d[k] * L * (f - 0.35) + perp[k] * W * q);
+          }
+          // Lit from the light's side, darker low and toward the middle.
+          const side = Math.max(0, Math.cos(th) * -LX + Math.sin(th) * -LZ);
+          const shade = (0.45 + 0.35 * (1 - side) + 0.2 * rng()) * (0.55 + 0.45 * smooth(0.3, 0.95, u)) * (0.75 + 0.25 * reach);
+          const tone = (pal: typeof RED_BIRD_COLOURS) =>
+            rgb(kind === "inner" ? mix(pal.deep, pal.leafShade, 0.5 * shade) : mix(pal.leafShade, pal.leafLit, Math.min(1, shade)));
+          parts.push({ c, pts: new Float32Array(pts), corners: FROND.length, kind, col: [tone(RED_BIRD_COLOURS), tone(RED_BIRD_GOLD)] });
+          continue;
+        }
+        // A flower stalk rising out of the canopy, carrying its blooms up
+        // it, each with a few long stamens arching out of it.
+        const th = rng() * Math.PI * 2;
+        const r = rw * (0.25 + 0.7 * Math.sqrt(rng()));
+        // Mostly rising out of the top; some from the canopy's edge.
+        const base: V3 = [x + Math.cos(th) * r, h * (r > rw * 0.75 ? 0.55 + 0.2 * rng() : 0.72 + 0.2 * rng()), z + Math.sin(th) * r];
+        const up = h * (0.12 + 0.12 * rng());
+        const lean = 0.25 * (rng() - 0.5);
+        const tip: V3 = [base[0] + Math.cos(th) * up * 0.25 + lean, base[1] + up, base[2] + Math.sin(th) * up * 0.25];
+        parts.push({
+          c: base,
+          pts: new Float32Array([0, 0, 0, tip[0] - base[0], tip[1] - base[1], tip[2] - base[2]]),
+          corners: 2,
+          kind: "stalk",
+          col: [RED_BIRD_COLOURS.stem, RED_BIRD_GOLD.stem],
+        });
+        const nb = 3 + Math.floor(rng() * 3);
+        for (let b = 0; b < nb; b++) {
+          const t = 0.35 + (0.6 * b) / Math.max(1, nb - 1);
+          const c: V3 = [base[0] + (tip[0] - base[0]) * t, base[1] + (tip[1] - base[1]) * t, base[2] + (tip[2] - base[2]) * t];
+          const fa = th + (rng() - 0.5) * 2.4; // which way the bloom faces
+          const face: V3 = [Math.cos(fa), 0.3, Math.sin(fa)];
+          const across: V3 = [-Math.sin(fa), 0, Math.cos(fa)];
+          const s = rw * 0.055 * (0.8 + 0.4 * rng());
+          const pts: number[] = [];
+          for (const [f, q] of BLOOM) {
+            for (let k = 0; k < 3; k++) pts.push(across[k] * s * (f - 0.5) * 2 + [0, 1, 0][k] * s * q * 0.9 + face[k] * s * 0.1);
+          }
+          const lines: number[] = [];
+          for (let k = 0; k < 3; k++) {
+            const sa = fa + (k - 1) * 0.35;
+            const len = s * (2.2 + 0.8 * rng());
+            lines.push(0, 0, 0, Math.cos(sa) * len, len * (0.35 + 0.3 * rng()), Math.sin(sa) * len);
+          }
+          const tone = (pal: typeof RED_BIRD_COLOURS) => rgb(mix(pal.bloomShade, pal.bloomLit, 0.5 + 0.5 * rng()));
+          parts.push({ c, pts: new Float32Array(pts), corners: BLOOM.length, lines: new Float32Array(lines), kind: "bloom", col: [tone(RED_BIRD_COLOURS), tone(RED_BIRD_GOLD)] });
+        }
+      }
+      return { stems, parts };
+    }
+
+    /** Red bird of paradise, after the app's model.
+     *
+     *  Nothing like the other shrubs' masses: an open vase of thin pale
+     *  stems from a narrow base, carrying fine, feathery fronds held out
+     *  nearly level in tiers out to a broad, flat top — the layering is the
+     *  plant. Above it, loose clusters of ruffled scarlet blooms edged in
+     *  gold rise on thin stalks, long red stamens arching out of them.
+     *
+     *  Drawn as the stems; fronds as long scalloped sprays laid nearly flat,
+     *  the ones deep in the canopy darker; then the flower stalks and their
+     *  blooms with stamens — all sorted far first. No core: this is the
+     *  airiest shrub in the catalog, and you should see through its layers.
+     *  Grown once and cached; four projections a part, styles set once a
+     *  frame.
+     */
+    function drawRedBirdBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = redBirdGrown.get(key);
+      if (!grown) {
+        if (redBirdGrown.size > 400) redBirdGrown.clear(); // growth and edits mint new keys
+        grown = growRedBird(x, z, h, rw, rot, seed);
+        redBirdGrown.set(key, grown);
+      }
+      const pal = sel ? RED_BIRD_GOLD : RED_BIRD_COLOURS;
+
+      ctx!.strokeStyle = pal.stem;
+      ctx!.lineWidth = Math.max(ftPx(x, z, 0.08), lw * 0.7);
+      ctx!.lineCap = "round";
+      for (const [a, b] of grown.stems) {
+        const p0 = P(a[0], a[1], a[2]);
+        const p1 = P(b[0], b[1], b[2]);
+        ctx!.beginPath();
+        ctx!.moveTo(p0[0], p0[1]);
+        ctx!.lineTo(p1[0], p1[1]);
+        ctx!.stroke();
+      }
+
+      const order = grown.parts.map((pt) => {
+        const [cx, cy, cz] = pt.c;
+        const q = P(cx, cy, cz);
+        const qx = P(cx + 1, cy, cz);
+        const qy = P(cx, cy + 1, cz);
+        const qz = P(cx, cy, cz + 1);
+        return { pt, q, J: [qx[0] - q[0], qx[1] - q[1], qy[0] - q[0], qy[1] - q[1], qz[0] - q[0], qz[1] - q[1]] };
+      });
+      order.sort((a, b) => b.q[2] - a.q[2]); // far first
+
+      const g = sel ? 1 : 0;
+      const leafEdge = sel ? gold(0.6) : ink(0.4);
+      const stalkW = Math.max(ftPx(x, z, 0.03), 0.8);
+      let edge = "";
+      const setEdge = (c: string) => {
+        if (c !== edge) {
+          ctx!.strokeStyle = c;
+          edge = c;
+        }
+      };
+      ctx!.lineJoin = "round";
+      for (const { pt, q, J } of order) {
+        const pts = pt.pts;
+        const at = (i: number): [number, number] => [
+          q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2],
+          q[1] + J[1] * pts[i] + J[3] * pts[i + 1] + J[5] * pts[i + 2],
+        ];
+        if (pt.kind === "stalk") {
+          const b = at(3);
+          ctx!.beginPath();
+          ctx!.moveTo(q[0], q[1]);
+          ctx!.lineTo(b[0], b[1]);
+          ctx!.lineWidth = stalkW;
+          setEdge(pt.col[g]);
+          ctx!.stroke();
+          continue;
+        }
+        ctx!.beginPath();
+        for (let k = 0; k < pt.corners; k++) {
+          const [sx, sy] = at(k * 3);
+          if (k) ctx!.lineTo(sx, sy);
+          else ctx!.moveTo(sx, sy);
+        }
+        ctx!.closePath();
+        ctx!.fillStyle = pt.col[g];
+        ctx!.fill();
+        if (pt.kind === "inner") continue; // an outline on a frond in shadow is noise
+        ctx!.lineWidth = lw * 0.45;
+        setEdge(pt.kind === "bloom" ? pal.edge : leafEdge);
+        ctx!.stroke();
+        if (pt.lines) {
+          const ln = pt.lines;
+          ctx!.beginPath();
+          for (let o = 0; o < ln.length; o += 6) {
+            const [sx, sy] = [
+              q[0] + J[0] * ln[o + 3] + J[2] * ln[o + 4] + J[4] * ln[o + 5],
+              q[1] + J[1] * ln[o + 3] + J[3] * ln[o + 4] + J[5] * ln[o + 5],
+            ];
+            ctx!.moveTo(q[0], q[1]);
+            ctx!.lineTo(sx, sy);
+          }
+          ctx!.lineWidth = Math.max(lw * 0.4, 0.6);
+          setEdge(pal.stamen);
+          ctx!.stroke();
+        }
+      }
+      ctx!.lineCap = "butt";
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -2254,6 +2528,8 @@ export function LivingBlueprint({
         drawTexasSageBody(x, z, h, rw, inst.id, sel || hover, lw);
       } else if (inst.model === "YellowBells") {
         drawYellowBellsBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+      } else if (inst.model === "RedBirdOfParadise") {
+        drawRedBirdBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
