@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-10-28",
+  "generatedAt": "2026-10-30",
   "sizeOrder": [
     "1g",
     "5g",
@@ -695,7 +695,7 @@
         }
       ],
       "matureHeightFt": 3,
-      "matureWidthFt": 4,
+      "matureWidthFt": 5,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Australia (cultivated dwarf form)",
