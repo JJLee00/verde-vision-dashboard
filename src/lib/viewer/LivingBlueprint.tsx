@@ -411,6 +411,21 @@ const CHASTE_GOLD = {
   limb: "rgba(186,138,60,0.95)",
 };
 
+/** Mexican fence post: mid-green ribbed stems, every rib crest lined with
+ *  the white felt of its fused areoles — the stripes it's named for. */
+const FENCE_POST_COLOURS = {
+  shade: [60, 98, 58],
+  lit: [152, 190, 114],
+  felt: "rgb(234,230,214)",
+  feltShade: "rgb(172,172,156)",
+};
+const FENCE_POST_GOLD = {
+  shade: [140, 100, 46],
+  lit: [236, 200, 128],
+  felt: "rgb(252,244,218)",
+  feltShade: "rgb(212,186,134)",
+};
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -4553,6 +4568,241 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per clump and kept, as the trees are.
+    type FencePostClump = {
+      stems: {
+        /** where it stands, and the heights of its foot, its shoulder, two
+         *  rings up its dome, and its apex */
+        sx: number;
+        sz: number;
+        ys: number[];
+        /** each ring's twelve points — crest, valley, crest… — as offsets
+         *  (x, z) from the stem's axis, ring by ring */
+        ring: Float32Array;
+        /** each face's outward normal and tone, band by band (the shaft, two
+         *  bands of dome, the cap), twelve to a band */
+        faceN: Float32Array;
+        faceTone: Uint8Array;
+        /** whether each crest's felt is in the light */
+        crestLit: Uint8Array;
+      }[];
+    };
+    const FP_LEVELS = 8;
+    const FP_RIBS = 6;
+    const FP_TONES = [FENCE_POST_COLOURS, FENCE_POST_GOLD].map((pal) =>
+      Array.from({ length: FP_LEVELS }, (_, i) => {
+        const t = i / (FP_LEVELS - 1);
+        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
+      }),
+    );
+    // The model's four stems in its own measure (its height = 1): where each
+    // stands, how tall it is, how thick.
+    const FP_STEMS = [
+      [0.002, -0.039, 0.98, 0.067],
+      [0.094, 0.027, 0.7, 0.066],
+      [-0.105, -0.035, 0.566, 0.06],
+      [-0.03, 0.051, 0.384, 0.05],
+    ];
+    const fencePostGrown = new Map<string, FencePostClump>();
+    // Scratch for one stem's projected points, reused stem to stem.
+    const fpScreen = new Float32Array(4 * 12 * 2);
+    const fpSeen = new Float32Array(4 * 12);
+
+    function growFencePost(x: number, z: number, h: number, rot: number): FencePostClump {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      // Wrapped light, so the shaded side of a column still turns.
+      const shadeOf = (n: V3) => Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5);
+      const toneOf = (n: V3) => Math.max(0, Math.min(FP_LEVELS - 1, Math.round(shadeOf(n) * (FP_LEVELS - 1))));
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const stems = FP_STEMS.map(([mx, mz, mh, mr], si) => {
+        const r = mr * h;
+        const top = mh * h;
+        // A blunt dome, a little lower than the stem is wide.
+        const rd = r * 0.9;
+        const y0 = top - rd;
+        const ys = [0, y0, y0 + rd * Math.sin(0.55), y0 + rd * Math.sin(1.1), top];
+        const across = [1, 1, Math.cos(0.55), Math.cos(1.1)];
+        // Each stem's ribs turned its own way.
+        const phase = rot + si * 0.9;
+        const ring = new Float32Array(4 * 12 * 2);
+        for (let l = 0; l < 4; l++) {
+          for (let j = 0; j < 12; j++) {
+            const a = phase + (j * Math.PI) / FP_RIBS;
+            const rr = r * across[l] * (j % 2 ? 0.84 : 1);
+            ring[(l * 12 + j) * 2] = Math.cos(a) * rr;
+            ring[(l * 12 + j) * 2 + 1] = Math.sin(a) * rr;
+          }
+        }
+        const pt = (l: number, j: number): V3 =>
+          l === 4 ? [0, ys[4], 0] : [ring[(l * 12 + (j % 12)) * 2], ys[l], ring[(l * 12 + (j % 12)) * 2 + 1]];
+        const faceN = new Float32Array(4 * 12 * 3);
+        const faceTone = new Uint8Array(4 * 12);
+        for (let b = 0; b < 4; b++) {
+          for (let j = 0; j < 12; j++) {
+            const A = pt(b, j);
+            const B = pt(b, j + 1);
+            const C = pt(b + 1, j + (b === 3 ? 0 : 1));
+            const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+            const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+            let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            const l = Math.hypot(n[0], n[1], n[2]) || 1;
+            n = [n[0] / l, n[1] / l, n[2] / l];
+            // Outward: away from the axis, and up on the dome.
+            const ox = (A[0] + B[0]) / 2;
+            const oz = (A[2] + B[2]) / 2;
+            if (n[0] * ox + n[2] * oz + (b ? n[1] * r : 0) < 0) n = [-n[0], -n[1], -n[2]];
+            faceN.set(n, (b * 12 + j) * 3);
+            faceTone[b * 12 + j] = toneOf(n);
+          }
+        }
+        const crestLit = new Uint8Array(FP_RIBS);
+        for (let k = 0; k < FP_RIBS; k++) {
+          const a = phase + (2 * k * Math.PI) / FP_RIBS;
+          crestLit[k] = shadeOf([Math.cos(a), 0, Math.sin(a)]) > 0.45 ? 1 : 0;
+        }
+        return {
+          sx: x + (mx * cr - mz * sr) * h,
+          sz: z + (mx * sr + mz * cr) * h,
+          ys,
+          ring,
+          faceN,
+          faceTone,
+          crestLit,
+        };
+      });
+      return { stems };
+    }
+
+    /** Mexican fence post, after the app's model.
+     *
+     *  Four stems from one foot, the tallest nearly the whole height and
+     *  the others at seven, six and four tenths of it, each a column of six
+     *  blunt ribs under a rounded dome — and down every rib crest a white
+     *  stripe, the felt of its areoles, which is what anyone recognises the
+     *  plant by. Mid green, lit on the side toward the light and turning
+     *  through the shade around the far side.
+     *
+     *  Drawn stem by stem, far first: every face turned toward the eye
+     *  filled in its own tone, the most oblique first so the faces either
+     *  side of a groove overlap the right way round; then the felt down
+     *  every crest that shows, the lit crests and the shaded ones a stroke
+     *  each. Grown once and cached; each ring placed by its stem's
+     *  projection.
+     */
+    function drawFencePostBody(
+      x: number,
+      z: number,
+      h: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rot}`;
+      let grown = fencePostGrown.get(key);
+      if (!grown) {
+        if (fencePostGrown.size > 400) fencePostGrown.clear(); // growth and edits mint new keys
+        grown = growFencePost(x, z, h, rot);
+        fencePostGrown.set(key, grown);
+      }
+      const pal = sel ? FENCE_POST_GOLD : FENCE_POST_COLOURS;
+      const tones = FP_TONES[sel ? 1 : 0];
+
+      const order = grown.stems
+        .map((st) => ({ st, d: P(st.sx, st.ys[1] * 0.5, st.sz)[2] }))
+        .sort((a, b) => b.d - a.d);
+      ctx!.lineJoin = "round";
+      ctx!.lineCap = "round";
+      for (const { st } of order) {
+        const lc = st.ys.map((y) => P(st.sx, y, st.sz));
+        const ym = st.ys[1] * 0.5;
+        const q = lc[0];
+        const qx = P(st.sx + 1, 0, st.sz);
+        const qz = P(st.sx, 0, st.sz + 1);
+        const jx0 = qx[0] - q[0];
+        const jx1 = qx[1] - q[1];
+        const jz0 = qz[0] - q[0];
+        const jz1 = qz[1] - q[1];
+        for (let l = 0; l < 4; l++) {
+          for (let j = 0; j < 12; j++) {
+            const i = l * 12 + j;
+            const ox = st.ring[i * 2];
+            const oz = st.ring[i * 2 + 1];
+            fpScreen[i * 2] = lc[l][0] + jx0 * ox + jz0 * oz;
+            fpScreen[i * 2 + 1] = lc[l][1] + jx1 * ox + jz1 * oz;
+          }
+        }
+        let vx = eye[0] - st.sx;
+        let vy = eye[1] - ym;
+        let vz = eye[2] - st.sz;
+        const vl = Math.hypot(vx, vy, vz) || 1;
+        vx /= vl;
+        vy /= vl;
+        vz /= vl;
+        const faces: number[] = [];
+        for (let f = 0; f < 48; f++) {
+          const d = st.faceN[f * 3] * vx + st.faceN[f * 3 + 1] * vy + st.faceN[f * 3 + 2] * vz;
+          fpSeen[f] = d;
+          if (d > 0) faces.push(f);
+        }
+        faces.sort((a, b) => fpSeen[a] - fpSeen[b]);
+        let cur = -1;
+        for (const f of faces) {
+          const b = (f / 12) | 0;
+          const j = f % 12;
+          const j1 = (j + 1) % 12;
+          const t = st.faceTone[f];
+          if (t !== cur) {
+            ctx!.fillStyle = tones[t];
+            cur = t;
+          }
+          ctx!.beginPath();
+          ctx!.moveTo(fpScreen[(b * 12 + j) * 2], fpScreen[(b * 12 + j) * 2 + 1]);
+          ctx!.lineTo(fpScreen[(b * 12 + j1) * 2], fpScreen[(b * 12 + j1) * 2 + 1]);
+          if (b === 3) {
+            ctx!.lineTo(lc[4][0], lc[4][1]);
+          } else {
+            ctx!.lineTo(fpScreen[((b + 1) * 12 + j1) * 2], fpScreen[((b + 1) * 12 + j1) * 2 + 1]);
+            ctx!.lineTo(fpScreen[((b + 1) * 12 + j) * 2], fpScreen[((b + 1) * 12 + j) * 2 + 1]);
+          }
+          ctx!.closePath();
+          // A hairline of its own colour closes the seams between faces.
+          ctx!.fill();
+        }
+
+        // The felt: down each crest wherever a face beside it shows.
+        ctx!.lineWidth = Math.max(ftPx(st.sx, st.sz, 0.12), 0.7);
+        for (const lit of [0, 1]) {
+          ctx!.beginPath();
+          for (let k = 0; k < FP_RIBS; k++) {
+            if (st.crestLit[k] !== lit) continue;
+            const j = 2 * k;
+            const jl = (j + 11) % 12;
+            let pen = false;
+            for (let b = 0; b < 4; b++) {
+              const shows = fpSeen[b * 12 + j] > 0 || fpSeen[b * 12 + jl] > 0;
+              if (!shows) {
+                pen = false;
+                continue;
+              }
+              if (!pen) ctx!.moveTo(fpScreen[(b * 12 + j) * 2], fpScreen[(b * 12 + j) * 2 + 1]);
+              if (b === 3) ctx!.lineTo(lc[4][0], lc[4][1]);
+              else ctx!.lineTo(fpScreen[((b + 1) * 12 + j) * 2], fpScreen[((b + 1) * 12 + j) * 2 + 1]);
+              pen = true;
+            }
+          }
+          ctx!.strokeStyle = lit ? pal.felt : pal.feltShade;
+          ctx!.stroke();
+        }
+      }
+      ctx!.lineCap = "butt";
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -4838,6 +5088,8 @@ export function LivingBlueprint({
         drawMulgaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "Vitex") {
         drawChasteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+      } else if (inst.model === "MexicanFencePost") {
+        drawFencePostBody(x, z, h, symRot, inst.id, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
