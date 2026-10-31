@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-10-30",
+  "generatedAt": "2026-10-31",
   "sizeOrder": [
     "1g",
     "5g",
@@ -1033,8 +1033,8 @@
           "modelName": "PaloVerde"
         }
       ],
-      "matureHeightFt": 30,
-      "matureWidthFt": 30,
+      "matureHeightFt": 21.5,
+      "matureWidthFt": 31,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Sonoran Desert — Arizona, southeastern California, Baja and Sonora",
