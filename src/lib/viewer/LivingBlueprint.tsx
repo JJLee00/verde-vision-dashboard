@@ -368,6 +368,26 @@ const EBONY_GOLD = {
   limb: "rgba(186,138,60,0.95)",
 };
 
+/** Mulga: the palest crown in the catalog — silver-grey phyllodes — over
+ *  the reddish-brown of its leader and branches. */
+const MULGA_COLOURS = {
+  lit: [204, 216, 206],
+  shade: [124, 142, 134],
+  trunk: "rgb(140,108,96)",
+  limb: "rgba(142,110,98,0.95)",
+  twig: "rgba(150,124,112,0.8)",
+};
+const MULGA_GOLD = {
+  lit: [232, 204, 140],
+  shade: [160, 122, 60],
+  trunk: "rgb(176,128,56)",
+  limb: "rgba(186,138,60,0.95)",
+  twig: "rgba(196,150,70,0.8)",
+};
+// The sapling and the mature tree are separate models; the viewer draws
+// every size mature, so both take the mature body.
+const MULGA_MODELS = new Set(["MulgaAcaciaSm", "MulgaAcaciaLg"]);
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -3838,6 +3858,262 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per tree and kept, as the other trees are.
+    type MulgaTree = {
+      /** limbs by order — trunk, leader, branches, twigs — as segments */
+      limbs: [number, number, number][][][];
+      /** canopy puffs: centre, radii (across, up), tone */
+      lobes: { c: [number, number, number]; rx: number; ry: number; col: [string, string] }[];
+      /** phyllode flecks, grouped by tone, each as its puff, its offset from
+       *  that puff's centre, and its slant */
+      fleckLobe: Uint16Array;
+      fleckOff: Float32Array;
+      fleckSlant: Float32Array;
+      groupStart: Int32Array;
+    };
+    const MU_LEVELS = 7;
+    const muTones = (pal: typeof MULGA_COLOURS) =>
+      Array.from({ length: MU_LEVELS }, (_, i) => {
+        const t = i / (MU_LEVELS - 1);
+        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
+      });
+    const MU_TONES = [muTones(MULGA_COLOURS), muTones(MULGA_GOLD)];
+    const mulgaGrown = new Map<string, MulgaTree>();
+    // The crown's radius (a fraction of rw) by height: widest low, where
+    // the lower limbs spread, then tapering to a point — a narrow upright
+    // cone over an oval, as the model is.
+    const mulgaProf = (u: number) => {
+      if (u < 0.2 || u > 1) return 0;
+      if (u < 0.32) return 0.65 + 0.35 * Math.sin(((u - 0.2) / 0.12) * (Math.PI / 2));
+      if (u < 0.5) return 1 - 0.22 * ((u - 0.32) / 0.18);
+      return 0.78 * Math.sqrt(Math.max(0, 1 - ((u - 0.5) / 0.5) ** 1.6));
+    };
+
+    function growMulga(x: number, z: number, h: number, rw: number, rot: number, seed: string): MulgaTree {
+      const rng = rngFor("mulga:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const smooth = (e0: number, e1: number, v: number) => {
+        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+      };
+      type V3 = [number, number, number];
+      const nrm = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
+      const outward = (c: V3): V3 => nrm([(c[0] - x) / rw, ((c[1] - h * 0.5) / h) * 1.2, (c[2] - z) / rw]);
+
+      // One leader all the way up — a mulga doesn't fork into a vase as the
+      // palo verde does — with branches rising off it at a steep angle, the
+      // low ones longest, out to the crown's skin.
+      const lean = rng() * 6.28;
+      const top: V3 = [x + Math.cos(lean) * rw * 0.06, h * 0.88, z + Math.sin(lean) * rw * 0.06];
+      const F: V3 = lerp([x, 0, z], top, 0.22 / 0.88);
+      const trunk: V3[][] = [[[x, 0, z], F]];
+      const leader: V3[][] = [[F, top]];
+      const branches: V3[][] = [];
+      const twigs: V3[][] = [];
+      const clusters: V3[][] = [];
+      const NB = 13;
+      for (let k = 0; k < NB; k++) {
+        const t = 0.22 + (0.62 * (k + rng() * 0.6)) / NB;
+        const A = lerp([x, 0, z], top, t / 0.88);
+        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.4;
+        // Up at forty to sixty degrees, to the skin a little higher up; the
+        // lowest ones flatter, spreading the crown wide just above the trunk.
+        const low = 1 - smooth(0.22, 0.4, t);
+        const ut = Math.min(0.96, t + (0.1 + 0.08 * rng()) * (1 - 0.6 * low));
+        const r = rw * mulgaProf(ut) * (0.85 + 0.15 * rng());
+        const B: V3 = [x + Math.cos(a) * r, ut * h, z + Math.sin(a) * r];
+        branches.push([A, B]);
+        const ends: V3[] = [B];
+        for (let j = 0; j < 2; j++) {
+          const S = lerp(A, B, 0.45 + 0.3 * rng());
+          const aj = a + (j ? 0.6 : -0.6) * (0.6 + 0.6 * rng());
+          const uj = Math.min(0.98, S[1] / h + 0.08 + 0.08 * rng());
+          const rj = rw * mulgaProf(uj) * (0.8 + 0.2 * rng());
+          const E: V3 = [x + Math.cos(aj) * rj, uj * h, z + Math.sin(aj) * rj];
+          twigs.push([S, E]);
+          ends.push(E);
+        }
+        clusters.push([A, ...ends]);
+      }
+
+      // Faint silver puffs along the outer half of every branch and twig:
+      // a mulga's crown is as see-through as the palo verde's, its limbs
+      // showing through it.
+      const lobes: MulgaTree["lobes"] = [];
+      const alpha = 0.17;
+      for (const [A, ...ends] of clusters) {
+        for (const E of ends) {
+          for (const t of [0.8]) {
+            const c = lerp(A, E, t);
+            const rx = rw * (0.22 + 0.08 * rng());
+            for (let k = 0; k < 3; k++) {
+              const pc: V3 = [c[0] + (rng() - 0.5) * rx * 0.9, c[1] + (rng() - 0.5) * rx * 1.2, c[2] + (rng() - 0.5) * rx * 0.9];
+              // None hangs below the crown's floor, or the bare trunk wears a
+              // bubble.
+              pc[1] = Math.max(pc[1], h * 0.26 + rx * 0.6);
+              const sh = (0.45 + 0.55 * lightOf(outward(pc))) * 0.85 + 0.15;
+              const tone = (pal: typeof MULGA_COLOURS) =>
+                `rgba(${pal.shade.map((v, i) => (v + (pal.lit[i] - v) * sh) | 0).join(",")},${alpha})`;
+              // Taller than wide: the phyllodes stand up off upright shoots.
+              const prx = rx * (0.55 + 0.15 * rng());
+              lobes.push({ c: pc, rx: prx, ry: prx * 1.15, col: [tone(MULGA_COLOURS), tone(MULGA_GOLD)] });
+            }
+          }
+        }
+      }
+
+      // Phyllodes: thin silver needles, slanting up — the fine, misty
+      // texture the catalog sells it on.
+      const raw: { li: number; o: V3; slant: number; group: number }[] = [];
+      for (let i = 0; i < 1100; i++) {
+        const li = Math.floor(rng() * lobes.length);
+        const L = lobes[li];
+        const v = nrm([rng() - 0.5, rng() - 0.5, rng() - 0.5]);
+        const r = Math.pow(rng(), 0.45);
+        const o: V3 = [v[0] * L.rx * r, v[1] * L.ry * r, v[2] * L.rx * r];
+        const c: V3 = [L.c[0] + o[0], L.c[1] + o[1], L.c[2] + o[2]];
+        const n = outward(c);
+        const e = Math.hypot((c[0] - x) / (rw * Math.max(0.3, mulgaProf(c[1] / h))), 0, (c[2] - z) / (rw * Math.max(0.3, mulgaProf(c[1] / h))));
+        const sh = (0.3 + 0.7 * lightOf(nrm([n[0] + v[0], n[1] + v[1], n[2] + v[2]]))) * (0.6 + 0.4 * smooth(0.3, 1, e)) * (0.9 + 0.2 * rng());
+        const level = Math.max(0, Math.min(MU_LEVELS - 1, Math.round(sh * (MU_LEVELS - 1))));
+        // Up and to either side, never flat: screen angle from -π/2 (up).
+        raw.push({ li, o, slant: -Math.PI / 2 + (rng() - 0.5) * 1.6, group: level });
+      }
+      raw.sort((a, b) => a.group - b.group);
+      const NF = raw.length;
+      const fleckLobe = new Uint16Array(NF);
+      const fleckOff = new Float32Array(NF * 3);
+      const fleckSlant = new Float32Array(NF);
+      const groupStart = new Int32Array(MU_LEVELS + 1).fill(NF);
+      raw.forEach((f, i) => {
+        fleckLobe[i] = f.li;
+        fleckOff.set(f.o, i * 3);
+        fleckSlant[i] = f.slant;
+        if (groupStart[f.group] === NF) groupStart[f.group] = i;
+      });
+      for (let gi = MU_LEVELS - 1; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
+      return { limbs: [trunk, leader, branches, twigs], lobes, fleckLobe, fleckOff, fleckSlant, groupStart };
+    }
+
+    /** Mulga, after the app's mature model.
+     *
+     *  Unlike the three trees before it: narrow and upright, a single
+     *  reddish-brown leader running nearly to the top with branches rising
+     *  steeply off it, the low ones longest — so the crown is widest a
+     *  third of the way up and tapers from there to a point, a cone over an
+     *  oval. The palest crown in the catalog, a see-through silver mist of
+     *  fine upright phyllodes with the red-brown limbs showing through.
+     *
+     *  Drawn as the trunk, leader, branches and twigs, each order one
+     *  stroke; faint silver puffs, taller than wide, along the outer half
+     *  of every branch, far first; then the phyllodes as thin needles
+     *  slanting up, a tone at a time. Grown once and cached; flecks placed
+     *  by their puff's projection, as the palo verde's are.
+     */
+    function drawMulgaBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = mulgaGrown.get(key);
+      if (!grown) {
+        if (mulgaGrown.size > 400) mulgaGrown.clear(); // growth and edits mint new keys
+        grown = growMulga(x, z, h, rw, rot, seed);
+        mulgaGrown.set(key, grown);
+      }
+      const pal = sel ? MULGA_GOLD : MULGA_COLOURS;
+      const g = sel ? 1 : 0;
+
+      ctx!.lineCap = "round";
+      ctx!.lineJoin = "round";
+      const widths = [0.75, 0.4, 0.16, 0.07];
+      const floors = [2.2, 1.6, 0.9, 0.6];
+      grown.limbs.forEach((segs, order) => {
+        ctx!.strokeStyle = order === 0 ? pal.trunk : order < 3 ? pal.limb : pal.twig;
+        ctx!.lineWidth = Math.max(ftPx(x, z, widths[order]), floors[order]);
+        ctx!.beginPath();
+        for (const [a, b] of segs) {
+          const p0 = P(a[0], a[1], a[2]);
+          const p1 = P(b[0], b[1], b[2]);
+          ctx!.moveTo(p0[0], p0[1]);
+          ctx!.lineTo(p1[0], p1[1]);
+        }
+        ctx!.stroke();
+      });
+      ctx!.lineCap = "butt";
+
+      const proj = grown.lobes.map((L) => {
+        const [cx, cy, cz] = L.c;
+        const q = P(cx, cy, cz);
+        const qx = P(cx + 1, cy, cz);
+        const qy = P(cx, cy + 1, cz);
+        const qz = P(cx, cy, cz + 1);
+        return { L, q, J: [qx[0] - q[0], qx[1] - q[1], qy[0] - q[0], qy[1] - q[1], qz[0] - q[0], qz[1] - q[1]] };
+      });
+      for (const { L, q, J } of proj.slice().sort((a, b) => b.q[2] - a.q[2])) {
+        // An ellipsoid through the local (affine) map is an ellipse.
+        const ax = [J[0] * L.rx, J[2] * L.ry, J[4] * L.rx];
+        const ay = [J[1] * L.rx, J[3] * L.ry, J[5] * L.rx];
+        const c11 = ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2];
+        const c22 = ay[0] * ay[0] + ay[1] * ay[1] + ay[2] * ay[2];
+        const c12 = ax[0] * ay[0] + ax[1] * ay[1] + ax[2] * ay[2];
+        const mid = (c11 + c22) / 2;
+        const d = Math.sqrt(Math.max(0, mid * mid - (c11 * c22 - c12 * c12)));
+        ctx!.beginPath();
+        ctx!.ellipse(q[0], q[1], Math.sqrt(mid + d), Math.sqrt(Math.max(0, mid - d)), 0.5 * Math.atan2(2 * c12, c11 - c22), 0, Math.PI * 2);
+        ctx!.fillStyle = L.col[g];
+        ctx!.fill();
+      }
+
+      const { fleckLobe, fleckOff, fleckSlant, groupStart } = grown;
+      const half = Math.max(ftPx(x, z, 0.32), 1.3);
+      const tones = MU_TONES[g];
+      for (let gi = 0; gi < MU_LEVELS; gi++) {
+        const from = groupStart[gi];
+        const to = groupStart[gi + 1];
+        if (from >= to) continue;
+        ctx!.fillStyle = tones[gi];
+        ctx!.beginPath();
+        for (let i = from; i < to; i++) {
+          // Filled a hundred and fifty at a time, as the mesquite's are.
+          if (i > from && (i - from) % 150 === 0) {
+            ctx!.fill();
+            ctx!.beginPath();
+          }
+          const { q, J } = proj[fleckLobe[i]];
+          const ox = fleckOff[i * 3];
+          const oy = fleckOff[i * 3 + 1];
+          const oz = fleckOff[i * 3 + 2];
+          const px = q[0] + J[0] * ox + J[2] * oy + J[4] * oz;
+          const py = q[1] + J[1] * ox + J[3] * oy + J[5] * oz;
+          const a = fleckSlant[i];
+          const ux = Math.cos(a) * half;
+          const uy = Math.sin(a) * half;
+          // A needle: long and thin.
+          ctx!.moveTo(px + ux, py + uy);
+          ctx!.lineTo(px - uy * 0.22, py + ux * 0.22);
+          ctx!.lineTo(px - ux, py - uy);
+          ctx!.lineTo(px + uy * 0.22, py - ux * 0.22);
+          ctx!.closePath();
+        }
+        ctx!.fill();
+      }
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -4119,6 +4395,8 @@ export function LivingBlueprint({
         drawMesquiteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (EBONY_MODELS.has(inst.model)) {
         drawEbonyBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+      } else if (MULGA_MODELS.has(inst.model)) {
+        drawMulgaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
