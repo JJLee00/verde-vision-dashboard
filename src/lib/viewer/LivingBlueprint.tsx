@@ -321,6 +321,27 @@ const PALO_VERDE_GOLD = {
   twig: "rgba(196,150,70,0.8)",
 };
 
+/** Honey mesquite: fresh yellow-green feathery leaves, the dark rough grey
+ *  of its trunk and crooked limbs, and pale catkins of bloom. */
+const MESQUITE_COLOURS = {
+  lit: [182, 194, 132],
+  shade: [88, 114, 64],
+  bloom: "rgb(218,212,158)",
+  trunk: "rgb(104,94,86)",
+  limb: "rgba(112,102,94,0.95)",
+  twig: "rgba(126,118,106,0.8)",
+  strand: "rgba(112,138,80,0.75)",
+};
+const MESQUITE_GOLD = {
+  lit: [232, 204, 140],
+  shade: [160, 122, 60],
+  bloom: "rgb(246,226,170)",
+  trunk: "rgb(176,128,56)",
+  limb: "rgba(186,138,60,0.95)",
+  twig: "rgba(196,150,70,0.8)",
+  strand: "rgba(196,150,70,0.75)",
+};
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -3172,6 +3193,315 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per tree and kept, as the palo verde is.
+    type MesquiteTree = {
+      /** limbs by order — trunk, main limbs, branches, twigs — as segments */
+      limbs: [number, number, number][][][];
+      /** canopy puffs: centre, its two radii (across, up), and tone */
+      lobes: { c: [number, number, number]; rx: number; ry: number; col: [string, string] }[];
+      /** weeping strands: polylines of three points hanging off the canopy */
+      strands: [number, number, number][][];
+      /** leaf flecks and catkins, grouped by tone — 0 (deep shade) to
+       *  MQ_LEVELS - 1, then the catkins — each as the puff it hangs from,
+       *  its offset from that puff's centre (xyz), and its slant */
+      fleckLobe: Uint16Array;
+      fleckOff: Float32Array;
+      fleckSlant: Float32Array;
+      groupStart: Int32Array;
+    };
+    const MQ_LEVELS = 8;
+    const mqTones = (pal: typeof MESQUITE_COLOURS) =>
+      Array.from({ length: MQ_LEVELS }, (_, i) => {
+        const t = i / (MQ_LEVELS - 1);
+        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
+      });
+    const MQ_TONES = [mqTones(MESQUITE_COLOURS), mqTones(MESQUITE_GOLD)];
+    const mesquiteGrown = new Map<string, MesquiteTree>();
+
+    function growMesquite(x: number, z: number, h: number, rw: number, rot: number, seed: string): MesquiteTree {
+      const rng = rngFor("mesquite:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const smooth = (e0: number, e1: number, v: number) => {
+        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
+        return t * t * (3 - 2 * t);
+      };
+      type V3 = [number, number, number];
+      const nrm = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
+      // The crown: a broad, low dome — widest a third of the way up, where
+      // the limbs spread — with a lobe or two standing above it, and its
+      // edge weeping toward the ground.
+      const y0 = h * 0.5;
+      const shell = (th: number, ph: number): V3 => [
+        x + rw * Math.cos(ph) * Math.cos(th),
+        y0 + Math.sin(ph) * (ph > 0 ? h * 0.42 : h * 0.3),
+        z + rw * Math.cos(ph) * Math.sin(th),
+      ];
+      const outward = (c: V3): V3 => nrm([(c[0] - x) / rw, ((c[1] - y0) / h) * 1.4, (c[2] - z) / rw]);
+
+      // A short, stout trunk with a lean, forking low into a few big limbs
+      // that run out nearly level and crook upward — a mesquite's limbs zig
+      // and zag — then branch and twig out to the crown.
+      const trunk: V3[][] = [];
+      const mains: V3[][] = [];
+      const branches: V3[][] = [];
+      const twigs: V3[][] = [];
+      const clusters: V3[][] = [];
+      const lean = rng() * 6.28;
+      const F: V3 = [x + Math.cos(lean) * rw * 0.06, h * 0.22, z + Math.sin(lean) * rw * 0.06];
+      trunk.push([[x, 0, z], F]);
+      const NM = 5;
+      for (let k = 0; k < NM; k++) {
+        const a = rot + (k / NM) * Math.PI * 2 + (rng() - 0.5) * 0.7;
+        // Out nearly level, then a crook up.
+        const K: V3 = [F[0] + Math.cos(a) * rw * (0.2 + 0.1 * rng()), h * (0.28 + 0.06 * rng()), F[2] + Math.sin(a) * rw * (0.2 + 0.1 * rng())];
+        const ak = a + (rng() - 0.5) * 0.5;
+        const P1: V3 = [K[0] + Math.cos(ak) * rw * (0.14 + 0.08 * rng()), h * (0.42 + 0.08 * rng()), K[2] + Math.sin(ak) * rw * (0.14 + 0.08 * rng())];
+        mains.push([F, K], [K, P1]);
+        for (let j = 0; j < 3; j++) {
+          const a2 = ak + (j - 1) * 0.55 + (rng() - 0.5) * 0.3;
+          const out = rw * (j === 1 ? 0.14 : 0.24) * (0.8 + 0.4 * rng());
+          const P2: V3 = [P1[0] + Math.cos(a2) * out, h * (j === 1 ? 0.66 : 0.52) * (0.95 + 0.1 * rng()), P1[2] + Math.sin(a2) * out];
+          branches.push([P1, P2]);
+          const ends: V3[] = [];
+          for (let i = 0; i < 3; i++) {
+            const th = a2 + (rng() - 0.5) * 0.8;
+            const ph = -0.5 + (Math.PI / 2 + 0.5) * Math.pow(rng(), j === 1 ? 0.55 : 1.2) * 0.95;
+            // Ending inside the foliage: bare, they poked out of the crown
+            // like straws.
+            const P3 = lerp(P2, shell(th, ph), 0.76 + 0.1 * rng());
+            twigs.push([P2, P3]);
+            ends.push(P3);
+          }
+          clusters.push([P2, ...ends]);
+        }
+      }
+
+      // Puffs of foliage round each branch's twigs — denser than the palo
+      // verde's mist, as the model is: you see into this crown, not
+      // through it — three to a lobe, two lobes to a branch.
+      const lobes: MesquiteTree["lobes"] = [];
+      const alpha = 0.3;
+      for (const [P2, ...ends] of clusters) {
+        const m: V3 = [0, 0, 0];
+        for (const e of ends) for (let i = 0; i < 3; i++) m[i] += e[i] / ends.length;
+        for (const t of [0.5, 0.92]) {
+          const c = lerp(P2, m, t);
+          let spread = 0;
+          for (const e of ends) spread = Math.max(spread, Math.hypot(e[0] - c[0], e[2] - c[2]));
+          const rx = Math.max(rw * 0.24, spread * 0.95) * (0.85 + 0.25 * rng());
+          const ry = Math.max(rx * 0.35, Math.min(rx * 0.62, c[1] - h * 0.28));
+          for (let k = 0; k < 3; k++) {
+            const pc: V3 = [c[0] + (rng() - 0.5) * rx * 0.8, c[1] + (rng() - 0.5) * ry * 0.6, c[2] + (rng() - 0.5) * rx * 0.8];
+            const sh = (0.4 + 0.6 * lightOf(outward(pc))) * 0.85 + 0.15;
+            const tone = (pal: typeof MESQUITE_COLOURS) =>
+              `rgba(${pal.shade.map((v, i) => (v + (pal.lit[i] - v) * sh) | 0).join(",")},${alpha})`;
+            lobes.push({ c: pc, rx: rx * (0.6 + 0.15 * rng()), ry: ry * (0.65 + 0.15 * rng()), col: [tone(MESQUITE_COLOURS), tone(MESQUITE_GOLD)] });
+          }
+        }
+      }
+
+      // Weeping strands off the outer puffs: the drooping branchlets hang a
+      // fifth of the height below the crown's edge, curving out then down.
+      const strands: V3[][] = [];
+      const strandOf: number[] = [];
+      lobes.forEach((L, li) => {
+        const out = Math.hypot(L.c[0] - x, L.c[2] - z) / rw;
+        if (out < 0.45) return;
+        const n = 1 + Math.floor(rng() * 3);
+        for (let k = 0; k < n; k++) {
+          const a = rng() * 6.28;
+          const A: V3 = [L.c[0] + Math.cos(a) * L.rx * 0.7, L.c[1] - L.ry * 0.4, L.c[2] + Math.sin(a) * L.rx * 0.7];
+          const drop = h * (0.1 + 0.12 * rng()) * out;
+          const ox = (A[0] - x) / (rw * out);
+          const oz = (A[2] - z) / (rw * out);
+          const B: V3 = [A[0] + ox * rw * 0.04, A[1] - drop * 0.5, A[2] + oz * rw * 0.04];
+          const C: V3 = [B[0] + ox * rw * 0.015, Math.max(h * 0.12, A[1] - drop), B[2] + oz * rw * 0.015];
+          strands.push([A, B, C]);
+          strandOf.push(li);
+        }
+      });
+
+      // Flecks: the leaflets, hanging — a mesquite's feathery leaves droop,
+      // so the dashes mostly fall near-vertical — through the puffs and
+      // down the strands; and pale catkins hanging among them. Each kept as
+      // an offset in its puff, placed by the puff's projection.
+      const raw: { li: number; o: V3; slant: number; group: number }[] = [];
+      const fleckAt = (li: number, c: V3, v: V3, catkin: boolean) => {
+        const L = lobes[li];
+        const n = outward(c);
+        const e = Math.hypot((c[0] - x) / rw, (c[1] - y0) / (h * 0.45), (c[2] - z) / rw);
+        const sh = (0.3 + 0.7 * lightOf(nrm([n[0] + v[0], n[1] + v[1], n[2] + v[2]]))) * (0.55 + 0.45 * smooth(0.35, 1, e)) * (0.9 + 0.2 * rng());
+        const level = Math.max(0, Math.min(MQ_LEVELS - 1, Math.round(sh * (MQ_LEVELS - 1))));
+        raw.push({ li, o: [c[0] - L.c[0], c[1] - L.c[1], c[2] - L.c[2]], slant: Math.PI / 2 + (rng() - 0.5) * (catkin ? 0.25 : 0.9), group: catkin ? MQ_LEVELS : level });
+      };
+      for (let i = 0; i < 1000; i++) {
+        const li = Math.floor(rng() * lobes.length);
+        const L = lobes[li];
+        const v = nrm([rng() - 0.5, rng() - 0.5, rng() - 0.5]);
+        const r = Math.pow(rng(), 0.45);
+        const c: V3 = [L.c[0] + v[0] * L.rx * r, L.c[1] + v[1] * L.ry * r, L.c[2] + v[2] * L.rx * r];
+        const e = Math.hypot((c[0] - x) / rw, (c[1] - y0) / (h * 0.45), (c[2] - z) / rw);
+        fleckAt(li, c, v, e > 0.7 && rng() < 0.06);
+      }
+      strands.forEach(([A, B, C], si) => {
+        for (let k = 0; k < 3; k++) {
+          const t = rng();
+          const c = t < 0.5 ? lerp(A, B, t * 2) : lerp(B, C, t * 2 - 1);
+          fleckAt(strandOf[si], c, nrm([c[0] - x, 0, c[2] - z]), false);
+        }
+      });
+      raw.sort((a, b) => a.group - b.group);
+      const NF = raw.length;
+      const fleckLobe = new Uint16Array(NF);
+      const fleckOff = new Float32Array(NF * 3);
+      const fleckSlant = new Float32Array(NF);
+      const groupStart = new Int32Array(MQ_LEVELS + 2).fill(NF);
+      raw.forEach((f, i) => {
+        fleckLobe[i] = f.li;
+        fleckOff.set(f.o, i * 3);
+        fleckSlant[i] = f.slant;
+        if (groupStart[f.group] === NF) groupStart[f.group] = i;
+      });
+      for (let gi = MQ_LEVELS; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
+      return { limbs: [trunk, mains, branches, twigs], lobes, strands, fleckLobe, fleckOff, fleckSlant, groupStart };
+    }
+
+    /** Honey mesquite, after the app's model.
+     *
+     *  Not the palo verde's misty vase: a short, stout, dark trunk with a
+     *  lean, forking low into a few big rough limbs that run out nearly
+     *  level and crook upward, under a broad, lumpy, low dome of fresh
+     *  yellow-green that you see into rather than through — widest a third
+     *  of the way up, a lobe or two standing above it — and its edge
+     *  weeping: the feathery branchlets hang a fifth of the height below
+     *  the crown, as a mesquite's do. Pale catkins hang among the leaves.
+     *
+     *  Drawn as the limbs by order, trunk to twig, each one stroke of its
+     *  own width; then translucent puffs of foliage round each branch's
+     *  twigs, far first; the weeping strands in one stroke; then the
+     *  leaflets as near-vertical hanging dashes, a tone at a time, and the
+     *  catkins. Grown once and cached; flecks placed by their puff's
+     *  projection, as the palo verde's are.
+     */
+    function drawMesquiteBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = mesquiteGrown.get(key);
+      if (!grown) {
+        if (mesquiteGrown.size > 400) mesquiteGrown.clear(); // growth and edits mint new keys
+        grown = growMesquite(x, z, h, rw, rot, seed);
+        mesquiteGrown.set(key, grown);
+      }
+      const pal = sel ? MESQUITE_GOLD : MESQUITE_COLOURS;
+      const g = sel ? 1 : 0;
+
+      ctx!.lineCap = "round";
+      ctx!.lineJoin = "round";
+      const widths = [1.5, 0.6, 0.28, 0.1];
+      const floors = [2.6, 1.7, 1, 0.6];
+      grown.limbs.forEach((segs, order) => {
+        ctx!.strokeStyle = order === 0 ? pal.trunk : order < 3 ? pal.limb : pal.twig;
+        ctx!.lineWidth = Math.max(ftPx(x, z, widths[order]), floors[order]);
+        ctx!.beginPath();
+        for (const [a, b] of segs) {
+          const p0 = P(a[0], a[1], a[2]);
+          const p1 = P(b[0], b[1], b[2]);
+          ctx!.moveTo(p0[0], p0[1]);
+          ctx!.lineTo(p1[0], p1[1]);
+        }
+        ctx!.stroke();
+      });
+
+      const proj = grown.lobes.map((L) => {
+        const [cx, cy, cz] = L.c;
+        const q = P(cx, cy, cz);
+        const qx = P(cx + 1, cy, cz);
+        const qy = P(cx, cy + 1, cz);
+        const qz = P(cx, cy, cz + 1);
+        return { L, q, J: [qx[0] - q[0], qx[1] - q[1], qy[0] - q[0], qy[1] - q[1], qz[0] - q[0], qz[1] - q[1]] };
+      });
+      for (const { L, q, J } of proj.slice().sort((a, b) => b.q[2] - a.q[2])) {
+        // An ellipsoid through the local (affine) map is an ellipse.
+        const ax = [J[0] * L.rx, J[2] * L.ry, J[4] * L.rx];
+        const ay = [J[1] * L.rx, J[3] * L.ry, J[5] * L.rx];
+        const c11 = ax[0] * ax[0] + ax[1] * ax[1] + ax[2] * ax[2];
+        const c22 = ay[0] * ay[0] + ay[1] * ay[1] + ay[2] * ay[2];
+        const c12 = ax[0] * ay[0] + ax[1] * ay[1] + ax[2] * ay[2];
+        const mid = (c11 + c22) / 2;
+        const d = Math.sqrt(Math.max(0, mid * mid - (c11 * c22 - c12 * c12)));
+        ctx!.beginPath();
+        ctx!.ellipse(q[0], q[1], Math.sqrt(mid + d), Math.sqrt(Math.max(0, mid - d)), 0.5 * Math.atan2(2 * c12, c11 - c22), 0, Math.PI * 2);
+        ctx!.fillStyle = L.col[g];
+        ctx!.fill();
+      }
+
+      ctx!.strokeStyle = pal.strand;
+      ctx!.lineWidth = Math.max(ftPx(x, z, 0.06), 0.6);
+      ctx!.beginPath();
+      for (const [A, B, C] of grown.strands) {
+        const a = P(A[0], A[1], A[2]);
+        const b = P(B[0], B[1], B[2]);
+        const c = P(C[0], C[1], C[2]);
+        ctx!.moveTo(a[0], a[1]);
+        ctx!.quadraticCurveTo(b[0], b[1], c[0], c[1]);
+      }
+      ctx!.stroke();
+      ctx!.lineCap = "butt";
+
+      const { fleckLobe, fleckOff, fleckSlant, groupStart } = grown;
+      const half = Math.max(ftPx(x, z, 0.4), 1.4);
+      const tones = MQ_TONES[g];
+      for (let gi = 0; gi <= MQ_LEVELS; gi++) {
+        const from = groupStart[gi];
+        const to = groupStart[gi + 1];
+        if (from >= to) continue;
+        // Catkins are longer and thinner than the leaflets.
+        const s = gi === MQ_LEVELS ? half * 1.3 : half;
+        const wd = gi === MQ_LEVELS ? 0.25 : 0.4;
+        ctx!.fillStyle = gi === MQ_LEVELS ? pal.bloom : tones[gi];
+        ctx!.beginPath();
+        for (let i = from; i < to; i++) {
+          // Filled a hundred and fifty at a time: one path of a thousand
+          // overlapping dashes cost five times as much to fill.
+          if (i > from && (i - from) % 150 === 0) {
+            ctx!.fill();
+            ctx!.beginPath();
+          }
+          const { q, J } = proj[fleckLobe[i]];
+          const ox = fleckOff[i * 3];
+          const oy = fleckOff[i * 3 + 1];
+          const oz = fleckOff[i * 3 + 2];
+          const px = q[0] + J[0] * ox + J[2] * oy + J[4] * oz;
+          const py = q[1] + J[1] * ox + J[3] * oy + J[5] * oz;
+          const a = fleckSlant[i];
+          const ux = Math.cos(a) * s;
+          const uy = Math.sin(a) * s;
+          ctx!.moveTo(px + ux, py + uy);
+          ctx!.lineTo(px - uy * wd, py + ux * wd);
+          ctx!.lineTo(px - ux, py - uy);
+          ctx!.lineTo(px + uy * wd, py - ux * wd);
+          ctx!.closePath();
+        }
+        ctx!.fill();
+      }
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -3449,6 +3779,8 @@ export function LivingBlueprint({
         drawBottlebrushBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "PaloVerde") {
         drawPaloVerdeBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+      } else if (inst.model === "HoneyMesquite") {
+        drawMesquiteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
