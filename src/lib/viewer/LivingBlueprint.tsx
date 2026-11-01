@@ -441,6 +441,21 @@ const ORGAN_PIPE_GOLD = {
   spines: "rgba(255,244,214,0.6)",
 };
 
+/** Argentine toothpick: a light olive green, bristling with the long tan
+ *  spines it's named for, a reddish crown of them at every tip. */
+const TOOTHPICK_COLOURS = {
+  shade: [104, 126, 74],
+  lit: [200, 214, 144],
+  spine: "rgba(224,198,152,0.9)",
+  tuft: "rgba(192,128,94,0.95)",
+};
+const TOOTHPICK_GOLD = {
+  shade: [140, 100, 46],
+  lit: [236, 200, 128],
+  spine: "rgba(255,240,206,0.9)",
+  tuft: "rgba(214,160,90,0.95)",
+};
+
 const AGAVE_SHAPES: Record<string, AgaveShape> = {
   // Long leaves that differ hugely by age: a tall spike of young ones in the
   // middle, old ones flung flat and sagging to the ground.
@@ -5073,6 +5088,324 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per plant and kept, as the trees are.
+    type ToothpickPlant = {
+      limbs: {
+        /** its radius */
+        r: number;
+        /** ring centres along the limb, then its apex, as (x, y, z) */
+        c: Float32Array;
+        /** each ring's points — crest, groove, crest… — as offsets
+         *  (x, y, z) from its centre */
+        o: Float32Array;
+        rings: number;
+        /** rings along its length before the tip's */
+        shaft: number;
+        /** each face's outward normal and tone, band by band; the last
+         *  band closes the tip on the apex */
+        faceN: Float32Array;
+        faceTone: Uint8Array;
+        /** the runs of bands drawn as one piece: each straight enough
+         *  that it never hides part of itself */
+        pieces: [number, number][];
+        /** the way the tip points, for its crown of spines */
+        tip: [number, number, number];
+      }[];
+    };
+    const TP_LEVELS = 8;
+    const TP_RIBS = 8;
+    const TP_PTS = TP_RIBS * 2;
+    const TP_TONES = [TOOTHPICK_COLOURS, TOOTHPICK_GOLD].map((pal) =>
+      Array.from({ length: TP_LEVELS }, (_, i) => {
+        const t = i / (TP_LEVELS - 1);
+        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
+      }),
+    );
+    // The model's trunk and two arms in its own measure (its height = 1),
+    // all in one plane: the line each follows, its radius, and where an
+    // arm's elbow ends and its upright begins.
+    const TP_LIMBS: { path: [number, number][]; r: number; split: number }[] = [
+      { path: [[0, 0], [0, 0.47], [0, 0.94]], r: 0.04, split: 0 },
+      // Out of the trunk a quarter of the way up, dipping, then up.
+      { path: [[-0.02, 0.27], [-0.075, 0.245], [-0.125, 0.258], [-0.145, 0.31], [-0.145, 0.585]], r: 0.034, split: 2 },
+      // Higher, shorter in reach, taller.
+      { path: [[0.02, 0.405], [0.06, 0.39], [0.092, 0.41], [0.1, 0.46], [0.1, 0.69]], r: 0.03, split: 2 },
+    ];
+    const toothpickGrown = new Map<string, ToothpickPlant>();
+    // Scratch for one limb's projected points, reused limb to limb.
+    const tpScreen = new Float32Array(8 * TP_PTS * 2);
+    const tpSeen = new Float32Array(8 * TP_PTS);
+    const tpBuckets: number[][] = Array.from({ length: TP_LEVELS }, () => []);
+
+    function growToothpick(x: number, z: number, h: number, rot: number): ToothpickPlant {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const shadeOf = (n: V3) => Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5);
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      // The model's plane turned with the plant: its x, its depth, and up.
+      const place = (px: number, py: number, pz: number): V3 => [
+        x + (px * cr - pz * sr) * h,
+        py * h,
+        z + (px * sr + pz * cr) * h,
+      ];
+      const dir = (px: number, py: number, pz: number): V3 => [px * cr - pz * sr, py, px * sr + pz * cr];
+      const limbs = TP_LIMBS.map(({ path, r: mr, split }, li) => {
+        const r = mr * h;
+        const nP = path.length;
+        // Tangents along the path, in the model's plane.
+        const tan = path.map((_, i) => {
+          const a = path[Math.max(0, i - 1)];
+          const b = path[Math.min(nP - 1, i + 1)];
+          const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+          return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+        });
+        // Each ring: centre, the way across it in the plane, its size.
+        const rings: { c: [number, number]; t: number[]; f: number }[] = path.map((c, i) => ({ c, t: tan[i], f: 1 }));
+        // A blunt tip as long as the limb is wide.
+        const [lx, ly] = path[nP - 1];
+        const [tx, ty] = tan[nP - 1];
+        for (const sv of [0.6, 1.15]) {
+          rings.push({ c: [lx + tx * mr * Math.sin(sv), ly + ty * mr * Math.sin(sv)], t: tan[nP - 1], f: 0.92 * Math.cos(sv) });
+        }
+        const nR = rings.length;
+        const c = new Float32Array((nR + 1) * 3);
+        const o = new Float32Array(nR * TP_PTS * 3);
+        const phase = rot + li * 0.4;
+        rings.forEach((ring, k) => {
+          c.set(place(ring.c[0], ring.c[1], 0), k * 3);
+          // Across the limb: in the plane (perpendicular to its line), and
+          // through the plane.
+          const e2 = dir(ring.t[1], -ring.t[0], 0);
+          const e1 = dir(0, 0, 1);
+          for (let j = 0; j < TP_PTS; j++) {
+            const a = phase + (j * Math.PI) / TP_RIBS;
+            const rr = r * ring.f * (j % 2 ? 0.88 : 1);
+            o.set(
+              [0, 1, 2].map((q) => rr * (Math.cos(a) * e2[q] + Math.sin(a) * e1[q])),
+              (k * TP_PTS + j) * 3,
+            );
+          }
+        });
+        c.set(place(lx + tx * mr, ly + ty * mr, 0), nR * 3);
+        const pt = (k: number, j: number): V3 =>
+          k === nR
+            ? [c[nR * 3], c[nR * 3 + 1], c[nR * 3 + 2]]
+            : [0, 1, 2].map((q) => c[k * 3 + q] + o[(k * TP_PTS + (j % TP_PTS)) * 3 + q]) as V3;
+        const faceN = new Float32Array(nR * TP_PTS * 3);
+        const faceTone = new Uint8Array(nR * TP_PTS);
+        for (let b = 0; b < nR; b++) {
+          for (let j = 0; j < TP_PTS; j++) {
+            const A = pt(b, j);
+            const B = pt(b, j + 1);
+            const C = pt(b + 1, j + (b === nR - 1 ? 0 : 1));
+            const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
+            const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+            let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+            const ln = Math.hypot(n[0], n[1], n[2]) || 1;
+            n = [n[0] / ln, n[1] / ln, n[2] / ln];
+            // Outward: away from the limb's line (the last path ring, for
+            // the tip).
+            const k0 = Math.min(b, nP - 1);
+            const mx = (A[0] + B[0]) / 2 - c[k0 * 3];
+            const my = (A[1] + B[1]) / 2 - c[k0 * 3 + 1];
+            const mz = (A[2] + B[2]) / 2 - c[k0 * 3 + 2];
+            if (n[0] * mx + n[1] * my + n[2] * mz < 0) n = [-n[0], -n[1], -n[2]];
+            faceN.set(n, (b * TP_PTS + j) * 3);
+            faceTone[b * TP_PTS + j] = Math.max(0, Math.min(TP_LEVELS - 1, Math.round(shadeOf(n) * (TP_LEVELS - 1))));
+          }
+        }
+        const pieces: [number, number][] = split ? [[0, split], [split, nR]] : [[0, nR]];
+        return { r, c, o, rings: nR, shaft: nP, faceN, faceTone, pieces, tip: dir(tx, ty, 0) };
+      });
+      return { limbs };
+    }
+
+    /** Argentine toothpick, after the app's model.
+     *
+     *  One trunk nearly the whole height and two arms — the lower out of it
+     *  a quarter of the way up, dipping before it turns up, the higher
+     *  reaching less far and rising further — each a column of eight
+     *  rounded ribs in a light olive green, every rib bristling with the
+     *  long tan spines the plant is named for, and a reddish crown of
+     *  them at every tip.
+     *
+     *  Drawn piece by piece, far first — the trunk, and each arm as its
+     *  elbow and its upright, each straight enough never to hide part of
+     *  itself: the faces turned toward the eye a tone at a time, then,
+     *  close enough to see them, the spines out of every rib that shows,
+     *  and the crowns. Grown once and cached; each ring placed by its
+     *  limb's projection.
+     */
+    function drawToothpickBody(
+      x: number,
+      z: number,
+      h: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rot}`;
+      let grown = toothpickGrown.get(key);
+      if (!grown) {
+        if (toothpickGrown.size > 400) toothpickGrown.clear(); // growth and edits mint new keys
+        grown = growToothpick(x, z, h, rot);
+        toothpickGrown.set(key, grown);
+      }
+      const pal = sel ? TOOTHPICK_GOLD : TOOTHPICK_COLOURS;
+      const tones = TP_TONES[sel ? 1 : 0];
+
+      const pieces: { li: number; from: number; to: number; d: number }[] = [];
+      grown.limbs.forEach((lb, li) => {
+        for (const [from, to] of lb.pieces) {
+          const k = Math.min(lb.rings - 1, (from + to) >> 1);
+          pieces.push({ li, from, to, d: P(lb.c[k * 3], lb.c[k * 3 + 1], lb.c[k * 3 + 2])[2] });
+        }
+      });
+      pieces.sort((a, b) => b.d - a.d);
+      ctx!.lineCap = "round";
+      let projected = -1;
+      let lc: [number, number, number][] = [];
+      let J = [0, 0, 0, 0, 0, 0];
+      for (const { li, from, to } of pieces) {
+        const lb = grown.limbs[li];
+        if (projected !== li) {
+          // The limb's rings, projected once for both its pieces.
+          lc = [];
+          for (let k = 0; k <= lb.rings; k++) lc.push(P(lb.c[k * 3], lb.c[k * 3 + 1], lb.c[k * 3 + 2]));
+          const q = lc[0];
+          const qx = P(lb.c[0] + 1, lb.c[1], lb.c[2]);
+          const qy = P(lb.c[0], lb.c[1] + 1, lb.c[2]);
+          const qz = P(lb.c[0], lb.c[1], lb.c[2] + 1);
+          J = [qx[0] - q[0], qx[1] - q[1], qy[0] - q[0], qy[1] - q[1], qz[0] - q[0], qz[1] - q[1]];
+          for (let k = 0; k < lb.rings; k++) {
+            for (let j = 0; j < TP_PTS; j++) {
+              const i = k * TP_PTS + j;
+              const ox = lb.o[i * 3];
+              const oy = lb.o[i * 3 + 1];
+              const oz = lb.o[i * 3 + 2];
+              tpScreen[i * 2] = lc[k][0] + J[0] * ox + J[2] * oy + J[4] * oz;
+              tpScreen[i * 2 + 1] = lc[k][1] + J[1] * ox + J[3] * oy + J[5] * oz;
+            }
+          }
+          const mid = Math.min(lb.rings - 1, lb.rings >> 1);
+          let vx = eye[0] - lb.c[mid * 3];
+          let vy = eye[1] - lb.c[mid * 3 + 1];
+          let vz = eye[2] - lb.c[mid * 3 + 2];
+          const vl = Math.hypot(vx, vy, vz) || 1;
+          vx /= vl;
+          vy /= vl;
+          vz /= vl;
+          for (let f = 0; f < lb.rings * TP_PTS; f++) {
+            tpSeen[f] = lb.faceN[f * 3] * vx + lb.faceN[f * 3 + 1] * vy + lb.faceN[f * 3 + 2] * vz;
+          }
+          projected = li;
+        }
+
+        for (const bucket of tpBuckets) bucket.length = 0;
+        for (let f = from * TP_PTS; f < to * TP_PTS; f++) if (tpSeen[f] > 0) tpBuckets[lb.faceTone[f]].push(f);
+        tpBuckets.forEach((faces, t) => {
+          if (!faces.length) return;
+          ctx!.beginPath();
+          for (const f of faces) {
+            const b = (f / TP_PTS) | 0;
+            const j = f % TP_PTS;
+            const j1 = (j + 1) % TP_PTS;
+            ctx!.moveTo(tpScreen[(b * TP_PTS + j) * 2], tpScreen[(b * TP_PTS + j) * 2 + 1]);
+            ctx!.lineTo(tpScreen[(b * TP_PTS + j1) * 2], tpScreen[(b * TP_PTS + j1) * 2 + 1]);
+            if (b === lb.rings - 1) {
+              ctx!.lineTo(lc[lb.rings][0], lc[lb.rings][1]);
+            } else {
+              ctx!.lineTo(tpScreen[((b + 1) * TP_PTS + j1) * 2], tpScreen[((b + 1) * TP_PTS + j1) * 2 + 1]);
+              ctx!.lineTo(tpScreen[((b + 1) * TP_PTS + j) * 2], tpScreen[((b + 1) * TP_PTS + j) * 2 + 1]);
+            }
+            ctx!.closePath();
+          }
+          ctx!.fillStyle = tones[t];
+          ctx!.fill();
+        });
+
+        // The spines, close enough to see them: three out of each areole,
+        // every few inches down every rib that shows — one straight out,
+        // one tipped toward the limb's end, one across — a small star.
+        const rPx = Math.hypot(J[0], J[1]) * lb.r;
+        const spine = 0.22;
+        const sx = (vx: number, vy: number, vz: number) => J[0] * vx + J[2] * vy + J[4] * vz;
+        const sy = (vx: number, vy: number, vz: number) => J[1] * vx + J[3] * vy + J[5] * vz;
+        if (rPx > 3.5) {
+          ctx!.beginPath();
+          for (let b = from; b < Math.min(to, lb.shaft - 1); b++) {
+            const tx = lb.c[(b + 1) * 3] - lb.c[b * 3];
+            const ty = lb.c[(b + 1) * 3 + 1] - lb.c[b * 3 + 1];
+            const tz = lb.c[(b + 1) * 3 + 2] - lb.c[b * 3 + 2];
+            const len = Math.hypot(tx, ty, tz) || 1;
+            const n = Math.max(1, Math.round(len / 0.3));
+            for (let j = 0; j < TP_PTS; j += 2) {
+              if (tpSeen[b * TP_PTS + j] <= 0 && tpSeen[b * TP_PTS + ((j + TP_PTS - 1) % TP_PTS)] <= 0) continue;
+              const i0 = b * TP_PTS + j;
+              const i1 = (b + 1) * TP_PTS + j;
+              const ol = Math.hypot(lb.o[i0 * 3], lb.o[i0 * 3 + 1], lb.o[i0 * 3 + 2]) || 1;
+              const nx = lb.o[i0 * 3] / ol;
+              const ny = lb.o[i0 * 3 + 1] / ol;
+              const nz = lb.o[i0 * 3 + 2] / ol;
+              const ax = sx(nx * spine, ny * spine, nz * spine);
+              const ay = sy(nx * spine, ny * spine, nz * spine);
+              const k1 = (spine * 0.8) / len;
+              const bx = sx(nx * spine * 0.6 + tx * k1, ny * spine * 0.6 + ty * k1, nz * spine * 0.6 + tz * k1);
+              const by = sy(nx * spine * 0.6 + tx * k1, ny * spine * 0.6 + ty * k1, nz * spine * 0.6 + tz * k1);
+              // Across: round the limb, the next crest's way.
+              const i2 = b * TP_PTS + ((j + 2) % TP_PTS);
+              const wx = (lb.o[i2 * 3] - lb.o[i0 * 3]) / ol;
+              const wy = (lb.o[i2 * 3 + 1] - lb.o[i0 * 3 + 1]) / ol;
+              const wz = (lb.o[i2 * 3 + 2] - lb.o[i0 * 3 + 2]) / ol;
+              const cx = sx((nx * 0.6 + wx * 0.7) * spine, (ny * 0.6 + wy * 0.7) * spine, (nz * 0.6 + wz * 0.7) * spine);
+              const cy = sy((nx * 0.6 + wx * 0.7) * spine, (ny * 0.6 + wy * 0.7) * spine, (nz * 0.6 + wz * 0.7) * spine);
+              for (let k = 0; k < n; k++) {
+                const t = (k + (j % 4 ? 0.75 : 0.25)) / n;
+                const px = tpScreen[i0 * 2] + (tpScreen[i1 * 2] - tpScreen[i0 * 2]) * t;
+                const py = tpScreen[i0 * 2 + 1] + (tpScreen[i1 * 2 + 1] - tpScreen[i0 * 2 + 1]) * t;
+                ctx!.moveTo(px, py);
+                ctx!.lineTo(px + ax, py + ay);
+                ctx!.moveTo(px, py);
+                ctx!.lineTo(px + bx, py + by);
+                ctx!.moveTo(px, py);
+                ctx!.lineTo(px + cx, py + cy);
+              }
+            }
+          }
+          ctx!.strokeStyle = pal.spine;
+          ctx!.lineWidth = Math.max(ftPx(x, z, 0.02), 0.6);
+          ctx!.stroke();
+        }
+        // The crown of spines at the tip.
+        if (to === lb.rings && rPx > 2) {
+          const [ax, ay, az] = lb.tip;
+          const apex = lc[lb.rings];
+          ctx!.beginPath();
+          for (let k = 0; k < 9; k++) {
+            const a = (k / 9) * Math.PI * 2;
+            // Splayed round the tip's line, out of its plane and across it.
+            const qx = ay * Math.cos(a);
+            const qy = -ax * Math.cos(a);
+            const qz = Math.sin(a);
+            const dx = (ax * 0.8 + qx * 0.7) * spine;
+            const dy = (ay * 0.8 + qy * 0.7) * spine;
+            const dz = (az * 0.8 + qz * 0.7) * spine;
+            ctx!.moveTo(apex[0], apex[1]);
+            ctx!.lineTo(apex[0] + sx(dx, dy, dz), apex[1] + sy(dx, dy, dz));
+          }
+          ctx!.strokeStyle = pal.tuft;
+          ctx!.lineWidth = Math.max(ftPx(x, z, 0.025), 0.7);
+          ctx!.stroke();
+        }
+      }
+      ctx!.lineCap = "butt";
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -5362,6 +5695,8 @@ export function LivingBlueprint({
         drawFencePostBody(x, z, h, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "OrganPipe") {
         drawOrganPipeBody(x, z, h, symRot, inst.id, sel || hover, lw);
+      } else if (inst.model === "ArgentineToothpick") {
+        drawToothpickBody(x, z, h, symRot, inst.id, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
