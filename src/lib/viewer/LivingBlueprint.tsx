@@ -529,6 +529,22 @@ const FEROX_GOLD = {
   teeth: "rgb(128,78,28)",
 };
 
+/** Tropical agave: variegated — cream margins down every leaf with a broad
+ *  grey-green stripe between them, on both faces; the undersides' margins
+ *  paler and greener. */
+const TROPICAL_AGAVE_COLOURS = {
+  cream: [[150, 146, 100], [236, 230, 176]],
+  green: [[98, 112, 84], [180, 196, 158]],
+  under: [[126, 132, 92], [208, 210, 170]],
+  spine: "rgb(96,72,52)",
+};
+const TROPICAL_AGAVE_GOLD = {
+  cream: [[160, 120, 60], [248, 220, 150]],
+  green: [[130, 94, 40], [222, 186, 108]],
+  under: [[126, 90, 42], [214, 178, 112]],
+  spine: "rgb(110,76,30)",
+};
+
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -6809,6 +6825,259 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // The tropical agave's leaves, the same on every plant as in the
+    // headset, in the model's measure (its height = 1): forty-eight straight
+    // out of the ground on the golden angle. The oldest are splayed flat
+    // across it; then a few held low; most rise at 45–65° in an open vase,
+    // the youngest stand up in the middle. Every leaf arches back toward its
+    // tip. A leaf is a strap, widest past its middle, soft and a little
+    // twisted, so each is its centre line and the half-width across it,
+    // station by station, as (x, y, z) pairs.
+    const TA_LEAVES = 48;
+    const TA_ALONG = [0, 0.12, 0.28, 0.46, 0.64, 0.82, 1];
+    const TA_WIDE = [0.55, 0.85, 1, 1, 0.9, 0.6, 0];
+    const TA_PTS = TA_ALONG.length;
+    const TA_STRIPE = 0.6; // the green stripe, of the leaf's width
+    const TA_LEVELS = 8;
+    const taRamp = (lo: number[], hi: number[]) =>
+      Array.from({ length: TA_LEVELS }, (_, i) => {
+        const t = i / (TA_LEVELS - 1);
+        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
+      });
+    // Cream, green stripe, under — the sheet's and gold.
+    const TA_TONES = [TROPICAL_AGAVE_COLOURS, TROPICAL_AGAVE_GOLD].map((pal) => [
+      ...taRamp(pal.cream[0], pal.cream[1]),
+      ...taRamp(pal.green[0], pal.green[1]),
+      ...taRamp(pal.under[0], pal.under[1]),
+    ]);
+    // The scan's leaves by how steeply they leave the ground, oldest first:
+    // where along the list (0–1) each elevation is reached, in degrees.
+    const TA_RISE = [
+      [0, -12],
+      [0.22, 5],
+      [0.4, 18],
+      [0.55, 40],
+      [0.6, 48],
+      [0.88, 62],
+      [1, 82],
+    ];
+    const TA_LEAF = (() => {
+      const rng = rngFor("tropical-agave");
+      const deg = Math.PI / 180;
+      const out = new Float32Array(TA_LEAVES * TA_PTS * 6);
+      let top = 0;
+      for (let i = 0; i < TA_LEAVES; i++) {
+        const t = i / (TA_LEAVES - 1);
+        let k = 0;
+        while (k < TA_RISE.length - 2 && TA_RISE[k + 1][0] < t) k++;
+        const f = (t - TA_RISE[k][0]) / (TA_RISE[k + 1][0] - TA_RISE[k][0]);
+        const chord = TA_RISE[k][1] + (TA_RISE[k + 1][1] - TA_RISE[k][1]) * f + (rng() - 0.5) * 8;
+        // Arching back: the steeper the leaf, the more it bends over at the
+        // end; the flat ones lie on the ground already.
+        const bend = (chord < 10 ? 18 : 22 + 14 * Math.sin(Math.min(1, chord / 70) * Math.PI)) * (0.75 + 0.5 * rng()) * deg;
+        const e0 = chord * deg + bend * 0.45;
+        const len = (0.47 + 0.0062 * Math.max(0, chord)) * (0.9 + 0.2 * rng()) * 1.04;
+        const hw = 0.12 * (0.85 + 0.3 * rng()) * (1 - 0.2 * t);
+        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
+        const tw0 = (rng() - 0.5) * 0.5;
+        const tw1 = (rng() - 0.5) * 0.9;
+        const dx = Math.cos(az);
+        const dz = Math.sin(az);
+        let px = dx * 0.04 * (1 - t);
+        let py = 0.02 + 0.08 * t;
+        let pz = dz * 0.04 * (1 - t);
+        let prev = 0;
+        for (let j = 0; j < TA_PTS; j++) {
+          const s = TA_ALONG[j];
+          if (j > 0) {
+            const sm = (prev + s) / 2;
+            const e = e0 - bend * Math.pow(sm, 1.6);
+            const step = (s - prev) * len;
+            px += dx * Math.cos(e) * step;
+            py = Math.max(0.006, py + Math.sin(e) * step);
+            pz += dz * Math.cos(e) * step;
+          }
+          prev = s;
+          // Across the leaf, twisted a little along it about its own line.
+          const e = e0 - bend * Math.pow(s, 1.6);
+          const tw = tw0 + tw1 * s;
+          const w = hw * TA_WIDE[j];
+          const o = (i * TA_PTS + j) * 6;
+          out[o] = px;
+          out[o + 1] = py;
+          out[o + 2] = pz;
+          out[o + 3] = (-dz * Math.cos(tw) - dx * Math.sin(e) * Math.sin(tw)) * w;
+          out[o + 4] = Math.cos(e) * Math.sin(tw) * w;
+          out[o + 5] = (dx * Math.cos(tw) - dz * Math.sin(e) * Math.sin(tw)) * w;
+          top = Math.max(top, py);
+        }
+      }
+      for (let k = 1; k < out.length; k += 3) out[k] /= top;
+      return out;
+    })();
+
+    // Grown once per plant and kept, as the trees are.
+    type TropicalAgavePlant = {
+      /** each leaf's centre line and half-width, turned, scaled and placed;
+       *  its middle; the normal of its upper face; and its tones — margin
+       *  and stripe seen from above, then from below */
+      leaf: Float32Array;
+      mid: Float32Array;
+      leafN: Float32Array;
+      leafTone: Uint8Array;
+      heart: [number, number, number];
+    };
+    const tropicalAgaveGrown = new Map<string, TropicalAgavePlant>();
+    // Scratch, reused plant to plant.
+    const taOrder: number[] = [];
+    const taDepth = new Float32Array(TA_LEAVES);
+
+    function growTropicalAgave(x: number, z: number, h: number, rot: number): TropicalAgavePlant {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const level = (n: V3) =>
+        Math.max(0, Math.min(TA_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TA_LEVELS - 1))));
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const leaf = new Float32Array(TA_LEAF.length);
+      for (let o = 0; o < leaf.length; o += 6) {
+        const mx = TA_LEAF[o];
+        const mz = TA_LEAF[o + 2];
+        const wx = TA_LEAF[o + 3];
+        const wz = TA_LEAF[o + 5];
+        leaf[o] = x + (mx * cr - mz * sr) * h;
+        leaf[o + 1] = TA_LEAF[o + 1] * h;
+        leaf[o + 2] = z + (mx * sr + mz * cr) * h;
+        leaf[o + 3] = (wx * cr - wz * sr) * h;
+        leaf[o + 4] = TA_LEAF[o + 4] * h;
+        leaf[o + 5] = (wx * sr + wz * cr) * h;
+      }
+      const mid = new Float32Array(TA_LEAVES * 3);
+      const leafN = new Float32Array(TA_LEAVES * 3);
+      const leafTone = new Uint8Array(TA_LEAVES * 4);
+      for (let i = 0; i < TA_LEAVES; i++) {
+        const a = (i * TA_PTS + 2) * 6;
+        const b = (i * TA_PTS + 4) * 6;
+        const m = (i * TA_PTS + 3) * 6;
+        mid.set([leaf[m], leaf[m + 1], leaf[m + 2]], i * 3);
+        // Up off the leaf: across it, crossed with along it.
+        const tx = leaf[b] - leaf[a];
+        const ty = leaf[b + 1] - leaf[a + 1];
+        const tz = leaf[b + 2] - leaf[a + 2];
+        const wx = leaf[m + 3];
+        const wy = leaf[m + 4];
+        const wz = leaf[m + 5];
+        let n: V3 = [wy * tz - wz * ty, wz * tx - wx * tz, wx * ty - wy * tx];
+        const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+        n = [n[0] / nl, n[1] / nl, n[2] / nl];
+        leafN.set(n, i * 3);
+        const down = level([-n[0], -n[1], -n[2]]);
+        leafTone[i * 4] = level(n);
+        leafTone[i * 4 + 1] = TA_LEVELS + level(n);
+        leafTone[i * 4 + 2] = 2 * TA_LEVELS + down;
+        leafTone[i * 4 + 3] = TA_LEVELS + down;
+      }
+      return { leaf, mid, leafN, leafTone, heart: [x, 0.3 * h, z] };
+    }
+
+    /** Tropical agave, after the app's model.
+     *
+     *  A variegated agave in an open vase: forty-eight soft strap leaves
+     *  out of the ground, the oldest splayed flat across it, most rising
+     *  steeply and arching back at their tips, the youngest upright in the
+     *  middle. Cream margins down every leaf with a green stripe between,
+     *  paler green beneath.
+     *
+     *  Each leaf is a twisted ribbon, cream with a green stripe down it, toned
+     *  by whichever face shows — drawn far to near, and
+     *  close up its small dark tip spine. Grown once and cached; drawn
+     *  through the local map at the heart, which a plant this size doesn't
+     *  bend.
+     */
+    function drawTropicalAgaveBody(x: number, z: number, h: number, rot: number, sel: boolean, lw: number) {
+      const key = `${x}|${z}|${h}|${rot}`;
+      let grown = tropicalAgaveGrown.get(key);
+      if (!grown) {
+        if (tropicalAgaveGrown.size > 400) tropicalAgaveGrown.clear(); // growth and edits mint new keys
+        grown = growTropicalAgave(x, z, h, rot);
+        tropicalAgaveGrown.set(key, grown);
+      }
+      const { leaf, mid, leafN, leafTone, heart } = grown;
+      const pal = sel ? TROPICAL_AGAVE_GOLD : TROPICAL_AGAVE_COLOURS;
+      const tones = TA_TONES[sel ? 1 : 0];
+
+      // The local map at the heart: screen x, y and depth per foot.
+      const q = P(heart[0], heart[1], heart[2]);
+      const qx = P(heart[0] + 1, heart[1], heart[2]);
+      const qy = P(heart[0], heart[1] + 1, heart[2]);
+      const qz = P(heart[0], heart[1], heart[2] + 1);
+      const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+      const footPx = Math.hypot(J[1], J[4]);
+      const sxOf = (o: number) => q[0] + J[0] * (leaf[o] - heart[0]) + J[1] * (leaf[o + 1] - heart[1]) + J[2] * (leaf[o + 2] - heart[2]);
+      const syOf = (o: number) => q[1] + J[3] * (leaf[o] - heart[0]) + J[4] * (leaf[o + 1] - heart[1]) + J[5] * (leaf[o + 2] - heart[2]);
+
+      taOrder.length = 0;
+      for (let i = 0; i < TA_LEAVES; i++) {
+        taDepth[i] = q[2] + J[6] * (mid[i * 3] - heart[0]) + J[7] * (mid[i * 3 + 1] - heart[1]) + J[8] * (mid[i * 3 + 2] - heart[2]);
+        taOrder.push(i);
+      }
+      taOrder.sort((a, b) => taDepth[b] - taDepth[a]);
+
+      // A ribbon along the leaf, its half-width scaled by `wide`.
+      const ribbon = (o0: number, wide: number) => {
+        ctx!.beginPath();
+        for (let j = 0; j < TA_PTS; j++) {
+          const o = o0 + j * 6;
+          const wx = (J[0] * leaf[o + 3] + J[1] * leaf[o + 4] + J[2] * leaf[o + 5]) * wide;
+          const wy = (J[3] * leaf[o + 3] + J[4] * leaf[o + 4] + J[5] * leaf[o + 5]) * wide;
+          if (j === 0) ctx!.moveTo(sxOf(o) + wx, syOf(o) + wy);
+          else ctx!.lineTo(sxOf(o) + wx, syOf(o) + wy);
+        }
+        for (let j = TA_PTS - 1; j >= 0; j--) {
+          const o = o0 + j * 6;
+          const wx = (J[0] * leaf[o + 3] + J[1] * leaf[o + 4] + J[2] * leaf[o + 5]) * wide;
+          const wy = (J[3] * leaf[o + 3] + J[4] * leaf[o + 4] + J[5] * leaf[o + 5]) * wide;
+          ctx!.lineTo(sxOf(o) - wx, syOf(o) - wy);
+        }
+        ctx!.closePath();
+      };
+      const spines = footPx * h > 250;
+      for (const i of taOrder) {
+        const o0 = i * TA_PTS * 6;
+        const up =
+          leafN[i * 3] * (eye[0] - mid[i * 3]) + leafN[i * 3 + 1] * (eye[1] - mid[i * 3 + 1]) + leafN[i * 3 + 2] * (eye[2] - mid[i * 3 + 2]) > 0;
+        // The variegation shows on both faces: without it beneath, the
+        // upright leaves' backs merge into one flat blob.
+        const side = i * 4 + (up ? 0 : 2);
+        ribbon(o0, 1);
+        ctx!.fillStyle = tones[leafTone[side]];
+        ctx!.fill();
+        ribbon(o0, TA_STRIPE);
+        ctx!.fillStyle = tones[leafTone[side + 1]];
+        ctx!.fill();
+        if (spines) {
+          // On past the tip, along the leaf's last stretch.
+          const a = o0 + (TA_PTS - 2) * 6;
+          const b = o0 + (TA_PTS - 1) * 6;
+          const ex = sxOf(b);
+          const ey = syOf(b);
+          const ux = ex - sxOf(a);
+          const uy = ey - syOf(a);
+          ctx!.beginPath();
+          ctx!.moveTo(ex - ux * 0.15, ey - uy * 0.15);
+          ctx!.lineTo(ex + ux * 0.1, ey + uy * 0.1);
+          ctx!.strokeStyle = pal.spine;
+          ctx!.lineWidth = Math.max(footPx * h * 0.004, 0.8);
+          ctx!.lineCap = "round";
+          ctx!.stroke();
+          ctx!.lineCap = "butt";
+        }
+      }
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -7532,6 +7801,8 @@ export function LivingBlueprint({
         drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
         drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
+      } else if (inst.model === "TropicalAgave") {
+        drawTropicalAgaveBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "AloeFerox") {
         drawFeroxBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "Aloe Vera") {
