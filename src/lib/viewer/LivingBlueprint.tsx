@@ -147,6 +147,27 @@ const LANTANA_BLOOM: Record<string, string> = {
   YellowLantana: "rgba(216,166,63,0.8)",
 };
 
+/** White Dawn lantana: mid-dark green trailing runners, greenish-brown
+ *  stems, and white posies with a yellow eye. */
+const WHITE_DAWN_COLOURS = {
+  leafLit: [150, 166, 116],
+  leafShade: [48, 58, 42],
+  inner: [38, 46, 34],
+  stem: "rgba(98,86,64,0.85)",
+  flower: "rgb(244,242,232)",
+  floret: "rgb(252,251,246)",
+  eye: "rgb(218,182,72)",
+};
+const WHITE_DAWN_GOLD = {
+  leafLit: [226, 192, 120],
+  leafShade: [152, 114, 54],
+  inner: [118, 86, 40],
+  stem: "rgba(168,123,47,0.85)",
+  flower: "rgb(244,222,166)",
+  floret: "rgb(250,232,184)",
+  eye: "rgb(168,123,47)",
+};
+
 /** The aloe's flower spikes, on the lantana's terms: confined to the flowers,
  *  muted to sit on the sand, and absent from the plan symbol. A tall stalk of
  *  hanging yellow tubes is what tells an aloe from an agave at a glance —
@@ -997,6 +1018,351 @@ export function LivingBlueprint({
         ctx!.fill();
         ctx!.stroke();
       }
+      ctx!.lineWidth = lw;
+    }
+
+    // White Dawn, grown once per plant and kept, as the shrubs are.
+    type WhiteDawnSprig = {
+      c: [number, number, number];
+      /** leaf corners as offsets from c, xyz; WHITE_DAWN_LEAF.length each */
+      leaves: Float32Array;
+      /** the same leaves as kites, WHITE_DAWN_KITE.length each */
+      kites: Float32Array;
+      inner: boolean;
+      /** its step on the light ramp, 0 shade to WD_LEVELS - 1 lit */
+      tone: number;
+    };
+    type WhiteDawnPlant = {
+      /** the runners, each a path from the crown */
+      runners: [number, number, number][][];
+      sprigs: WhiteDawnSprig[];
+      /** flower heads: centre and radius, ft */
+      flowers: [number, number, number, number][];
+    };
+    // A lantana leaf: a broad oval to a blunt point. Narrower, they read as
+    // fern.
+    const WHITE_DAWN_LEAF: [number, number][] = [[0, 0], [0.22, 0.48], [0.62, 0.44], [1, 0], [0.62, -0.44], [0.22, -0.48]];
+    // The leaf as a kite of the same area, for leaves a few pixels long:
+    // the oval can't be told from it at that size, and the plant's
+    // thousands of corners are most of its cost.
+    const WHITE_DAWN_KITE: [number, number][] = [[0, 0], [0.4, 0.64], [1, 0], [0.4, -0.64]];
+    // Leaf tones in steps, made once, so a fill's colour is only set when
+    // the step changes: the leaves', then the shaded heart's. A fill per
+    // cluster: sharing fills — a run of one tone, or a band of depth and a
+    // step of tone at once — was slower, the long paths costing more to
+    // fill than the fills they save.
+    const WD_LEVELS = 8;
+    const WD_TONES = [WHITE_DAWN_COLOURS, WHITE_DAWN_GOLD].map((pal) => {
+      const ramp = (inner: boolean) =>
+        Array.from({ length: WD_LEVELS }, (_, k) => {
+          const t = 0.25 + (0.75 * k) / (WD_LEVELS - 1);
+          const col = pal.leafShade.map((v, i) => v + (pal.leafLit[i] - v) * t);
+          const c = inner ? pal.inner.map((v, i) => v + (col[i] - v) * 0.45) : col;
+          return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+        });
+      return [...ramp(false), ...ramp(true)];
+    });
+    const whiteDawnGrown = new Map<string, WhiteDawnPlant>();
+    // Scratch, reused plant to plant.
+    let wdDepth = new Float32Array(1024);
+    let wdOrder = new Int32Array(1024);
+
+    function growWhiteDawn(x: number, z: number, h: number, rw: number, rot: number, seed: string): WhiteDawnPlant {
+      const rng = rngFor("white-dawn:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const nrm = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const crs = (a: V3, b: V3): V3 => [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+      ];
+      // A mat, lit from above: leaves high on an arch catch the light, the
+      // ones down in it don't. Mottled a step either way, as the scan is.
+      const toneAt = (c: V3, n: V3) => {
+        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
+        const shade = (0.4 + 0.6 * lit) * (0.62 + 0.38 * Math.min(1, c[1] / (h * 0.5))) * (0.9 + 0.2 * rng());
+        return Math.max(0, Math.min(WD_LEVELS - 1, Math.round(((shade - 0.25) / 0.75) * (WD_LEVELS - 1))));
+      };
+
+      const runners: V3[][] = [];
+      const sprigs: WhiteDawnSprig[] = [];
+      const flowers: [number, number, number, number][] = [];
+      const L = rw * 0.085;
+      // A cluster of four to six leaves round a point on a runner, held near
+      // flat — a groundcover turns its leaves to the sky.
+      const cluster = (c: V3, dir: V3, len: number, inner: boolean) => {
+        const side = nrm(crs([0, 1, 0], dir));
+        const pts: number[] = [];
+        const kts: number[] = [];
+        const put = (d: V3, l: number) => {
+          const p = nrm(crs([0, 1, 0], d));
+          for (const [f, q] of WHITE_DAWN_LEAF) {
+            for (let i = 0; i < 3; i++) pts.push(d[i] * l * f + p[i] * l * 0.62 * q);
+          }
+          for (const [f, q] of WHITE_DAWN_KITE) {
+            for (let i = 0; i < 3; i++) kts.push(d[i] * l * f + p[i] * l * 0.62 * q);
+          }
+        };
+        const spin = rng() * Math.PI;
+        const k = 4 + Math.floor(rng() * 3);
+        for (let j = 0; j < k; j++) {
+          const ang = spin + (j / k) * Math.PI * 2 + (rng() - 0.5) * 0.9;
+          const l = 0.75 + 0.3 * rng();
+          const ca = Math.cos(ang);
+          const sa = Math.sin(ang);
+          const d = nrm([dir[0] * ca + side[0] * sa, 0.12 + (rng() - 0.3) * 0.5, dir[2] * ca + side[2] * sa]);
+          put(d, len * l);
+        }
+        const n = nrm([(c[0] - x) / rw, 1.6, (c[2] - z) / rw]);
+        sprigs.push({ c, leaves: new Float32Array(pts), kites: new Float32Array(kts), inner, tone: toneAt(c, n) });
+      };
+      // A flower head on a short stalk over the leaves.
+      const bloom = (c: V3) => {
+        flowers.push([c[0], c[1] + h * 0.04, c[2], rw * (0.032 + 0.012 * rng())]);
+      };
+
+      // Runners: wiry stems out of a small crown, arching up and over and
+      // trailing out low across the ground, their tips lifting — a few
+      // standing right up at the edge, as the scan's do. Each forks once
+      // or twice. Out to an oval a fifth narrower across the plant's yaw
+      // than along it, as the model is.
+      const walk = (p0: V3, p1: V3, p2: V3, p3: V3, flowerAtTip: boolean) => {
+        const at = (t: number): V3 => {
+          const u = 1 - t;
+          return [0, 1, 2].map((i) => u * u * u * p0[i] + 3 * u * u * t * p1[i] + 3 * u * t * t * p2[i] + t * t * t * p3[i]) as V3;
+        };
+        const path: V3[] = [];
+        for (let i = 0; i <= 10; i++) path.push(at(i / 10));
+        runners.push(path);
+        let len = 0;
+        for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]);
+        const n = Math.max(3, Math.round(len / (rw * 0.08)));
+        for (let i = 0; i < n; i++) {
+          const t = Math.min(1, 0.12 + (0.88 * (i + 0.2 + 0.6 * rng())) / n);
+          const c = at(t);
+          const c2 = at(Math.min(1, t + 0.02));
+          const dir = nrm([c2[0] - c[0], 0, c2[2] - c[2]]);
+          cluster(c, dir, L * (t > 0.9 ? 0.75 : 1), false);
+          if (rng() < 0.03) bloom(c);
+        }
+        if (flowerAtTip && rng() < 0.45) bloom(at(1));
+        return at;
+      };
+      const NR = 22;
+      for (let k = 0; k < NR; k++) {
+        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.5;
+        const edge = rw * (1 - 0.21 * Math.sin(a - rot) ** 2);
+        const R = edge * (0.5 + 0.5 * Math.sqrt(rng()));
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const wob = (rng() - 0.5) * 0.24 * R;
+        const lift = rng() < 0.12;
+        const pt = (r: number, y: number, side: number): V3 => [x + ca * r - sa * side, y, z + sa * r + ca * side];
+        const at = walk(
+          pt(rw * 0.04, h * 0.12, 0),
+          pt(R * 0.3, h * (0.42 + 0.16 * rng()), wob * 0.5),
+          pt(R * 0.7, h * (lift ? 0.3 + 0.12 * rng() : 0.18 + 0.12 * rng()), wob),
+          pt(R * (lift ? 0.9 : 1), h * (lift ? 0.55 + 0.25 * rng() : 0.1 + 0.12 * rng()), wob * 1.3 + (lift ? (rng() - 0.5) * R * 0.3 : 0)),
+          true,
+        );
+        // Side runners forking off partway out.
+        const forks = 1 + (rng() < 0.5 ? 1 : 0);
+        for (let f = 0; f < forks; f++) {
+          const t = 0.3 + 0.3 * rng();
+          const p0 = at(t);
+          const b = a + (rng() < 0.5 ? 1 : -1) * (0.45 + 0.35 * rng());
+          const rr = R * (0.3 + 0.25 * rng());
+          const cb = Math.cos(b);
+          const sb = Math.sin(b);
+          walk(
+            p0,
+            [p0[0] + cb * rr * 0.35, p0[1] + h * 0.06, p0[2] + sb * rr * 0.35],
+            [p0[0] + cb * rr * 0.75, h * (0.14 + 0.1 * rng()), p0[2] + sb * rr * 0.75],
+            [p0[0] + cb * rr, h * (0.08 + 0.12 * rng()), p0[2] + sb * rr],
+            true,
+          );
+        }
+      }
+      // The heart of the mat, where the runners crowd out of the crown:
+      // clusters in shade, fill only, so it reads as a mat there and not a
+      // tangle of wire.
+      for (let i = 0; i < 70; i++) {
+        const th = rng() * Math.PI * 2;
+        const r = rw * 0.5 * Math.sqrt(rng()) * (1 - 0.21 * Math.sin(th - rot) ** 2);
+        const c: V3 = [x + Math.cos(th) * r, h * (0.08 + 0.26 * rng()) * (1 - (0.5 * r) / rw), z + Math.sin(th) * r];
+        cluster(c, [Math.cos(th + 1.3), 0, Math.sin(th + 1.3)], L * 1.15, true);
+      }
+      // The heart first, a step of tone at a time; the rest as grown.
+      sprigs.sort((a, b) => (a.inner === b.inner ? (a.inner ? a.tone - b.tone : 0) : a.inner ? -1 : 1));
+      return { runners, sprigs, flowers };
+    }
+
+    /** White Dawn lantana, after the app's model.
+     *
+     *  A trailing groundcover, low and open — nothing like a mound: wiry
+     *  runners out of a small crown, arching up and over and trailing out
+     *  across the ground, forking as they go, with their tips lifting and
+     *  here and there one standing right up at the edge. Small mid-dark
+     *  leaves in clusters all along them, the soil showing between, and
+     *  white posies with a yellow eye scattered over it, mostly at the
+     *  tips. An oval, a fifth narrower across than along, as the scan is.
+     *
+     *  Drawn as the runners, then the shaded heart of the mat, then every
+     *  leaf cluster and flower far to near, each cluster lit by where it
+     *  sits; all through one local map at the crown. Grown once and cached.
+     */
+    function drawWhiteDawnBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+      lw: number,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = whiteDawnGrown.get(key);
+      if (!grown) {
+        if (whiteDawnGrown.size > 400) whiteDawnGrown.clear(); // growth and edits mint new keys
+        grown = growWhiteDawn(x, z, h, rw, rot, seed);
+        whiteDawnGrown.set(key, grown);
+      }
+      const pal = sel ? WHITE_DAWN_GOLD : WHITE_DAWN_COLOURS;
+
+      // The local map at the crown: screen x, y and depth per foot.
+      const cy = h * 0.2;
+      const q = P(x, cy, z);
+      const qx = P(x + 1, cy, z);
+      const qy = P(x, cy + 1, z);
+      const qz = P(x, cy, z + 1);
+      const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+      const sx = (px: number, py: number, pz: number) => q[0] + J[0] * (px - x) + J[1] * (py - cy) + J[2] * (pz - z);
+      const sy = (px: number, py: number, pz: number) => q[1] + J[3] * (px - x) + J[4] * (py - cy) + J[5] * (pz - z);
+      const depth = (px: number, py: number, pz: number) => q[2] + J[6] * (px - x) + J[7] * (py - cy) + J[8] * (pz - z);
+
+      ctx!.strokeStyle = pal.stem;
+      ctx!.lineCap = "round";
+      ctx!.lineJoin = "round";
+      ctx!.lineWidth = Math.max(ftPx(x, z, rw * 0.012), lw * 0.4);
+      ctx!.beginPath();
+      for (const path of grown.runners) {
+        for (let i = 0; i < path.length; i++) {
+          const [px, py, pz] = path[i];
+          if (i) ctx!.lineTo(sx(px, py, pz), sy(px, py, pz));
+          else ctx!.moveTo(sx(px, py, pz), sy(px, py, pz));
+        }
+      }
+      ctx!.stroke();
+      ctx!.lineCap = "butt";
+
+      const tones = WD_TONES[sel ? 1 : 0];
+      // Kites while the leaves are under six pixels long.
+      const kite = Math.max(Math.hypot(J[0], J[3]), Math.hypot(J[2], J[5])) * rw * 0.085 < 6;
+      const n = kite ? WHITE_DAWN_KITE.length : WHITE_DAWN_LEAF.length;
+      const leafPath = (sp: WhiteDawnSprig) => {
+        const [cx, cy2, cz] = sp.c;
+        const ox = sx(cx, cy2, cz);
+        const oy = sy(cx, cy2, cz);
+        const pts = kite ? sp.kites : sp.leaves;
+        for (let o = 0; o < pts.length; o += n * 3) {
+          for (let k = 0; k < n; k++) {
+            const i = o + k * 3;
+            const px = ox + J[0] * pts[i] + J[1] * pts[i + 1] + J[2] * pts[i + 2];
+            const py = oy + J[3] * pts[i] + J[4] * pts[i + 1] + J[5] * pts[i + 2];
+            if (k) ctx!.lineTo(px, py);
+            else ctx!.moveTo(px, py);
+          }
+          ctx!.closePath();
+        }
+      };
+      const { sprigs, flowers } = grown;
+      const m = sprigs.length;
+      const all = m + flowers.length;
+      if (wdDepth.length < all) {
+        wdDepth = new Float32Array(all * 2);
+        wdOrder = new Int32Array(all * 2);
+      }
+      let fill = "";
+      const paint = (col: string) => {
+        if (col !== fill) ctx!.fillStyle = fill = col;
+        ctx!.fill();
+      };
+
+      // The shaded heart first.
+      let m0 = 0;
+      for (; m0 < m && sprigs[m0].inner; m0++) {
+        ctx!.beginPath();
+        leafPath(sprigs[m0]);
+        paint(tones[WD_LEVELS + sprigs[m0].tone]);
+      }
+
+      // The rest far to near, the flowers in with the leaves — a little
+      // nearer than they stand, as they sit up over them.
+      let count = 0;
+      for (let i = m0; i < m; i++) {
+        const sp = sprigs[i];
+        wdDepth[i] = depth(sp.c[0], sp.c[1], sp.c[2]);
+        wdOrder[count++] = i;
+      }
+      for (let i = 0; i < flowers.length; i++) {
+        const f = flowers[i];
+        wdDepth[m + i] = depth(f[0], f[1], f[2]) - 0.05;
+        wdOrder[count++] = m + i;
+      }
+      const order = wdOrder.subarray(0, count).sort((a, b) => wdDepth[b] - wdDepth[a]);
+      const footPx = Math.hypot(J[1], J[4]);
+      for (const i of order) {
+        if (i < m) {
+          ctx!.beginPath();
+          leafPath(sprigs[i]);
+          paint(tones[sprigs[i].tone]);
+          continue;
+        }
+        // A flat posy: the disc, and close up its ring of florets round a
+        // yellow eye.
+        const [fx, fy, fz, r] = flowers[i - m];
+        const ox = sx(fx, fy, fz);
+        const oy = sy(fx, fy, fz);
+        const ax = J[0] * r;
+        const ay = J[3] * r;
+        const bx = J[2] * r;
+        const by = J[5] * r;
+        ctx!.beginPath();
+        for (let k = 0; k < 10; k++) {
+          const t = (k / 10) * Math.PI * 2;
+          const c = Math.cos(t);
+          const s2 = Math.sin(t);
+          if (k) ctx!.lineTo(ox + ax * c + bx * s2, oy + ay * c + by * s2);
+          else ctx!.moveTo(ox + ax * c + bx * s2, oy + ay * c + by * s2);
+        }
+        ctx!.closePath();
+        paint(pal.flower);
+        const px = footPx * r;
+        if (px > 5) {
+          ctx!.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const t = (k / 6) * Math.PI * 2 + fx;
+            const cx = ox + (ax * Math.cos(t) + bx * Math.sin(t)) * 0.55;
+            const cy3 = oy + (ay * Math.cos(t) + by * Math.sin(t)) * 0.55;
+            ctx!.moveTo(cx + px * 0.36, cy3);
+            ctx!.arc(cx, cy3, px * 0.36, 0, Math.PI * 2);
+          }
+          paint(pal.floret);
+        }
+        if (px > 2.5) {
+          ctx!.beginPath();
+          ctx!.arc(ox, oy, Math.max(0.8, px * 0.22), 0, Math.PI * 2);
+          paint(pal.eye);
+        }
+      }
+      ctx!.lineJoin = "miter";
       ctx!.lineWidth = lw;
     }
 
@@ -8376,7 +8742,9 @@ export function LivingBlueprint({
       const markA = meta.kind === "light" ? 1 : t;
 
       ctx!.globalAlpha = bodyA;
-      if (LANTANAS.has(inst.model)) {
+      if (inst.model === "WhiteDawnLantana") {
+        drawWhiteDawnBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+      } else if (LANTANAS.has(inst.model)) {
         // Selection still wins: a gold plant has been picked, and that has
         // to read louder than the species colour.
         drawLantanaBody(

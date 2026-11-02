@@ -899,7 +899,7 @@
           "modelName": "WhiteDawnLantana"
         }
       ],
-      "matureHeightFt": 1,
+      "matureHeightFt": 1.5,
       "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
@@ -1172,7 +1172,7 @@
           "modelName": "PurpleLantana"
         }
       ],
-      "matureHeightFt": 1,
+      "matureHeightFt": 1.5,
       "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
@@ -1205,7 +1205,7 @@
           "modelName": "YellowLantana"
         }
       ],
-      "matureHeightFt": 1,
+      "matureHeightFt": 1.5,
       "matureWidthFt": 4,
       "sun": "Full Sun",
       "water": "Low",
