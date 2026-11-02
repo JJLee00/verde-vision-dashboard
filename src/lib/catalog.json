@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-11-01",
+  "generatedAt": "2026-11-02",
   "sizeOrder": [
     "1g",
     "5g",
@@ -456,8 +456,8 @@
           "modelName": "TotemPole"
         }
       ],
-      "matureHeightFt": 12,
-      "matureWidthFt": 2,
+      "matureHeightFt": 3,
+      "matureWidthFt": 1,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Baja California, Mexico",

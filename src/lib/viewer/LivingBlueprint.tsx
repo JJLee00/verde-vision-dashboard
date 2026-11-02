@@ -457,6 +457,19 @@ const TOOTHPICK_GOLD = {
   tuft: "rgba(214,160,90,0.95)",
 };
 
+/** Totem pole: the scan's pale yellow-sage, every knob lit on its
+ *  shoulder and shadowed under its drip, deep olive in the creases. */
+const TOTEM_COLOURS = {
+  shade: [98, 100, 58],
+  lit: [218, 220, 160],
+  crease: "rgb(80,82,46)",
+};
+const TOTEM_GOLD = {
+  shade: [140, 100, 46],
+  lit: [236, 200, 128],
+  crease: "rgb(116,80,36)",
+};
+
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -5428,6 +5441,321 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // Grown once per plant and kept, as the trees are.
+    type TotemPlant = {
+      /** the core's rings, foot to shoulder — centre (x, y, z) and radius —
+       *  then its apex */
+      core: Float32Array;
+      /** each knob's centre, then its three half-axes as (x, y, z) vectors:
+       *  across, along its drip, and out */
+      k: Float32Array;
+      /** each knob's outward normal across the ground, and whether it's on
+       *  the top, where it always shows */
+      out: Float32Array;
+      top: Uint8Array;
+      /** each knob's tones: its face, its shoulder */
+      tone: Uint8Array;
+      /** the point on each knob that faces the light, as an (x, y, z) shift
+       *  from its centre — its shoulder is drawn toward it */
+      lift: Float32Array;
+    };
+    const TT_LEVELS = 8;
+    const TT_TONES = [TOTEM_COLOURS, TOTEM_GOLD].map((pal) =>
+      Array.from({ length: TT_LEVELS }, (_, i) => {
+        const t = i / (TT_LEVELS - 1);
+        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
+      }),
+    );
+    // The model in its own measure (its height = 1). The stem leans a
+    // little from foot to top, and its knobs reach this far out at each
+    // height — widest low down, where it's oldest, rounding over on top.
+    const TT_FOOT = [-0.03, 0.04];
+    const TT_TOP = [0.02, -0.02];
+    const TT_REACH = [
+      [0, 0.15],
+      [0.3, 0.145],
+      [0.6, 0.135],
+      [0.86, 0.135],
+    ];
+    const ttReach = (y: number) => {
+      if (y >= 0.86) return 0.135 * Math.sqrt(Math.max(0, 1 - ((y - 0.86) / 0.14) ** 2));
+      let i = 0;
+      while (y > TT_REACH[i + 1][0]) i++;
+      const [y0, r0] = TT_REACH[i];
+      const [y1, r1] = TT_REACH[i + 1];
+      return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
+    };
+    // Its knobs, the same on every plant as they are in the headset. Five
+    // ribs run up the stem, a little twisted, each a chain of long knobs
+    // like drips of wax, every one swelling out at its foot over the next;
+    // smaller ones sit deeper in the grooves between. On top, five lobes
+    // on the ribs lie out over the shoulder — the star the model shows
+    // from above, wider than the stem — round a small dome.
+    // Each is [height, angle, half-width, half-length, depth, droop, kind,
+    // a tone up or down, how far in it sits, a sideways tilt]: kind 0 a
+    // knob, 1 a crown lobe, 2 the dome.
+    const TT_KNOBS: number[][] = (() => {
+      const rng = rngFor("totem-pole");
+      const out: number[][] = [];
+      const shift = () => [-1, 0, 0, 1][(rng() * 4) | 0];
+      for (let rib = 0; rib < 10; rib++) {
+        const groove = rib % 2;
+        let y = 0.05 + rng() * 0.05 + groove * 0.06;
+        while (y < (groove ? 0.74 : 0.8)) {
+          const s = 0.65 + rng() * 0.7;
+          const long = 1.5 + rng() * 1.1;
+          out.push([
+            y,
+            0.3 + (rib / 10) * Math.PI * 2 + y * 0.15 + (rng() - 0.5) * (groove ? 0.5 : 0.3),
+            (groove ? 0.036 : 0.05) * s,
+            (groove ? 0.036 : 0.05) * s * long,
+            groove ? 0.026 : 0.04,
+            0.35,
+            0,
+            shift() - groove,
+            groove ? 0.045 : 0,
+            (rng() - 0.5) * 0.8,
+          ]);
+          y += (groove ? 0.14 : 0.13) * (0.75 + rng() * 0.5);
+        }
+      }
+      for (let i = 0; i < 5; i++) {
+        out.push([0.86, 0.3 + (i / 5) * Math.PI * 2 + 0.13, 0.06, 0.085, 0.05, 1.8, 1, shift() - 1, 0, 0]);
+      }
+      out.push([0.92, 0, 0.05, 0.04, 0.05, 0, 2, -1, 0, 0]);
+      return out;
+    })();
+    const TT_N = TT_KNOBS.length;
+    const totemGrown = new Map<string, TotemPlant>();
+    // Scratch, reused plant to plant: each knob's place on screen, depth,
+    // and the order they're drawn in.
+    const ttScreen = new Float32Array(TT_N * 2);
+    const ttDepth = new Float32Array(TT_N);
+    const ttOrder: number[] = [];
+
+    function growTotem(x: number, z: number, h: number, rot: number): TotemPlant {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const unit = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const level = (n: V3) =>
+        Math.max(0, Math.min(TT_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TT_LEVELS - 1))));
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const turn = (mx: number, mz: number): [number, number] => [mx * cr - mz * sr, mx * sr + mz * cr];
+      const axisAt = (y: number): V3 => {
+        const [ax, az] = turn(TT_FOOT[0] + (TT_TOP[0] - TT_FOOT[0]) * y, TT_FOOT[1] + (TT_TOP[1] - TT_FOOT[1]) * y);
+        return [x + ax * h, y * h, z + az * h];
+      };
+
+      const core = new Float32Array(5 * 4);
+      [0.02, 0.3, 0.6, 0.84].forEach((y, i) => {
+        core.set([...axisAt(y), (ttReach(y) - 0.04) * h], i * 4);
+      });
+      core.set([...axisAt(0.96), 0], 16);
+
+      const k = new Float32Array(TT_N * 12);
+      const out = new Float32Array(TT_N * 2);
+      const top = new Uint8Array(TT_N);
+      const tone = new Uint8Array(TT_N * 2);
+      const lift = new Float32Array(TT_N * 3);
+      TT_KNOBS.forEach(([y, ang, a, b, c, droop, kind, jog, sunk, tilt], i) => {
+        const [nx, nz] = turn(Math.cos(ang), Math.sin(ang));
+        const t: V3 = [-nz, 0, nx];
+        let face: V3;
+        let centre: V3;
+        if (kind === 2) {
+          face = [0, 1, 0];
+          centre = axisAt(y);
+          const A: V3[] = [
+            [a, 0, 0],
+            [0, b, 0],
+            [0, 0, c],
+          ];
+          k.set([...centre, ...A[0].map((v) => v * h), ...A[1].map((v) => v * h), ...A[2].map((v) => v * h)], i * 12);
+        } else {
+          // Along the drip, its foot swung out; a crown lobe lies out over
+          // the shoulder, its tip dipping.
+          let along = unit([-droop * nx + tilt * t[0], 1, -droop * nz + tilt * t[2]]);
+          if (kind === 1) along = [-along[0], -along[1], -along[2]];
+          // Square to the drip, out of the stem.
+          const dn = along[0] * nx + along[2] * nz;
+          let out3 = unit([nx - dn * along[0], -dn * along[1], nz - dn * along[2]]);
+          if (kind === 1) out3 = unit([nx * 0.3, 1, nz * 0.3]);
+          face = kind === 1 ? unit([nx * 0.6, 1, nz * 0.6]) : out3;
+          const r = kind === 1 ? 0.085 : ttReach(y) - c * 0.9 - sunk;
+          const ax = axisAt(y);
+          centre = [ax[0] + nx * r * h, ax[1], ax[2] + nz * r * h];
+          k.set(
+            [
+              ...centre,
+              t[0] * a * h, 0, t[2] * a * h,
+              along[0] * b * h, along[1] * b * h, along[2] * b * h,
+              out3[0] * c * h, out3[1] * c * h, out3[2] * c * h,
+            ],
+            i * 12,
+          );
+        }
+        out[i * 2] = nx;
+        out[i * 2 + 1] = nz;
+        top[i] = kind ? 1 : 0;
+        const mid = Math.max(0, Math.min(TT_LEVELS - 1, level(face) + jog));
+        tone[i * 2] = mid;
+        tone[i * 2 + 1] = Math.min(TT_LEVELS - 1, mid + 1);
+        // The point on the knob facing the light: through its half-axes,
+        // as a sphere's would be.
+        const M = [k.subarray(i * 12 + 3, i * 12 + 6), k.subarray(i * 12 + 6, i * 12 + 9), k.subarray(i * 12 + 9, i * 12 + 12)];
+        const w = M.map((m) => m[0] * LX + m[1] * LY + m[2] * LZ);
+        const wl = Math.hypot(w[0], w[1], w[2]) || 1;
+        for (let d = 0; d < 3; d++) lift[i * 3 + d] = (M[0][d] * w[0] + M[1][d] * w[1] + M[2][d] * w[2]) / wl;
+      });
+      return { core, k, out, top, tone, lift };
+    }
+
+    /** Totem pole cactus, after the app's model.
+     *
+     *  One young stem and not a spine on it: a leaning column of rounded
+     *  knobs on five rough ribs, stacked like drips of wax, each swelling
+     *  out at its foot over the one below — and on top, five lobes lying
+     *  out over the shoulder in a star, round a small dome. The scan's pale
+     *  yellow-sage, the creases between the knobs deep olive.
+     *
+     *  Drawn as the column's core, dark, then every knob on the near side,
+     *  far first: an ellipsoid through the local map is an ellipse, so each
+     *  is the shadow it casts just below it, itself in one tone, and — big
+     *  enough to see it — a lit shoulder. Grown once and cached.
+     */
+    function drawTotemBody(x: number, z: number, h: number, rot: number, sel: boolean) {
+      const key = `${x}|${z}|${h}|${rot}`;
+      let grown = totemGrown.get(key);
+      if (!grown) {
+        if (totemGrown.size > 400) totemGrown.clear(); // growth and edits mint new keys
+        grown = growTotem(x, z, h, rot);
+        totemGrown.set(key, grown);
+      }
+      const { core, k, out, top, tone, lift } = grown;
+      const pal = sel ? TOTEM_GOLD : TOTEM_COLOURS;
+      const tones = TT_TONES[sel ? 1 : 0];
+
+      // The local map from feet to pixels, at half height: a stem this
+      // small doesn't bend it.
+      const m = P(x, h * 0.5, z);
+      const mx = P(x + 1, h * 0.5, z);
+      const my = P(x, h * 0.5 + 1, z);
+      const mz = P(x, h * 0.5, z + 1);
+      const J0 = mx[0] - m[0];
+      const J1 = mx[1] - m[1];
+      const J2 = my[0] - m[0];
+      const J3 = my[1] - m[1];
+      const J4 = mz[0] - m[0];
+      const J5 = mz[1] - m[1];
+      const hPx = Math.hypot(J2, J3) * h;
+
+      // The core, filled dark: what shows in the creases.
+      const hullPts: [number, number][] = [];
+      for (let i = 0; i < 4; i++) {
+        const q = P(core[i * 4], core[i * 4 + 1], core[i * 4 + 2]);
+        const r = core[i * 4 + 3];
+        for (let j = 0; j < 12; j++) {
+          const ox = Math.cos((j * Math.PI) / 6) * r;
+          const oz = Math.sin((j * Math.PI) / 6) * r;
+          hullPts.push([q[0] + J0 * ox + J4 * oz, q[1] + J1 * ox + J5 * oz]);
+        }
+      }
+      const apex = P(core[16], core[17], core[18]);
+      hullPts.push([apex[0], apex[1]]);
+      const hull = convexHull(hullPts);
+      if (hull.length > 2) {
+        ctx!.beginPath();
+        ctx!.moveTo(hull[0][0], hull[0][1]);
+        for (let i = 1; i < hull.length; i++) ctx!.lineTo(hull[i][0], hull[i][1]);
+        ctx!.closePath();
+        ctx!.fillStyle = pal.crease;
+        ctx!.fill();
+      }
+
+      // The knobs that face the eye, and those just round the edge that
+      // make its lumpy outline.
+      ttOrder.length = 0;
+      for (let i = 0; i < TT_N; i++) {
+        const cx = k[i * 12];
+        const cy = k[i * 12 + 1];
+        const cz = k[i * 12 + 2];
+        if (!top[i]) {
+          const vx = eye[0] - cx;
+          const vz = eye[2] - cz;
+          const vl = Math.hypot(vx, eye[1] - cy, vz) || 1;
+          if ((out[i * 2] * vx + out[i * 2 + 1] * vz) / vl < -0.25) continue;
+        }
+        const q = P(cx, cy, cz);
+        ttScreen[i * 2] = q[0];
+        ttScreen[i * 2 + 1] = q[1];
+        ttDepth[i] = q[2];
+        ttOrder.push(i);
+      }
+      ttOrder.sort((a, b) => ttDepth[b] - ttDepth[a]);
+
+      const layers = hPx > 70 ? 3 : hPx > 24 ? 2 : 1;
+      let cur = -1;
+      const blob = (cx: number, cy: number, rx: number, ry: number, ang: number, t: number) => {
+        if (t !== cur) {
+          ctx!.fillStyle = tones[t];
+          cur = t;
+        }
+        ctx!.beginPath();
+        ctx!.ellipse(cx, cy, rx, ry, ang, 0, Math.PI * 2);
+        ctx!.fill();
+      };
+      for (const i of ttOrder) {
+        const b = i * 12 + 3;
+        // An ellipsoid through the local (affine) map is an ellipse.
+        const ax0 = J0 * k[b] + J2 * k[b + 1] + J4 * k[b + 2];
+        const ax1 = J0 * k[b + 3] + J2 * k[b + 4] + J4 * k[b + 5];
+        const ax2 = J0 * k[b + 6] + J2 * k[b + 7] + J4 * k[b + 8];
+        const ay0 = J1 * k[b] + J3 * k[b + 1] + J5 * k[b + 2];
+        const ay1 = J1 * k[b + 3] + J3 * k[b + 4] + J5 * k[b + 5];
+        const ay2 = J1 * k[b + 6] + J3 * k[b + 7] + J5 * k[b + 8];
+        const c11 = ax0 * ax0 + ax1 * ax1 + ax2 * ax2;
+        const c22 = ay0 * ay0 + ay1 * ay1 + ay2 * ay2;
+        const c12 = ax0 * ay0 + ax1 * ay1 + ax2 * ay2;
+        const mid = (c11 + c22) / 2;
+        const d = Math.sqrt(Math.max(0, mid * mid - (c11 * c22 - c12 * c12)));
+        const rx = Math.sqrt(mid + d);
+        const ry = Math.sqrt(Math.max(0, mid - d));
+        const ang = 0.5 * Math.atan2(2 * c12, c11 - c22);
+        const sx = ttScreen[i * 2];
+        const sy = ttScreen[i * 2 + 1];
+        if (layers === 1) {
+          blob(sx, sy, rx, ry, ang, tone[i * 2]);
+          continue;
+        }
+        // The shadow it casts on the knob below, just under its foot (the
+        // dome, last, casts none); then the knob, one tone, so knobs facing
+        // the same way run together as the scan's do; then, near enough, a
+        // soft shoulder of light.
+        if (i < TT_N - 1) {
+          if (cur !== -2) {
+            ctx!.fillStyle = pal.crease;
+            cur = -2;
+          }
+          const drop = Math.max(Math.abs(k[b + 4]) * 0.3, Math.abs(k[b + 7]) * 0.8);
+          ctx!.beginPath();
+          ctx!.ellipse(sx - J2 * drop, sy - J3 * drop, rx * 0.9, ry * 0.9, ang, 0, Math.PI * 2);
+          ctx!.fill();
+        }
+        blob(sx, sy, rx, ry, ang, tone[i * 2]);
+        if (layers === 3) {
+          const lx = J0 * lift[i * 3] + J2 * lift[i * 3 + 1] + J4 * lift[i * 3 + 2];
+          const ly = J1 * lift[i * 3] + J3 * lift[i * 3 + 1] + J5 * lift[i * 3 + 2];
+          blob(sx + lx * 0.32, sy + ly * 0.32, rx * 0.62, ry * 0.62, ang, tone[i * 2 + 1]);
+        }
+      }
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -6044,6 +6372,8 @@ export function LivingBlueprint({
         drawOrganPipeBody(x, z, h, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "ArgentineToothpick") {
         drawToothpickBody(x, z, h, symRot, inst.id, sel || hover, lw);
+      } else if (inst.model === "TotemPole") {
+        drawTotemBody(x, z, h, symRot, sel || hover);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
