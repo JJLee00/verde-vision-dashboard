@@ -123,30 +123,6 @@ function convexHull(pts: [number, number][]): [number, number][] {
   return [...half(p), ...half([...p].reverse())];
 }
 
-/** Lantana is a groundcover, not a shrub with a canopy: a low spreading
- *  mound carrying dozens of small flower clusters, which is what the scan
- *  shows and what the plan symbol's scalloped rim says. */
-const LANTANAS = new Set(["WhiteDawnLantana", "PurpleLantana", "YellowLantana"]);
-
-/** One of the two places this viewer leaves its ink-on-sand palette (the
- *  other is the aloe's bloom, below).
- *
- *  With lantana the colour IS the species — three plants identical in habit
- *  and size, told apart by nothing else — so a client looking at the 3D view
- *  cannot read the design without it. It is confined to the flower heads:
- *  stems, ground and everything else stay in verde, so the drawing still
- *  reads as a drawing. Muted to sit on the sand rather than sing against it.
- *
- *  Deliberately NOT applied to the plan symbol. The blueprint is the thing
- *  that gets printed, photocopied and marked up on a tailgate, and colour is
- *  the first thing to fail there — the three keep their dashed rims, which
- *  survive a monochrome print. */
-const LANTANA_BLOOM: Record<string, string> = {
-  WhiteDawnLantana: "rgba(252,248,238,0.85)",
-  PurpleLantana: "rgba(138,118,176,0.78)",
-  YellowLantana: "rgba(216,166,63,0.8)",
-};
-
 /** White Dawn lantana: mid-dark green trailing runners, greenish-brown
  *  stems, and white posies with a yellow eye. */
 const WHITE_DAWN_COLOURS = {
@@ -190,6 +166,32 @@ const PURPLE_LANTANA_GOLD = {
   flower: [240, 214, 150],
   flowerShade: [196, 160, 92],
   eye: "rgb(255,248,226)",
+};
+
+/** Yellow lantana: the purple's dark green leaves, smothered in golden
+ *  heads — a third of what the scan shows is flower. Each head a ring of
+ *  golden florets round a deeper amber heart of buds. */
+const YELLOW_LANTANA_COLOURS = {
+  leafLit: [144, 154, 98],
+  leafShade: [40, 44, 34],
+  inner: [31, 35, 27],
+  core: "rgb(34,38,29)",
+  flowerLit: [240, 204, 128],
+  flower: [212, 160, 78],
+  flowerShade: [146, 100, 44],
+  bud: [208, 136, 56],
+  eye: "rgb(186,116,44)",
+};
+const YELLOW_LANTANA_GOLD = {
+  leafLit: [226, 192, 120],
+  leafShade: [150, 112, 52],
+  inner: [116, 84, 38],
+  core: "rgb(104,76,34)",
+  flowerLit: [252, 238, 200],
+  flower: [240, 214, 150],
+  flowerShade: [196, 160, 92],
+  bud: [226, 190, 120],
+  eye: "rgb(196,150,72)",
 };
 
 /** The aloe's flower spikes, on the lantana's terms: confined to the flowers,
@@ -994,56 +996,6 @@ export function LivingBlueprint({
      *  skin, with a woolly crown. It was a plain ellipse, which is the right
      *  silhouette and nothing else — none of the ribbing that makes a barrel
      *  a barrel, and no clue which way is up. */
-    /** A lantana: the mound as its flower heads, since that is all you see
-     *  of one. Clusters sit on a flattened dome, spaced on the golden angle
-     *  so they spread evenly instead of banding, and are drawn back to front
-     *  so the near ones sit over the far ones. */
-    function drawLantanaBody(
-      x: number,
-      z: number,
-      h: number,
-      rw: number,
-      rot: number,
-      stroke: string,
-      fill: string,
-      lw: number,
-      bloom: string | undefined,
-    ) {
-      const N = 24;
-      const headR = Math.max(ftPx(x, z, rw * 0.18), 1.6);
-      const heads: { sx: number; sy: number; depth: number; r: number }[] = [];
-      for (let k = 0; k < N; k++) {
-        // sqrt spreads them evenly by area rather than crowding the middle
-        const rr = Math.sqrt((k + 0.5) / N);
-        const a = rot + k * 2.399963;
-        const q = P(
-          x + Math.cos(a) * rw * rr * 0.72,
-          h * (0.52 - 0.38 * rr * rr),
-          z + Math.sin(a) * rw * rr * 0.72,
-        );
-        // Clusters are not all one size, and drawing them that way reads as
-        // a pattern rather than a plant. Varied off the index, so a given
-        // lantana looks the same every frame.
-        const vary = 0.74 + 0.52 * ((k * 0.6180339887) % 1);
-        heads.push({ sx: q[0], sy: q[1], depth: q[2], r: headR * vary });
-      }
-      heads.sort((p1, p2) => p2.depth - p1.depth);
-      ctx!.lineWidth = lw * 0.8;
-      ctx!.strokeStyle = stroke;
-      for (const head of heads) {
-        ctx!.beginPath();
-        ctx!.arc(head.sx, head.sy, head.r, 0, 7);
-        // Paper first, so a near cluster still covers the one behind it,
-        // then the bloom over it — which both keeps the occlusion and lets
-        // the colour settle into the document instead of sitting on top.
-        ctx!.fillStyle = LEAF_BODY;
-        ctx!.fill();
-        ctx!.fillStyle = bloom ?? fill;
-        ctx!.fill();
-        ctx!.stroke();
-      }
-      ctx!.lineWidth = lw;
-    }
 
     // White Dawn, grown once per plant and kept, as the shrubs are.
     type WhiteDawnSprig = {
@@ -1776,6 +1728,448 @@ export function LivingBlueprint({
         } else if (pr > 1.6) {
           ctx!.beginPath();
           ctx!.arc(ox - pr * 0.22, oy - pr * 0.25, pr * 0.55, 0, Math.PI * 2);
+          paint(tones.flowerLit[t]);
+        }
+      }
+    }
+
+    type YellowSprig = {
+      c: [number, number, number];
+      /** the cushion's outward normal there, to pass over the far side */
+      n: [number, number, number];
+      /** leaf corners as offsets from c, xyz; YELLOW_LEAF.length each */
+      leaves: Float32Array;
+      /** the same leaves as kites, YELLOW_KITE.length each */
+      kites: Float32Array;
+      inner: boolean;
+      /** its step on the light ramp, 0 shade to YL_LEVELS - 1 lit */
+      tone: number;
+    };
+    type YellowPlant = {
+      sprigs: YellowSprig[];
+      /** flower heads, 8 numbers each: centre, radius (ft), outward
+       *  normal, step on the flower ramp */
+      flowers: Float32Array;
+      /** the heart of the cushion, set in from the leaves, hulled for the
+       *  dark core */
+      core: [number, number, number][];
+    };
+    // A lantana leaf, ovate to a point.
+    const YELLOW_LEAF: [number, number][] = [[0, 0], [0.18, 0.42], [0.55, 0.46], [1, 0], [0.55, -0.46], [0.18, -0.42]];
+    // The leaf as a kite of the same area, for leaves a few pixels long.
+    const YELLOW_KITE: [number, number][] = [[0, 0], [0.4, 0.61], [1, 0], [0.4, -0.61]];
+    const YL_LEVELS = 8;
+    const YL_FLOWER_LEVELS = 4;
+    // Tones made once, so a fill's colour is only set when the step changes.
+    const YL_TONES = [YELLOW_LANTANA_COLOURS, YELLOW_LANTANA_GOLD].map((pal) => {
+      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
+      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
+      const leaf = Array.from({ length: YL_LEVELS }, (_, k) => mix(pal.leafShade, pal.leafLit, 0.2 + (0.8 * k) / (YL_LEVELS - 1)));
+      const step = (k: number) => k / (YL_FLOWER_LEVELS - 1);
+      const ramp = (f: (t: number) => number[]) => Array.from({ length: YL_FLOWER_LEVELS }, (_, k) => rgb(f(step(k))));
+      return {
+        leaf: leaf.map(rgb),
+        inner: leaf.map((c) => rgb(mix(pal.inner, c, 0.4))),
+        flower: ramp((t) => mix(pal.flowerShade, pal.flower, t)),
+        flowerLit: ramp((t) => mix(pal.flower, pal.flowerLit, 0.15 + 0.5 * t)),
+        floret: ramp((t) => mix(mix(pal.flowerShade, pal.flower, t), pal.flowerLit, 0.45)),
+        bud: ramp((t) => mix(pal.flowerShade, pal.bud, 0.5 + 0.5 * t)),
+      };
+    });
+    const yellowGrown = new Map<string, YellowPlant>();
+    // Scratch, reused plant to plant.
+    let ylDepth = new Float32Array(2048);
+    let ylOrder = new Int32Array(2048);
+
+    function growYellowLantana(x: number, z: number, h: number, rw: number, rot: number, seed: string): YellowPlant {
+      const rng = rngFor("yellow-lantana:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const nrm = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const crs = (a: V3, b: V3): V3 => [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+      ];
+
+      // The outline: an oval a fifth narrower across the plant's yaw than
+      // along it, as the scan is, and only gently lobed — this one is a full
+      // round cushion, where the purple throws out arms.
+      const ph2 = rng() * Math.PI * 2;
+      const ph3 = rng() * Math.PI * 2;
+      const ph5 = rng() * Math.PI * 2;
+      const oval = (th: number) => rw * (1 - 0.2 * Math.sin(th - rot) ** 2);
+      const edge = (th: number) =>
+        oval(th) * (0.88 + 0.04 * Math.sin(2 * th + ph2) + 0.03 * Math.sin(3 * th + ph3) + 0.02 * Math.sin(5 * th + ph5));
+      // The cushion: flat-topped, held high nearly to its edge and then
+      // steep to the ground, a little hollow in the middle where the crown
+      // opens, and lumpy all over.
+      const lumps = Array.from({ length: 12 }, (_, i) => {
+        const th = i * 2.399963 + rng();
+        const r = rw * 0.75 * Math.sqrt((i + 0.5) / 12);
+        return [x + Math.cos(th) * r, z + Math.sin(th) * r, (rng() < 0.3 ? -0.7 : 1) * (0.08 + 0.1 * rng()), rw * (0.1 + 0.08 * rng())];
+      });
+      const raw = (px: number, pz: number) => {
+        const rho = Math.hypot(px - x, pz - z) / edge(Math.atan2(pz - z, px - x));
+        if (rho >= 1) return 0;
+        let lump = 0;
+        for (const [lx, lz, a, sg] of lumps) lump += a * Math.exp(-((px - lx) ** 2 + (pz - lz) ** 2) / (sg * sg));
+        return (1 - rho ** 5) ** 0.4 - 0.12 * Math.exp(-((rho / 0.3) ** 2)) + lump * (1 - rho ** 4);
+      };
+      // Scaled so the cushion stands a little under the plant's height: the
+      // shoots standing out of it make up the rest.
+      let top = 0;
+      for (let i = 0; i < 400; i++) {
+        const r = Math.sqrt((i + 0.5) / 400) * rw;
+        top = Math.max(top, raw(x + Math.cos(i * 2.399963) * r, z + Math.sin(i * 2.399963) * r));
+      }
+      const S = (px: number, pz: number) => (raw(px, pz) * h * 0.82) / top;
+      const e = rw * 0.03;
+      const normalAt = (px: number, pz: number): V3 =>
+        nrm([(S(px - e, pz) - S(px + e, pz)) / (2 * e), 1, (S(px, pz - e) - S(px, pz + e)) / (2 * e)]);
+      // Down in the folds between lumps is darker.
+      const foldAt = (px: number, pz: number) => {
+        const f = rw * 0.07;
+        const dip = (S(px + f, pz) + S(px - f, pz) + S(px, pz + f) + S(px, pz - f)) / 4 - S(px, pz);
+        return 1 - Math.min(0.45, Math.max(0, dip / (h * 0.04)) * 0.45);
+      };
+      // Lit from above, darker low down, mottled a step either way.
+      const toneAt = (c: V3, n: V3, dark: number) => {
+        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
+        const shade = (0.25 + 0.75 * lit) * (0.5 + 0.5 * Math.min(1, c[1] / (h * 0.7))) * dark * (0.72 + 0.5 * rng());
+        const step = Math.round(((shade - 0.2) / 0.8) * (YL_LEVELS - 1)) + (rng() < 0.15 ? 2 : 0);
+        return Math.max(0, Math.min(YL_LEVELS - 1, step));
+      };
+
+      const sprigs: YellowSprig[] = [];
+      const L = rw * 0.062;
+      // A cluster of three to five leaves round a shoot tip, lying in the
+      // cushion's skin and lifting a little off it.
+      const cluster = (c: V3, n: V3, len: number, inner: boolean, dark: number) => {
+        const t1 = nrm(crs(n, Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+        const t2 = crs(n, t1);
+        const pts: number[] = [];
+        const kts: number[] = [];
+        const spin = rng() * Math.PI * 2;
+        const m = 3 + Math.floor(rng() * 3);
+        for (let j = 0; j < m; j++) {
+          const a = spin + (j / m) * Math.PI * 2 + (rng() - 0.5) * 0.8;
+          const l = len * (0.8 + 0.4 * rng());
+          const lift = 0.15 + 0.35 * rng();
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          const d = nrm([t1[0] * ca + t2[0] * sa + n[0] * lift, t1[1] * ca + t2[1] * sa + n[1] * lift, t1[2] * ca + t2[2] * sa + n[2] * lift]);
+          const p = nrm(crs(n, d));
+          for (const [f, q] of YELLOW_LEAF) for (let i = 0; i < 3; i++) pts.push(d[i] * l * f + p[i] * l * 0.7 * q);
+          for (const [f, q] of YELLOW_KITE) for (let i = 0; i < 3; i++) kts.push(d[i] * l * f + p[i] * l * 0.7 * q);
+        }
+        sprigs.push({ c, n, leaves: new Float32Array(pts), kites: new Float32Array(kts), inner, tone: toneAt(c, n, dark) });
+      };
+      const flowers: number[] = [];
+      // A flower head sitting up off the leaves; many open in pairs, two
+      // heads touching, as the scan's do.
+      const bloom = (c: V3, n: V3) => {
+        const r = rw * (0.035 + 0.025 * rng());
+        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
+        const shade = (0.35 + 0.65 * lit) * (0.7 + 0.3 * Math.min(1, c[1] / (h * 0.6)));
+        const tone = Math.max(0, Math.min(YL_FLOWER_LEVELS - 1, Math.round(shade * (YL_FLOWER_LEVELS - 1))));
+        flowers.push(c[0] + n[0] * r * 0.6, c[1] + n[1] * r * 0.6, c[2] + n[2] * r * 0.6, r, n[0], n[1], n[2], tone);
+        if (rng() < 0.4) {
+          const t1 = nrm(crs(n, Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+          const t2 = crs(n, t1);
+          const a = rng() * Math.PI * 2;
+          const r2 = r * (0.7 + 0.25 * rng());
+          const d = r + r2 * 0.6;
+          const ox = (t1[0] * Math.cos(a) + t2[0] * Math.sin(a)) * d;
+          const oy = (t1[1] * Math.cos(a) + t2[1] * Math.sin(a)) * d;
+          const oz = (t1[2] * Math.cos(a) + t2[2] * Math.sin(a)) * d;
+          flowers.push(c[0] + ox + n[0] * r2 * 0.6, c[1] + oy + n[1] * r2 * 0.6, c[2] + oz + n[2] * r2 * 0.6, r2, n[0], n[1], n[2], tone);
+        }
+      };
+      // A point on the cushion's top, or on its steep side down to the
+      // ground.
+      const onTop = (th: number, rho: number): [V3, V3, number] => {
+        const r = rho * edge(th);
+        const px = x + Math.cos(th) * r;
+        const pz = z + Math.sin(th) * r;
+        return [[px, S(px, pz), pz], normalAt(px, pz), foldAt(px, pz)];
+      };
+      const onSide = (th: number): [V3, V3] => {
+        const ed = edge(th);
+        const r = (0.9 + (rng() < 0.2 ? 0.16 : 0.08) * rng()) * ed;
+        const shoulder = S(x + Math.cos(th) * ed * 0.9, z + Math.sin(th) * ed * 0.9);
+        return [[x + Math.cos(th) * r, shoulder * (0.02 + 0.93 * rng()), z + Math.sin(th) * r], nrm([Math.cos(th), 0.35, Math.sin(th)])];
+      };
+
+      // The shaded layer under the leaves, so a gap shows leaves in shadow
+      // before it shows the core.
+      for (let i = 0; i < 140; i++) {
+        const [c, n] = onTop(i * 2.399963, 0.95 * Math.sqrt((i + 0.5) / 140));
+        cluster([c[0], c[1] - h * 0.09, c[2]], n, L * 1.1, true, 0.8);
+      }
+      // The skin, evenly over the top on a spiral, then round the sides.
+      const NT = 480;
+      for (let i = 0; i < NT; i++) {
+        const [c, n, fold] = onTop(i * 2.399963 + (rng() - 0.5) * 0.2, Math.min(0.97, Math.sqrt((i + 0.5) / NT) + (rng() - 0.5) * 0.03));
+        const proud = rng() < 0.12 ? h * (0.04 + 0.06 * rng()) : h * 0.04 * (rng() - 0.5);
+        cluster([c[0] + n[0] * proud, c[1] + n[1] * proud, c[2] + n[2] * proud], n, L, false, fold);
+      }
+      for (let i = 0; i < 320; i++) {
+        const [c, n] = onSide(i * 2.399963 + rng() * 0.3);
+        cluster(c, n, L, false, 1);
+      }
+      // Shoots standing up out of the top, leafy, mostly with a head at the
+      // tip, as the scan's do: they break the cushion's skyline.
+      for (let i = 0; i < 18; i++) {
+        const th = i * 2.399963 + rng();
+        const [c0] = onTop(th, 0.1 + 0.8 * Math.sqrt(rng()));
+        const rise = Math.min(h * (0.1 + 0.12 * rng()), h * 0.98 - c0[1]);
+        const lean = 0.2 + 0.3 * rng();
+        const up = nrm([Math.cos(th) * lean, 1, Math.sin(th) * lean]);
+        let c: V3 = c0;
+        for (let k = 1; k <= 4; k++) {
+          const f = ((k / 4) * rise) / up[1];
+          c = [c0[0] + up[0] * f, c0[1] + up[1] * f, c0[2] + up[2] * f];
+          cluster(c, up, L * (1 - 0.08 * k), false, 1);
+        }
+        if (rng() < 0.75) bloom(c, up);
+      }
+      // Shoots reaching out of the sides past the edge, most of them about
+      // halfway up, some trailing low, a head at the end of half of them.
+      for (let i = 0; i < 18; i++) {
+        const th = i * 2.399963 + rng() * 0.5;
+        const ed = edge(th);
+        const out = Math.min(oval(th), ed * (1.05 + 0.12 * rng())) / ed;
+        const side = (rng() - 0.5) * 0.5;
+        const low = rng() < 0.3;
+        const y0 = S(x + Math.cos(th) * ed * 0.8, z + Math.sin(th) * ed * 0.8) * (low ? 0.3 : 0.55 + 0.3 * rng());
+        const droop = low ? 0.22 : 0.06 + 0.06 * rng();
+        const n = nrm([Math.cos(th), 1, Math.sin(th)]);
+        let c: V3 = [x, 0, z];
+        for (let k = 1; k <= 4; k++) {
+          const f = (0.85 + ((out - 0.85) * k) / 4) * ed;
+          const a = th + side * (k / 4);
+          c = [x + Math.cos(a) * f, Math.max(h * 0.03, y0 * (1 - droop * k)), z + Math.sin(a) * f];
+          cluster(c, n, L * 0.9, false, 1);
+        }
+        if (rng() < 0.5) bloom(c, n);
+      }
+      // Heads smothering it, the sides as well as the top.
+      for (let i = 0; i < 200; i++) {
+        const th = rng() * Math.PI * 2;
+        if (rng() < 0.35) {
+          const [c, n] = onSide(th);
+          bloom(c, n);
+        } else {
+          const [c, n] = onTop(th, 0.96 * Math.sqrt(rng()));
+          bloom(c, n);
+        }
+      }
+      // The heart, set in from the skin.
+      const core: V3[] = [];
+      for (let i = 0; i < 16; i++) {
+        const th = (i / 16) * Math.PI * 2;
+        for (const rho of [0.25, 0.5, 0.75]) {
+          const [c] = onTop(th, rho);
+          core.push([c[0], c[1] * 0.85 - h * 0.04, c[2]]);
+        }
+        const r = 0.72 * edge(th);
+        core.push([x + Math.cos(th) * r, 0, z + Math.sin(th) * r]);
+      }
+      // The shaded layer first, a step of tone at a time; the rest as grown.
+      sprigs.sort((a, b) => (a.inner === b.inner ? (a.inner ? a.tone - b.tone : 0) : a.inner ? -1 : 1));
+      return { sprigs, flowers: new Float32Array(flowers), core };
+    }
+
+    /** Yellow lantana, after the app's model.
+     *
+     *  A full round cushion, held high nearly to its edge and steep down to
+     *  the ground — an oval a fifth narrower across than along, as the scan
+     *  is — of dark green leaves in clusters, a few leafy shoots standing up
+     *  out of its top. Smothered in golden heads, a third of them in pairs:
+     *  close up, a ring of open florets round a deeper amber heart of buds.
+     *
+     *  Drawn as a dark core, then a shaded layer of leaves, then the skin's
+     *  leaf clusters and the flowers far to near, the far side passed over;
+     *  all through one local map at the cushion. Grown once and cached.
+     */
+    function drawYellowLantanaBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = yellowGrown.get(key);
+      if (!grown) {
+        if (yellowGrown.size > 400) yellowGrown.clear(); // growth and edits mint new keys
+        grown = growYellowLantana(x, z, h, rw, rot, seed);
+        yellowGrown.set(key, grown);
+      }
+      const pal = sel ? YELLOW_LANTANA_GOLD : YELLOW_LANTANA_COLOURS;
+      const tones = YL_TONES[sel ? 1 : 0];
+
+      // The local map at the cushion: screen x, y and depth per foot.
+      const cy = h * 0.4;
+      const q = P(x, cy, z);
+      const qx = P(x + 1, cy, z);
+      const qy = P(x, cy + 1, z);
+      const qz = P(x, cy, z + 1);
+      const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+      const sx = (px: number, py: number, pz: number) => q[0] + J[0] * (px - x) + J[1] * (py - cy) + J[2] * (pz - z);
+      const sy = (px: number, py: number, pz: number) => q[1] + J[3] * (px - x) + J[4] * (py - cy) + J[5] * (pz - z);
+      const depth = (px: number, py: number, pz: number) => q[2] + J[6] * (px - x) + J[7] * (py - cy) + J[8] * (pz - z);
+      const facing = (c: ArrayLike<number>, n: ArrayLike<number>) =>
+        n[0] * (eye[0] - c[0]) + n[1] * (eye[1] - c[1]) + n[2] * (eye[2] - c[2]) >= 0;
+
+      const hull = convexHull(grown.core.map((v): [number, number] => [sx(v[0], v[1], v[2]), sy(v[0], v[1], v[2])]));
+      ctx!.beginPath();
+      for (let i = 0; i < hull.length; i++) {
+        if (i) ctx!.lineTo(hull[i][0], hull[i][1]);
+        else ctx!.moveTo(hull[i][0], hull[i][1]);
+      }
+      ctx!.fillStyle = pal.core;
+      ctx!.fill();
+
+      // Pixels a foot across the view: the longer of the two ground axes on
+      // screen, which holds from overhead too (a foot up shrinks to nothing).
+      const footPx = Math.max(Math.hypot(J[0], J[3]), Math.hypot(J[2], J[5]));
+      // Kites while the leaves are under six pixels long.
+      const kite = footPx * rw * 0.062 < 6;
+      const n = kite ? YELLOW_KITE.length : YELLOW_LEAF.length;
+      const leafPath = (sp: YellowSprig) => {
+        const [cx, cy2, cz] = sp.c;
+        const ox = sx(cx, cy2, cz);
+        const oy = sy(cx, cy2, cz);
+        const pts = kite ? sp.kites : sp.leaves;
+        for (let o = 0; o < pts.length; o += n * 3) {
+          for (let k = 0; k < n; k++) {
+            const i = o + k * 3;
+            const px = ox + J[0] * pts[i] + J[1] * pts[i + 1] + J[2] * pts[i + 2];
+            const py = oy + J[3] * pts[i] + J[4] * pts[i + 1] + J[5] * pts[i + 2];
+            if (k) ctx!.lineTo(px, py);
+            else ctx!.moveTo(px, py);
+          }
+          ctx!.closePath();
+        }
+      };
+      const { sprigs, flowers } = grown;
+      const m = sprigs.length;
+      const nf = flowers.length / 8;
+      if (ylDepth.length < m + nf) {
+        ylDepth = new Float32Array((m + nf) * 2);
+        ylOrder = new Int32Array((m + nf) * 2);
+      }
+      let fill = "";
+      const paint = (col: string) => {
+        if (col !== fill) ctx!.fillStyle = fill = col;
+        ctx!.fill();
+      };
+
+      // The shaded layer.
+      let m0 = 0;
+      for (; m0 < m && sprigs[m0].inner; m0++) {
+        const sp = sprigs[m0];
+        if (!facing(sp.c, sp.n)) continue;
+        ctx!.beginPath();
+        leafPath(sp);
+        paint(tones.inner[sp.tone]);
+      }
+
+      // The skin and the flowers far to near, the flowers a little nearer
+      // than they stand, as they sit up over the leaves.
+      let count = 0;
+      for (let i = m0; i < m; i++) {
+        const sp = sprigs[i];
+        if (!facing(sp.c, sp.n)) continue;
+        ylDepth[i] = depth(sp.c[0], sp.c[1], sp.c[2]);
+        ylOrder[count++] = i;
+      }
+      for (let i = 0; i < nf; i++) {
+        const f = flowers.subarray(i * 8, i * 8 + 8);
+        if (!facing(f, f.subarray(4))) continue;
+        ylDepth[m + i] = depth(f[0], f[1], f[2]) - 0.1;
+        ylOrder[count++] = m + i;
+      }
+      const order = ylOrder.subarray(0, count).sort((a, b) => ylDepth[b] - ylDepth[a]);
+      for (const i of order) {
+        if (i < m) {
+          ctx!.beginPath();
+          leafPath(sprigs[i]);
+          paint(tones.leaf[sprigs[i].tone]);
+          continue;
+        }
+        // A dome of florets: the head, lit on its upper side, and close up
+        // its ring of open florets, each with an eye, round the buds.
+        const o = (i - m) * 8;
+        const ox = sx(flowers[o], flowers[o + 1], flowers[o + 2]);
+        const oy = sy(flowers[o], flowers[o + 1], flowers[o + 2]);
+        // Far off, a head is a fleck of its lit colour, never under a pixel
+        // and a bit across: the gold is what tells this lantana from the
+        // other two.
+        const pr = Math.max(1.4, flowers[o + 3] * footPx);
+        const t = flowers[o + 7];
+        // Nearer, the florets make the head's edge, so the head under them
+        // is drawn smaller, and set down a little where it is in shadow.
+        ctx!.beginPath();
+        if (pr > 7) ctx!.arc(ox, oy, pr * 0.74, 0, Math.PI * 2);
+        else if (pr > 3) ctx!.arc(ox + pr * 0.1, oy + pr * 0.12, pr * 0.8, 0, Math.PI * 2);
+        else ctx!.arc(ox, oy, pr, 0, Math.PI * 2);
+        paint(pr <= 3 ? tones.flowerLit[t] : tones.flower[t]);
+        if (pr > 7) {
+          // Florets crowd the head unevenly, lit on its upper side, a deeper
+          // throat in each; the buds in the middle a warmer amber.
+          const spin = flowers[o];
+          const at = (k: number): [number, number, number] => {
+            const a = (k / 7) * Math.PI * 2 + spin;
+            const jit = (Math.sin(spin * 53 + k * 12.9898) * 43758.5453) % 1;
+            const rr = pr * (0.55 + 0.12 * jit);
+            return [ox + Math.cos(a) * rr, oy + Math.sin(a) * rr * 0.9, pr * (0.27 + 0.07 * Math.abs(jit))];
+          };
+          for (const lit of [false, true]) {
+            ctx!.beginPath();
+            for (let k = 0; k < 7; k++) {
+              const [fx, fy, fr] = at(k);
+              if ((fx - ox + (fy - oy) * 1.2 < 0) !== lit) continue;
+              ctx!.moveTo(fx + fr, fy);
+              ctx!.arc(fx, fy, fr, 0, Math.PI * 2);
+            }
+            paint(lit ? tones.flowerLit[t] : tones.floret[t]);
+          }
+          ctx!.beginPath();
+          for (let k = 0; k < 3; k++) {
+            const a = (k / 3) * Math.PI * 2 + spin + 0.5;
+            ctx!.moveTo(ox + Math.cos(a) * pr * 0.16 + pr * 0.2, oy + Math.sin(a) * pr * 0.14);
+            ctx!.arc(ox + Math.cos(a) * pr * 0.16, oy + Math.sin(a) * pr * 0.14, pr * 0.2, 0, Math.PI * 2);
+          }
+          paint(tones.bud[t]);
+          ctx!.beginPath();
+          for (let k = 0; k < 7; k++) {
+            const [fx, fy] = at(k);
+            ctx!.moveTo(fx + pr * 0.05, fy);
+            ctx!.arc(fx, fy, pr * 0.05, 0, Math.PI * 2);
+          }
+          paint(pal.eye);
+        } else if (pr > 3) {
+          // Further off, a knot of lit florets making the head's lumpy edge,
+          // matte: one lit disc on a darker one reads as a bead.
+          ctx!.beginPath();
+          for (let k = 0; k < 4; k++) {
+            const a = (k / 4) * Math.PI * 2 + flowers[o];
+            const fr = pr * (k ? 0.48 : 0.4);
+            const fx = ox - pr * 0.05 + Math.cos(a) * pr * 0.42;
+            const fy = oy - pr * 0.06 + Math.sin(a) * pr * 0.38;
+            ctx!.moveTo(fx + fr, fy);
+            ctx!.arc(fx, fy, fr, 0, Math.PI * 2);
+          }
           paint(tones.flowerLit[t]);
         }
       }
@@ -9161,13 +9555,8 @@ export function LivingBlueprint({
         drawWhiteDawnBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "PurpleLantana") {
         drawPurpleLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (LANTANAS.has(inst.model)) {
-        // Selection still wins: a gold plant has been picked, and that has
-        // to read louder than the species colour.
-        drawLantanaBody(
-          x, z, h, rw, symRot, stroke, fill, lw,
-          sel ? undefined : LANTANA_BLOOM[inst.model],
-        );
+      } else if (inst.model === "YellowLantana") {
+        drawYellowLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
       } else if (inst.model === "GreenHopseed") {
         drawHopseedBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "TexasSage") {
