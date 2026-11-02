@@ -669,27 +669,28 @@ const YELLOW_BELLS: PlanSymbol = {
 // exactly that, and all of it in straight lines, so the mark is two closed
 // outlines and seven edges between them.
 //
-// Normalised to unit RADIUS, as the other traced outlines are, with the
-// short axis held at the scanned boulder's own footprint ratio (0.762 m
-// across against 1.029 m long) rather than the sketch's squarer one. At the
-// catalog's 4 ft spread the mark prints 3.6 x 2.7 ft, against the 3.4 x 2.5
-// ft rock the headset actually places at its middle size.
+// Normalised so its length spans the unit radius, the way the scan's
+// catalog spread is measured (its longest side, 1.029 m at the middle size,
+// against 0.762 m across), with the short axis held at that ratio rather
+// than the sketch's squarer one. Each size draws the rock it places (see
+// sizeFactor): the Large mark prints 4.5 x 3.3 ft, the headset's 4.4 x 3.25.
+// Fitted to the radius at its corners instead, it came out a tenth short.
 const AZ_BOULDER_OUTLINE: [number, number][] = [
-  [-0.8996,0.2766], [-0.4988,-0.3021], [0.2899,-0.6661], [0.8996,-0.4368],
-  [0.8143,0.2512], [-0.3027,0.6661], [-0.7589,0.637],
+  [-1,0.3075], [-0.5545,-0.3358], [0.3223,-0.7404], [1,-0.4855],
+  [0.9052,0.2792], [-0.3365,0.7404], [-0.8436,0.7081],
 ];
 
 const AZ_BOULDER_FACE: [number, number][] = [
-  [-0.405,-0.091], [0.2217,-0.4259], [0.4732,-0.3458], [0.3794,0.0473],
-  [-0.2217,0.3021], [-0.4391,0.1929],
+  [-0.4502,-0.1012], [0.2464,-0.4734], [0.526,-0.3844], [0.4217,0.0526],
+  [-0.2464,0.3358], [-0.4881,0.2144],
 ];
 
 // Each one runs from a corner of the top face out to the silhouette.
 const AZ_BOULDER_FACETS: Seg[] = [
-  [-0.4988,-0.3021,-0.405,-0.091], [-0.405,-0.091,-0.8996,0.2766],
-  [0.2899,-0.6661,0.2217,-0.4259], [0.4732,-0.3458,0.8996,-0.4368],
-  [0.3794,0.0473,0.8143,0.2512], [-0.2217,0.3021,-0.3027,0.6661],
-  [-0.4391,0.1929,-0.7589,0.637],
+  [-0.5545,-0.3358,-0.4502,-0.1012], [-0.4502,-0.1012,-1,0.3075],
+  [0.3223,-0.7404,0.2464,-0.4734], [0.526,-0.3844,1,-0.4855],
+  [0.4217,0.0526,0.9052,0.2792], [-0.2464,0.3358,-0.3365,0.7404],
+  [-0.4881,0.2144,-0.8436,0.7081],
 ];
 
 const AZ_BOULDER: PlanSymbol = {

@@ -13,7 +13,7 @@
 
 import { plantForModel, type CatalogPlant, type CatalogSize } from "@/lib/design-edit";
 import { surfaceStyle } from "@/lib/surfaces";
-import { speciesMeta } from "@/lib/viewer/catalog";
+import { sizeFactor, speciesMeta } from "@/lib/viewer/catalog";
 import { symbolFor, type PlanSymbol } from "@/lib/viewer/symbols";
 import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 import { METERS_TO_FEET } from "@/lib/viewer/types";
@@ -161,16 +161,17 @@ export type PlantMark = {
 
 /**
  * Every plant's mark: the viewer's symbol at half the catalog's mature
- * spread, never under a foot (a pool prefab is its own 10 x 6 ft footprint),
- * turned with the plant — a +yaw carries the model's +X to (cos, -sin) on
- * the ground, so the yaw comes off the sheet's turn.
+ * spread, never under a foot (a pool prefab is its own 10 x 6 ft footprint;
+ * a boulder is the rock its size places, see sizeFactor), turned with the
+ * plant — a +yaw carries the model's +X to (cos, -sin) on the ground, so
+ * the yaw comes off the sheet's turn.
  */
 export function plantMarks(project: ProjectFileJSON, layout: SheetLayout): PlantMark[] {
   const ptPerFt = layout.mapScale / METERS_TO_FEET;
   return (project.placements ?? []).map((p) => {
     const meta = speciesMeta(p.plantModelName);
     const scale = p.scaleX || 1;
-    const half = meta.matureWidthFt / 2;
+    const half = (meta.matureWidthFt / 2) * sizeFactor(p.plantModelName, meta.kind, scale);
     const radiusFt = meta.kind === "poolPrefab" ? Math.max(half, 5 * scale) : Math.max(half, 1);
     const [rx, rz] = layout.rotate(p.positionX, p.positionZ);
     const [x, y] = layout.toPDF(rx, rz);

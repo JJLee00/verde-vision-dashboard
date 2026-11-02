@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-10-31",
+  "generatedAt": "2026-11-01",
   "sizeOrder": [
     "1g",
     "5g",
@@ -345,8 +345,8 @@
           "modelName": "AZBoulder1"
         }
       ],
-      "matureHeightFt": 2,
-      "matureWidthFt": 5,
+      "matureHeightFt": 1,
+      "matureWidthFt": 4.5,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Sonoran Desert, Arizona",

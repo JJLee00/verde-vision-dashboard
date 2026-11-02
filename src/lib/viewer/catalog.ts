@@ -160,8 +160,8 @@ export const CATALOG: Record<string, SpeciesMeta> = {
     botanical: "Granite, surface select",
     kind: "boulder",
     matureHeightFt: 1,
-    matureWidthFt: 4,
-    renderHeightFt: 1.3,
+    matureWidthFt: 4.5,
+    renderHeightFt: 1,
     prices: { Small: 75, Medium: 165, Large: 295 },
   },
   SwimmingPool: {
@@ -573,6 +573,29 @@ const APP_WIDTH_FT: Record<string, number> = appDims("matureWidthFt");
  *  boulders drawn TALLER than they are. A saguaro really does tower over a
  *  lantana, and the drawing is more use when it says so. */
 const APP_HEIGHT_FT: Record<string, number> = appDims("matureHeightFt");
+
+/** The largest scale the app places each model at: the size its catalog
+ *  figures describe, for the things that don't grow. */
+const APP_FULL_SCALE: Record<string, number> = (() => {
+  const out: Record<string, number> = {};
+  for (const plant of appCatalog.plants) {
+    for (const size of plant.sizes ?? []) {
+      if (size.modelName) out[size.modelName] = Math.max(out[size.modelName] ?? 0, size.heightMultiplier);
+    }
+  }
+  return out;
+})();
+
+/** How large a placement draws against its catalog figures. A plant draws
+ *  at its mature size whatever pot it went in as: that is what a planting
+ *  plan shows. A boulder doesn't grow. A Small one is a smaller rock, so it
+ *  draws at its own scale against the largest size, the one the catalog
+ *  measures. BlueprintExporter's planRadiusFeet does the same in the app. */
+export function sizeFactor(model: string, kind: GlyphKind, scale: number): number {
+  const full = APP_FULL_SCALE[model];
+  if (kind !== "boulder" || !full) return 1;
+  return (scale || 1) / full;
+}
 
 function appDims(field: "matureWidthFt" | "matureHeightFt"): Record<string, number> {
   const out: Record<string, number> = {};
