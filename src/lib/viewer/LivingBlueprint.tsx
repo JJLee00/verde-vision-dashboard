@@ -123,41 +123,6 @@ function convexHull(pts: [number, number][]): [number, number][] {
   return [...half(p), ...half([...p].reverse())];
 }
 
-/** How one agave species is put together, as fractions of its own mature
- *  width and height. Every number is a pair read [youngest, oldest]: a
- *  rosette's leaves differ by age, and the SPREAD between those two numbers
- *  is most of what tells two agaves apart. */
-type AgaveShape = {
-  /** leaves */
-  n: number;
-  /** leaf length, of the half-width */
-  len: [number, number];
-  /** where the tip ends up, of the height */
-  tip: [number, number];
-  /** how much the old leaves lift before they fall away, of the height */
-  arch: number;
-  /** half-width at the belly, of the plant's half-width */
-  width: [number, number];
-  /** how far along the leaf that belly sits */
-  belly: number;
-  /** how the leaf ends. 1 tapers all the way to a needle; higher holds the
-   *  width almost to the end and stops — which is the whole point of a
-   *  truncata, and the difference between a blade and a paddle. */
-  taper: number;
-  /** terminal spine beyond the blade, of the leaf's length. A blunt leaf
-   *  still ends in one hard dark point. */
-  spine: number;
-  /** sawn margins. Americana's are obvious; the artichoke's are nearly
-   *  smooth and drawing them only muddies it. */
-  teeth: boolean;
-  /** how far out the leaves attach, of the half-width. A crown, not a
-   *  point: seventeen outlines meeting at one spot is a dark knot. */
-  root: number;
-  /** width at the attachment, of the belly width. A bract is broad where it
-   *  joins; a blade comes to nothing. */
-  stub: number;
-};
-
 /** Lantana is a groundcover, not a shrub with a canopy: a low spreading
  *  mound carrying dozens of small flower clusters, which is what the scan
  *  shows and what the plan symbol's scalloped rim says. */
@@ -570,6 +535,25 @@ const AMERICANA_GOLD = {
   spine: "rgb(96,62,22)",
 };
 
+/** Agave truncata: pale glaucous blue-grey above, the backs a creamy sage;
+ *  fine red-brown teeth and a stout red-brown spine at every tip. */
+const TRUNCATA_COLOURS = {
+  upper: [[104, 118, 112], [204, 214, 206]],
+  under: [[122, 130, 118], [222, 218, 190]],
+  core: "rgb(58,70,66)",
+  margin: "rgba(132,96,72,0.5)",
+  teeth: "rgb(128,78,58)",
+  spine: "rgb(92,52,38)",
+};
+const TRUNCATA_GOLD = {
+  upper: [[140, 100, 46], [236, 200, 128]],
+  under: [[126, 90, 42], [214, 178, 112]],
+  core: "rgb(100,70,30)",
+  margin: "rgba(140,90,36,0.6)",
+  teeth: "rgb(118,74,26)",
+  spine: "rgb(96,62,22)",
+};
+
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -589,28 +573,6 @@ const AZ_ROCK_GOLD = {
   crease: "rgba(122,86,30,0.45)",
   dark: "rgba(110,76,30,0.42)",
   light: "rgba(255,244,214,0.6)",
-};
-
-const AGAVE_SHAPES: Record<string, AgaveShape> = {
-  // The artichoke agave: short, broad, rigid leaves of nearly one length,
-  // packed into a tight symmetrical dome and overlapping like bracts. Almost
-  // no droop, and wide enough along their whole length to read as armour.
-  AgaveTruncata: {
-    n: 15,
-    len: [0.6, 0.95],
-    // Even the oldest leaves finish well above the ground: this is a ball,
-    // not a skirt. Dropping them to the soil the way americana's fall is
-    // what made the first attempt read as the wrong plant.
-    tip: [1, 0.45],
-    arch: 0.06,
-    width: [0.19, 0.38],
-    belly: 0.46,
-    taper: 5,
-    spine: 0.08,
-    teeth: false,
-    root: 0.2,
-    stub: 0.38,
-  },
 };
 
 export function LivingBlueprint({
@@ -1195,146 +1157,6 @@ export function LivingBlueprint({
       for (let k = 0; k < 3; k++) {
         const az = rot + (k / 3) * Math.PI * 2;
         limbQuad(forkY, h * (0.56 + 0.1 * (k % 2)), r1 * 0.78, r1 * 0.24, 0, rw * 0.27, az);
-      }
-    }
-
-    function drawAgaveBody(
-      x: number,
-      z: number,
-      h: number,
-      rw: number,
-      stroke: string,
-      fill: string,
-      lw: number,
-      shape: AgaveShape,
-    ) {
-      // Few enough leaves that the overlaps stay legible: every leaf is a
-      // translucent fill laid over the last, and fifteen americana leaves
-      // turned the middle into a blot.
-      const N = shape.n;
-      const lerp = (p: [number, number], age: number) => p[0] + (p[1] - p[0]) * age;
-      const y0 = h * 0.06; // leaves spring from a short stem, not the soil
-      // No zoom test here on purpose. Detail used to switch on above a
-      // projected size, so a plant grew teeth and a midrib as you leaned in
-      // and lost them as you pulled back. What a leaf carries is now a
-      // property of the leaf.
-
-      type Leaf = {
-        pts: [number, number][];
-        rib: [number, number][];
-        spine: [number, number][];
-        depth: number;
-      };
-      const leaves: Leaf[] = [];
-
-      for (let k = 0; k < N; k++) {
-        const a = k * 2.399963; // golden angle — no two leaves shadow each other
-        const age = 1 - k / (N - 1); // 1 = oldest and outermost, 0 = youngest
-        const L = rw * lerp(shape.len, age);
-        const yTip = h * lerp(shape.tip, age);
-        const arch = h * shape.arch * age; // the old ones lift before they fall
-        // Width is the giveaway, and it is NOT uniform: the old outer leaves
-        // are a hand across, the young middle ones are narrow spikes. Scaling
-        // width with age is what turns a dark scribble into a rosette.
-        const halfW = rw * lerp(shape.width, age);
-        // The long outer leaves carry the margin and a midrib; on the short
-        // inner ones that detail would just be ink. Age, not zoom.
-        const detailed = age > 0.45;
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-
-        // The margin of an agave leaf is sawn, and the sawtooth is the
-        // difference between a leaf and a petal. It has to be built from
-        // real alternating vertices — a smooth curve modulated by a sine and
-        // then sampled coarsely just aliases into crumpled paper.
-        const S = age > 0.45 ? 10 : 7;
-        const spineLen = shape.spine * L;
-        const r0 = rw * shape.root; // leaves ring a crown, they do not all
-                                    // meet at one point — that knots the middle
-        const at = (i: number, side: number): [number, number] => {
-          const t = i / S;
-          const r = r0 + (L - r0) * t;
-          const y = y0 + (yTip - y0) * t + arch * 4 * t * (1 - t);
-          const notch =
-            shape.teeth && detailed && side !== 0 && i > 1 && i < S && i % 2 === 1
-              ? 0.88
-              : 1;
-          // A leaf is narrow where it attaches, bellies out about a quarter
-          // of the way along, then runs to the terminal spine. Taking it as
-          // widest at the base is what made eleven leaves into one blot.
-          // Rise to the belly, then run out. How fast it runs out is the
-          // species: taper 1 closes to a needle, taper 5 is still most of
-          // its width at nine tenths along and then stops square.
-          const rise =
-            shape.stub + (1 - shape.stub) * Math.pow(Math.min(1, t / shape.belly), 0.8);
-          const belly = rise * Math.pow(1 - Math.pow(t, shape.taper), 0.55);
-          const w = halfW * belly * notch * side;
-          const q = P(x + ca * r - sa * w, y, z + sa * r + ca * w);
-          return [q[0], q[1]];
-        };
-
-        const pts: [number, number][] = [];
-        for (let i = 0; i <= S; i++) pts.push(at(i, 1));
-        for (let i = S; i >= 0; i--) pts.push(at(i, -1));
-
-        const rib: [number, number][] = [];
-        if (detailed) {
-          const from = Math.round(S * 0.35);
-          for (let i = from; i <= S; i += Math.max(1, Math.round(S / 5))) rib.push(at(i, 0));
-          rib.push(at(S, 0));
-        }
-
-        const tip = P(x + ca * L, y0 + (yTip - y0), z + sa * L);
-        // The terminal spine: its own short, heavier stroke carrying on past
-        // the blunt end of the blade, lifted a little the way a real one
-        // hooks up off the leaf.
-        const spine: [number, number][] = [];
-        if (spineLen > 0) {
-          const nose = P(
-            x + ca * (L + spineLen),
-            y0 + (yTip - y0) + spineLen * 0.35,
-            z + sa * (L + spineLen),
-          );
-          spine.push(at(S, 0), [nose[0], nose[1]]);
-        }
-        leaves.push({ pts, rib, spine, depth: tip[2] });
-      }
-
-      // Far leaves first, so the near ones lie over them.
-      leaves.sort((p, q) => q.depth - p.depth);
-
-      for (const leaf of leaves) {
-        ctx!.beginPath();
-        ctx!.moveTo(leaf.pts[0][0], leaf.pts[0][1]);
-        for (let i = 1; i < leaf.pts.length; i++) ctx!.lineTo(leaf.pts[i][0], leaf.pts[i][1]);
-        ctx!.closePath();
-        ctx!.fillStyle = LEAF_BODY;
-        ctx!.fill();
-        ctx!.fillStyle = fill;
-        ctx!.fill();
-        ctx!.strokeStyle = stroke;
-        ctx!.lineWidth = lw;
-        ctx!.lineJoin = "round";
-        ctx!.stroke();
-
-        if (leaf.rib.length > 1) {
-          ctx!.beginPath();
-          ctx!.moveTo(leaf.rib[0][0], leaf.rib[0][1]);
-          for (let i = 1; i < leaf.rib.length; i++) ctx!.lineTo(leaf.rib[i][0], leaf.rib[i][1]);
-          ctx!.lineWidth = lw * 0.5;
-          ctx!.stroke();
-          ctx!.lineWidth = lw;
-        }
-        if (leaf.spine.length === 2) {
-          ctx!.beginPath();
-          ctx!.moveTo(leaf.spine[0][0], leaf.spine[0][1]);
-          ctx!.lineTo(leaf.spine[1][0], leaf.spine[1][1]);
-          ctx!.lineWidth = lw * 1.15;
-          ctx!.lineCap = "round";
-          ctx!.stroke();
-          ctx!.lineCap = "butt";
-          ctx!.lineWidth = lw;
-        }
       }
     }
 
@@ -7526,6 +7348,453 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // The truncata's leaves, the same on every plant as in the headset, in
+    // the model's measure (its height = 1): thirty-four on the golden angle
+    // up a short cone, their tips spread evenly over a dome — the oldest out
+    // at the rim a third of the way up, the youngest closed into a bud at
+    // the top. Every leaf leaves the stem flatter than it ends: they curl
+    // up and in, which is what stands the sides up straight and makes the
+    // artichoke. A leaf is a broad, thick spoon: the fold down its middle,
+    // the margins cupped up either side of it, a shallow keel beneath; four
+    // faces between those lines, and every face in two halves — below and
+    // above the leaf's widest — since a leaf that runs out flat and then
+    // stands up shows its back only on the half that stands. Each station
+    // holds fold, left margin, right margin, keel, as (x, y, z).
+    const TC_LEAVES = 34;
+    const TC_ALONG = [0, 0.14, 0.3, 0.46, 0.62, 0.76, 0.87, 0.94, 1];
+    // Narrow where it joins, widest three-quarters out, then rounded off
+    // short to the spine: a paddle, not a blade.
+    const TC_WIDE = [0.4, 0.55, 0.72, 0.88, 0.98, 1, 0.86, 0.56, 0];
+    const TC_PTS = TC_ALONG.length;
+    const TC_SPLIT = 4; // the station the two halves share
+    const TC_FACES = TC_LEAVES * 2 * 4;
+    const TC_FACE_LINES = [
+      [0, 1],
+      [0, 2],
+      [1, 3],
+      [2, 3],
+    ];
+    const TC_TEETH = 8; // down each margin
+    const TC_LEVELS = 8;
+    const tcRamp = (lo: number[], hi: number[]) =>
+      Array.from({ length: TC_LEVELS }, (_, i) => {
+        const t = i / (TC_LEVELS - 1);
+        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
+      });
+    // Upper, then under — the sheet's and gold.
+    const TC_TONES = [TRUNCATA_COLOURS, TRUNCATA_GOLD].map((pal) => [
+      ...tcRamp(pal.upper[0], pal.upper[1]),
+      ...tcRamp(pal.under[0], pal.under[1]),
+    ]);
+    const TC_MODEL = (() => {
+      const rng = rngFor("agave-truncata");
+      const deg = Math.PI / 180;
+      const leaf = new Float32Array(TC_LEAVES * TC_PTS * 12);
+      // Each tooth: where it sits on the margin, then out to its point, then
+      // half its foot along the margin.
+      const teeth = new Float32Array(TC_LEAVES * 2 * TC_TEETH * 9);
+      const toothHalf = new Uint8Array(TC_LEAVES * 2 * TC_TEETH);
+      // Each leaf's tip, and the end of the spine past it.
+      const spine = new Float32Array(TC_LEAVES * 6);
+      let top = 0;
+      for (let i = 0; i < TC_LEAVES; i++) {
+        const t = i / (TC_LEAVES - 1); // 0 the oldest, outermost; 1 the youngest
+        // Where the tip lands on the dome, and where the leaf leaves the stem.
+        const lat = (6 + 76 * t + (rng() - 0.5) * 6) * deg;
+        const tipR = 1.02 * Math.cos(lat);
+        const tipY = 0.28 + 0.72 * Math.sin(lat);
+        // A broad crown: the old leaves come out of it well clear of the
+        // middle, so what shows of them stands up as a wall.
+        const r0 = 0.03 + 0.5 * Math.pow(1 - t, 1.5);
+        const y0 = 0.03 + 0.4 * Math.pow(t, 1.2);
+        // The curl gathers toward the end — the old leaves run out low and
+        // then stand up — and the leaf is aimed and sized so that, curled,
+        // its tip still lands on the dome.
+        const curl = (75 - 66 * t + (rng() - 0.5) * 8) * deg;
+        const angle = (s: number) => e0 + curl * Math.pow(s, 1.8);
+        const reach = () => {
+          let dr = 0;
+          let dy = 0;
+          for (let j = 1; j < TC_PTS; j++) {
+            const e = angle((TC_ALONG[j - 1] + TC_ALONG[j]) / 2);
+            dr += Math.cos(e) * (TC_ALONG[j] - TC_ALONG[j - 1]) * len;
+            dy += Math.sin(e) * (TC_ALONG[j] - TC_ALONG[j - 1]) * len;
+          }
+          return [dr, dy];
+        };
+        const want = Math.atan2(tipY - y0, tipR - r0);
+        const far = Math.hypot(tipR - r0, tipY - y0);
+        let e0 = want;
+        let len = far;
+        for (let k = 0; k < 8; k++) {
+          const [dr, dy] = reach();
+          e0 += want - Math.atan2(dy, dr);
+          len *= far / Math.hypot(dr, dy);
+        }
+        const hw = 0.34 * (1 - 0.45 * t) * (0.9 + 0.2 * rng());
+        const az = i * 2.39996 + (rng() - 0.5) * 0.2;
+        const sway = (rng() - 0.5) * 16 * deg;
+        let px = Math.cos(az) * r0;
+        let py = y0;
+        let pz = Math.sin(az) * r0;
+        let prev = 0;
+        const frame: number[][] = [];
+        for (let j = 0; j < TC_PTS; j++) {
+          const s = TC_ALONG[j];
+          if (j > 0) {
+            const sm = (prev + s) / 2;
+            const e = angle(sm);
+            const ps = az + sway * sm * sm;
+            const step = (s - prev) * len;
+            px += Math.cos(e) * Math.cos(ps) * step;
+            py = Math.max(0.006, py + Math.sin(e) * step);
+            pz += Math.cos(e) * Math.sin(ps) * step;
+          }
+          prev = s;
+          // Along the leaf; across it, level; up off its upper face.
+          const e = angle(s);
+          const ps = az + sway * s * s;
+          const T = [Math.cos(e) * Math.cos(ps), Math.sin(e), Math.cos(e) * Math.sin(ps)];
+          const S = [-Math.sin(ps), 0, Math.cos(ps)];
+          const N = [-Math.cos(ps) * Math.sin(e), Math.cos(e), -Math.sin(ps) * Math.sin(e)];
+          const w = hw * TC_WIDE[j];
+          const cup = 0.24 * w;
+          const keel = 0.14 * w;
+          leaf.set(
+            [
+              px, py, pz,
+              px + S[0] * w + N[0] * cup, py + N[1] * cup, pz + S[2] * w + N[2] * cup,
+              px - S[0] * w + N[0] * cup, py + N[1] * cup, pz - S[2] * w + N[2] * cup,
+              px - N[0] * keel, py - N[1] * keel, pz - N[2] * keel,
+            ],
+            (i * TC_PTS + j) * 12,
+          );
+          frame.push([...T, ...S, ...N]);
+          top = Math.max(top, py);
+        }
+        // The terminal spine: short and stout, straight on from the tip.
+        const T = frame[TC_PTS - 1];
+        const tip = (i * TC_PTS + TC_PTS - 1) * 12;
+        const sl = 0.06;
+        spine.set([leaf[tip], leaf[tip + 1], leaf[tip + 2], leaf[tip] + T[0] * sl, leaf[tip + 1] + T[1] * sl, leaf[tip + 2] + T[2] * sl], i * 6);
+        // Fine teeth down the outer two-thirds of both margins.
+        for (let side = 0; side < 2; side++) {
+          const sg = side === 0 ? 1 : -1;
+          for (let k2 = 0; k2 < TC_TEETH; k2++) {
+            const s = 0.2 + (0.68 * (k2 + 0.3 + rng() * 0.4)) / TC_TEETH;
+            let j = 0;
+            while (j < TC_PTS - 2 && TC_ALONG[j + 1] < s) j++;
+            const fr = (s - TC_ALONG[j]) / (TC_ALONG[j + 1] - TC_ALONG[j]);
+            const a = (i * TC_PTS + j) * 12 + 3 + side * 3;
+            const b = a + 12;
+            const [Tx, Ty, Tz, Sx, , Sz, Nx, Ny, Nz] = frame[j];
+            const size = hw / 0.34;
+            const out = 0.02 * size;
+            const foot = 0.011 * size;
+            teeth.set(
+              [
+                leaf[a] + (leaf[b] - leaf[a]) * fr,
+                leaf[a + 1] + (leaf[b + 1] - leaf[a + 1]) * fr,
+                leaf[a + 2] + (leaf[b + 2] - leaf[a + 2]) * fr,
+                (Sx * sg * 0.8 + Nx * 0.35 + Tx * 0.4) * out,
+                (Ny * 0.35 + Ty * 0.4) * out,
+                (Sz * sg * 0.8 + Nz * 0.35 + Tz * 0.4) * out,
+                Tx * foot,
+                Ty * foot,
+                Tz * foot,
+              ],
+              ((i * 2 + side) * TC_TEETH + k2) * 9,
+            );
+            toothHalf[(i * 2 + side) * TC_TEETH + k2] = s < TC_ALONG[TC_SPLIT] ? 0 : 1;
+          }
+        }
+      }
+      // The tallest leaf tip to the full height.
+      const ys = 1 / top;
+      for (let k = 1; k < leaf.length; k += 3) leaf[k] *= ys;
+      for (let k = 1; k < teeth.length; k += 3) teeth[k] *= ys;
+      for (let k = 1; k < spine.length; k += 3) spine[k] *= ys;
+      return { leaf, teeth, toothHalf, spine, core: [0, 0.36 * ys, 0] };
+    })();
+
+    // Grown once per plant and kept, as the trees are.
+    type TruncataPlant = {
+      /** the leaves' lines, turned, scaled and placed */
+      leaf: Float32Array;
+      /** each face's outward normal, its middle and its tone */
+      faceN: Float32Array;
+      faceMid: Float32Array;
+      faceTone: Uint8Array;
+      teeth: Float32Array;
+      spine: Float32Array;
+      core: [number, number, number];
+    };
+    const truncataGrown = new Map<string, TruncataPlant>();
+    // The packed leaf bases inside, as a cone in the model's measure: rings
+    // of (radius, height) round the middle. It stays under the old leaves,
+    // which run out low, and fills what's seen past their tips.
+    const TC_DOME_AROUND = 16;
+    const TC_DOME = (() => {
+      const rings = [
+        [0.52, 0],
+        [0.42, 0.15],
+        [0.3, 0.32],
+        [0.16, 0.5],
+        [0.04, 0.62],
+      ];
+      const pts = new Float32Array(rings.length * TC_DOME_AROUND * 3);
+      rings.forEach(([r, y], k) => {
+        for (let a = 0; a < TC_DOME_AROUND; a++) {
+          const th = (a / TC_DOME_AROUND) * Math.PI * 2;
+          pts.set([Math.cos(th) * r, y, Math.sin(th) * r], (k * TC_DOME_AROUND + a) * 3);
+        }
+      });
+      return pts;
+    })();
+    // Scratch, reused plant to plant.
+    const tcDomeX = new Float32Array(TC_DOME.length / 3);
+    const tcDomeY = new Float32Array(TC_DOME.length / 3);
+    const tcDomeIdx: number[] = Array.from({ length: TC_DOME.length / 3 }, (_, i) => i);
+    const tcHull: number[] = [];
+    const tcOrder: number[] = [];
+    const tcDepth = new Float32Array(TC_FACES);
+    const tcVis = new Uint8Array(TC_FACES);
+    const tcDone = new Uint8Array(TC_FACES);
+
+    function growTruncata(x: number, z: number, h: number, rot: number): TruncataPlant {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const level = (n: V3) =>
+        Math.max(0, Math.min(TC_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TC_LEVELS - 1))));
+      const unit = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const turn = (src: Float32Array, dst: Float32Array, o: number, offset: boolean) => {
+        const mx = src[o];
+        const mz = src[o + 2];
+        dst[o] = (offset ? x : 0) + (mx * cr - mz * sr) * h;
+        dst[o + 1] = src[o + 1] * h;
+        dst[o + 2] = (offset ? z : 0) + (mx * sr + mz * cr) * h;
+      };
+
+      const leaf = new Float32Array(TC_MODEL.leaf.length);
+      for (let o = 0; o < leaf.length; o += 3) turn(TC_MODEL.leaf, leaf, o, true);
+      const teeth = new Float32Array(TC_MODEL.teeth.length);
+      for (let o = 0; o < teeth.length; o += 9) {
+        turn(TC_MODEL.teeth, teeth, o, true);
+        turn(TC_MODEL.teeth, teeth, o + 3, false);
+        turn(TC_MODEL.teeth, teeth, o + 6, false);
+      }
+      const spine = new Float32Array(TC_MODEL.spine.length);
+      for (let o = 0; o < spine.length; o += 3) turn(TC_MODEL.spine, spine, o, true);
+      // Each face lit by its normal halfway along its half, pointed away
+      // from the middle of the leaf's section.
+      const faceN = new Float32Array(TC_FACES * 3);
+      const faceMid = new Float32Array(TC_FACES * 3);
+      const faceTone = new Uint8Array(TC_FACES);
+      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * TC_PTS + j) * 12 + line * 3 + k];
+      for (let i = 0; i < TC_LEAVES; i++) {
+        for (let g = 0; g < 2; g++) {
+          const m = g === 0 ? 2 : 6;
+          const along: V3 = [0, 1, 2].map((k) => pt(i, m + 1, 0, k) - pt(i, m - 1, 0, k)) as V3;
+          const middle: V3 = [0, 1, 2].map((k) => pt(i, m, 0, k) * 0.6 + pt(i, m, 3, k) * 0.4) as V3;
+          for (let f = 0; f < 4; f++) {
+            const [la, lb] = TC_FACE_LINES[f];
+            const a: V3 = [0, 1, 2].map((k) => pt(i, m, la, k)) as V3;
+            const b: V3 = [0, 1, 2].map((k) => pt(i, m, lb, k)) as V3;
+            const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+            let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
+            const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
+            if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
+            const fi = (i * 2 + g) * 4 + f;
+            faceN.set(n, fi * 3);
+            for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (a[k] + b[k]) / 2;
+            faceTone[fi] = (f < 2 ? 0 : TC_LEVELS) + level(n);
+          }
+        }
+      }
+      const c = TC_MODEL.core;
+      return { leaf, faceN, faceMid, faceTone, teeth, spine, core: [x + c[0] * h, c[1] * h, z + c[2] * h] };
+    }
+
+    /** Agave truncata, the artichoke agave, after the app's model.
+     *
+     *  A tight, symmetrical dome of thirty-four short, broad, thick leaves of
+     *  nearly one length, pale glaucous blue-grey above and creamy sage
+     *  behind, cupped like spoons and overlapping like the bracts of an
+     *  artichoke; each cut short to a stout red-brown spine, with fine teeth
+     *  down its margins.
+     *
+     *  The dark inside goes down first. Each leaf is a solid of four faces —
+     *  the two halves of the cupped upper face over a keeled back — cut in
+     *  two along its length, so the end that stands up shows its back and
+     *  the run beneath it doesn't; every face toward the eye in one
+     *  far-to-near sort. Then its margin, its teeth and its spine, as soon
+     *  as they'd show. Grown once and cached; drawn through the local map at
+     *  the heart.
+     */
+    function drawTruncataBody(x: number, z: number, h: number, rot: number, sel: boolean, lw: number) {
+      const key = `${x}|${z}|${h}|${rot}`;
+      let grown = truncataGrown.get(key);
+      if (!grown) {
+        if (truncataGrown.size > 400) truncataGrown.clear(); // growth and edits mint new keys
+        grown = growTruncata(x, z, h, rot);
+        truncataGrown.set(key, grown);
+      }
+      const { leaf, faceN, faceMid, faceTone, teeth, spine, core } = grown;
+      const pal = sel ? TRUNCATA_GOLD : TRUNCATA_COLOURS;
+      const tones = TC_TONES[sel ? 1 : 0];
+
+      // The local map at the heart: screen x, y and depth per foot.
+      const q = P(core[0], core[1], core[2]);
+      const qx = P(core[0] + 1, core[1], core[2]);
+      const qy = P(core[0], core[1] + 1, core[2]);
+      const qz = P(core[0], core[1], core[2] + 1);
+      const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+      const footPx = Math.hypot(J[1], J[4]);
+      const sxOf = (o: Float32Array, i: number) =>
+        q[0] + J[0] * (o[i] - core[0]) + J[1] * (o[i + 1] - core[1]) + J[2] * (o[i + 2] - core[2]);
+      const syOf = (o: Float32Array, i: number) =>
+        q[1] + J[3] * (o[i] - core[0]) + J[4] * (o[i + 1] - core[1]) + J[5] * (o[i + 2] - core[2]);
+      const depthOf = (o: Float32Array, i: number) =>
+        q[2] + J[6] * (o[i] - core[0]) + J[7] * (o[i + 1] - core[1]) + J[8] * (o[i + 2] - core[2]);
+
+      // The shadowed inside, packed with leaf bases, first — the outline of
+      // the dome as seen, so whatever shows between the leaves is dark, as
+      // it is on the plant, and never the ground.
+      {
+        const n = tcDomeX.length;
+        for (let k = 0; k < n; k++) {
+          const dx = TC_DOME[k * 3] * h;
+          const dy = TC_DOME[k * 3 + 1] * h - core[1];
+          const dz = TC_DOME[k * 3 + 2] * h;
+          tcDomeX[k] = q[0] + J[0] * dx + J[1] * dy + J[2] * dz;
+          tcDomeY[k] = q[1] + J[3] * dx + J[4] * dy + J[5] * dz;
+        }
+        tcDomeIdx.sort((a, b) => tcDomeX[a] - tcDomeX[b] || tcDomeY[a] - tcDomeY[b]);
+        // Andrew's monotone chain: lower run, then upper.
+        const cross = (o: number, a: number, b: number) =>
+          (tcDomeX[a] - tcDomeX[o]) * (tcDomeY[b] - tcDomeY[o]) - (tcDomeY[a] - tcDomeY[o]) * (tcDomeX[b] - tcDomeX[o]);
+        tcHull.length = 0;
+        for (const k of tcDomeIdx) {
+          while (tcHull.length >= 2 && cross(tcHull[tcHull.length - 2], tcHull[tcHull.length - 1], k) <= 0) tcHull.pop();
+          tcHull.push(k);
+        }
+        const lower = tcHull.length + 1;
+        for (let m = n - 2; m >= 0; m--) {
+          const k = tcDomeIdx[m];
+          while (tcHull.length >= lower && cross(tcHull[tcHull.length - 2], tcHull[tcHull.length - 1], k) <= 0) tcHull.pop();
+          tcHull.push(k);
+        }
+        ctx!.beginPath();
+        ctx!.moveTo(tcDomeX[tcHull[0]], tcDomeY[tcHull[0]]);
+        for (let m = 1; m < tcHull.length - 1; m++) ctx!.lineTo(tcDomeX[tcHull[m]], tcDomeY[tcHull[m]]);
+        ctx!.closePath();
+        ctx!.fillStyle = pal.core;
+        ctx!.fill();
+      }
+
+      // Faces toward the eye, far to near.
+      tcOrder.length = 0;
+      for (let f = 0; f < TC_FACES; f++) {
+        const o = f * 3;
+        const vis =
+          faceN[o] * (eye[0] - faceMid[o]) + faceN[o + 1] * (eye[1] - faceMid[o + 1]) + faceN[o + 2] * (eye[2] - faceMid[o + 2]) > 0;
+        tcVis[f] = vis ? 1 : 0;
+        tcDone[f] = 0;
+        if (!vis) continue;
+        tcDepth[f] = depthOf(faceMid, o);
+        tcOrder.push(f);
+      }
+      tcOrder.sort((a, b) => tcDepth[b] - tcDepth[a]);
+
+      const margins = footPx * h > 60;
+      const toothed = footPx * h > 130;
+      const marginW = Math.max(footPx * h * 0.004, 0.6);
+      for (const it of tcOrder) {
+        const i = it >> 3;
+        const g = (it >> 2) & 1;
+        const f = it & 3;
+        const [la, lb] = TC_FACE_LINES[f];
+        const base = i * TC_PTS * 12;
+        const j0 = g === 0 ? 0 : TC_SPLIT;
+        const j1 = g === 0 ? TC_SPLIT : TC_PTS - 1;
+        ctx!.beginPath();
+        for (let j = j0; j <= j1; j++) {
+          const o = base + j * 12 + la * 3;
+          if (j === j0) ctx!.moveTo(sxOf(leaf, o), syOf(leaf, o));
+          else ctx!.lineTo(sxOf(leaf, o), syOf(leaf, o));
+        }
+        for (let j = j1; j >= j0; j--) {
+          const o = base + j * 12 + lb * 3;
+          ctx!.lineTo(sxOf(leaf, o), syOf(leaf, o));
+        }
+        ctx!.closePath();
+        ctx!.fillStyle = tones[faceTone[it]];
+        ctx!.fill();
+        tcDone[it] = 1;
+        // The margin this face shares with its partner above or below,
+        // its teeth, and — once per leaf, with the last of its faces to
+        // show — the spine.
+        const partner = it ^ 2;
+        if (margins && !(tcVis[partner] && !tcDone[partner])) {
+          const line = f === 0 || f === 2 ? 1 : 2;
+          ctx!.beginPath();
+          for (let j = j0; j <= j1; j++) {
+            const o = base + j * 12 + line * 3;
+            if (j === j0) ctx!.moveTo(sxOf(leaf, o), syOf(leaf, o));
+            else ctx!.lineTo(sxOf(leaf, o), syOf(leaf, o));
+          }
+          ctx!.strokeStyle = pal.margin;
+          ctx!.lineWidth = marginW;
+          ctx!.stroke();
+          if (toothed) {
+            ctx!.beginPath();
+            for (let k = 0; k < TC_TEETH; k++) {
+              if (TC_MODEL.toothHalf[(i * 2 + line - 1) * TC_TEETH + k] !== g) continue;
+              const o = ((i * 2 + line - 1) * TC_TEETH + k) * 9;
+              const mx = sxOf(teeth, o);
+              const my = syOf(teeth, o);
+              const ox = J[0] * teeth[o + 3] + J[1] * teeth[o + 4] + J[2] * teeth[o + 5];
+              const oy = J[3] * teeth[o + 3] + J[4] * teeth[o + 4] + J[5] * teeth[o + 5];
+              const ax = J[0] * teeth[o + 6] + J[1] * teeth[o + 7] + J[2] * teeth[o + 8];
+              const ay = J[3] * teeth[o + 6] + J[4] * teeth[o + 7] + J[5] * teeth[o + 8];
+              ctx!.moveTo(mx - ax, my - ay);
+              ctx!.lineTo(mx + ax, my + ay);
+              ctx!.lineTo(mx + ox + ax * 0.8, my + oy + ay * 0.8);
+              ctx!.closePath();
+            }
+            ctx!.fillStyle = pal.teeth;
+            ctx!.fill();
+          }
+        }
+        let last = true;
+        for (let k = i * 8; k < i * 8 + 8; k++) if (tcVis[k] && !tcDone[k]) last = false;
+        if (last) {
+          // A thorn: broad where it leaves the leaf, to a point.
+          const ax = sxOf(spine, i * 6);
+          const ay = syOf(spine, i * 6);
+          const bx = sxOf(spine, i * 6 + 3);
+          const by = syOf(spine, i * 6 + 3);
+          const l = Math.hypot(bx - ax, by - ay) || 1;
+          const half = Math.max(footPx * h * 0.011, 0.6) / l;
+          ctx!.beginPath();
+          ctx!.moveTo(ax - (by - ay) * half - (bx - ax) * 0.25, ay + (bx - ax) * half - (by - ay) * 0.25);
+          ctx!.lineTo(bx, by);
+          ctx!.lineTo(ax + (by - ay) * half - (bx - ax) * 0.25, ay - (bx - ax) * half - (by - ay) * 0.25);
+          ctx!.closePath();
+          ctx!.fillStyle = pal.spine;
+          ctx!.fill();
+        }
+      }
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -8249,6 +8518,8 @@ export function LivingBlueprint({
         drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
         drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
+      } else if (inst.model === "AgaveTruncata") {
+        drawTruncataBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "AgaveAmericana") {
         drawAmericanaBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "TropicalAgave") {
@@ -8257,8 +8528,6 @@ export function LivingBlueprint({
         drawFeroxBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "Aloe Vera") {
         drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw, !(sel || hover));
-      } else if (meta.kind === "rosette" && AGAVE_SHAPES[inst.model]) {
-        drawAgaveBody(x, z, h, rw, stroke, fill, lw, AGAVE_SHAPES[inst.model]);
       } else if (meta.kind === "rosette") {
         const bp = P(x, 0, z);
         ctx!.strokeStyle = stroke;
