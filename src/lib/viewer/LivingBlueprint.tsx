@@ -495,6 +495,20 @@ const MADAGASCAR_GOLD = {
   spine: "rgba(255,240,206,0.85)",
 };
 
+/** Firestick: the scan's pencil sticks — the old wood pale grey, the
+ *  branches straw-tan, the young growth up top green. Each as its shaded
+ *  and lit side. */
+const FIRESTICK_COLOURS = {
+  wood: [[156, 150, 136], [228, 224, 210]],
+  straw: [[160, 140, 106], [230, 214, 178]],
+  young: [[108, 120, 66], [178, 188, 118]],
+};
+const FIRESTICK_GOLD = {
+  wood: [[150, 112, 56], [246, 222, 170]],
+  straw: [[140, 100, 46], [236, 200, 128]],
+  young: [[130, 96, 40], [226, 190, 112]],
+};
+
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -6176,6 +6190,180 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
+    // The firestick's sticks, the same on every plant as in the headset,
+    // in the model's measure (its height = 1): a pale leader the whole
+    // height; low down, branches spreading wide and forking, and forking
+    // again, each fork turning further up, into a coral of upturned sticks;
+    // higher, shorter branches held more upright, so the top is narrow.
+    // Each stick is [x0, y0, z0, x1, y1, z1, width, colour], its colour 0
+    // the old wood, 1 straw, 2 the young green.
+    const FS_STICKS: number[][] = (() => {
+      const rng = rngFor("firestick");
+      const out: number[][] = [];
+      const widths = [0.019, 0.015, 0.012, 0.0095, 0.008];
+      type V3 = [number, number, number];
+      const unit = (v: V3): V3 => {
+        const l = Math.hypot(v[0], v[1], v[2]) || 1;
+        return [v[0] / l, v[1] / l, v[2] / l];
+      };
+      const colourAt = (y: number, order: number) =>
+        order === 0 && y < 0.3 ? 0 : rng() < Math.max(0, Math.min(1, (y - 0.5) / 0.35)) * 0.75 ? 2 : 1;
+      const fork = (p: V3, d: V3, len: number, order: number, last: number, lift: number) => {
+        const e: V3 = [p[0] + d[0] * len, p[1] + d[1] * len, p[2] + d[2] * len];
+        out.push([...p, ...e, widths[Math.min(order, 4)], colourAt(e[1], order)]);
+        // Some stop short, as the scan's do.
+        if (order >= last || (order >= 2 && rng() < 0.12)) return;
+        // Two ways on (now and then three), splayed across the stick and
+        // turned up.
+        const side = unit([-d[2], 0, d[0]]);
+        const n = rng() < 0.2 ? 3 : 2;
+        const roll = rng() * Math.PI;
+        for (let k = 0; k < n; k++) {
+          const a = roll + (k * Math.PI * 2) / n;
+          const spread = (0.3 + rng() * 0.45) * (order === 0 ? 1.1 : 0.9);
+          const across: V3 = [side[0] * Math.cos(a), Math.sin(a) * 0.6, side[2] * Math.cos(a)];
+          const nd = unit([d[0] + across[0] * spread, d[1] + across[1] * spread + lift, d[2] + across[2] * spread]);
+          fork(e, nd, len * (0.55 + rng() * 0.35), order + 1, last, lift);
+        }
+      };
+      // The leader, leaning a touch as it climbs, forking at its top.
+      let at: V3 = [0, 0, 0];
+      for (let k = 0; k < 5; k++) {
+        const next: V3 = [at[0] + (rng() - 0.5) * 0.02, (k + 1) * 0.17, at[2] + (rng() - 0.5) * 0.02];
+        out.push([...at, ...next, 0.028 - k * 0.0022, k < 3 ? 0 : 1]);
+        at = next;
+      }
+      fork(at, [0, 1, 0], 0.08, 1, 3, 0.3);
+      const leaderAt = (y: number): V3 => {
+        for (const st of out.slice(0, 5)) {
+          if (y <= st[4]) {
+            const f = (y - st[1]) / (st[4] - st[1]);
+            return [st[0] + (st[3] - st[0]) * f, y, st[2] + (st[5] - st[2]) * f];
+          }
+        }
+        return at;
+      };
+      // The low branches: out nearly flat from the foot, then forking
+      // four deep, each fork turning up.
+      for (let i = 0; i < 16; i++) {
+        const y = 0.03 + (i / 15) * 0.37 + (rng() - 0.5) * 0.03;
+        const az = i * 2.39996 + (rng() - 0.5) * 0.4;
+        const el = (12 + rng() * 22 + (y / 0.4) * 10) * (Math.PI / 180);
+        fork(leaderAt(y), [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)], 0.12 + rng() * 0.05, 0, 4, 0.32);
+      }
+      // The high ones: shorter, steeper, crowding into an upright head.
+      for (let i = 0; i < 16; i++) {
+        const y = 0.42 + (i / 15) * 0.45 + (rng() - 0.5) * 0.03;
+        const az = 1.3 + i * 2.39996 + (rng() - 0.5) * 0.4;
+        const el = (50 + rng() * 20) * (Math.PI / 180);
+        fork(leaderAt(y), [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)], 0.06 + rng() * 0.03, 1, 4, 0.4);
+      }
+      return out;
+    })();
+    const FS_N = FS_STICKS.length;
+    // Every stick's batch: its width (the leader's own five, then the
+    // branches' four), colour and whether it's on the near side.
+    const FS_WIDTHS = [...new Set(FS_STICKS.map((st) => st[6]))].sort((a, b) => b - a);
+    const FS_BATCH = FS_STICKS.map((st) => FS_WIDTHS.indexOf(st[6]) * 3 + st[7]);
+    const FS_BATCHES = FS_WIDTHS.length * 3;
+    const fsTones = [FIRESTICK_COLOURS, FIRESTICK_GOLD].map((pal) =>
+      [pal.wood, pal.straw, pal.young].map(([lo, hi]) =>
+        [0.35, 0.6, 0.9].map((t) => `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`),
+      ),
+    );
+    const firestickGrown = new Map<string, Float32Array>();
+    // Scratch: each stick's ends on screen, and each batch's sticks.
+    const fsScreen = new Float32Array(FS_N * 4);
+    const fsBuckets: number[][] = Array.from({ length: FS_BATCHES * 2 }, () => []);
+
+    /** Firestick, after the app's model.
+     *
+     *  Pencil sticks and nothing else: a pale leader up the middle; low
+     *  down, branches spreading wide and forking and forking again, each
+     *  fork turning further up, into a coral of upturned sticks; higher,
+     *  shorter branches held upright, so the top is narrow. Straw-tan, the
+     *  old wood pale, the young growth up top green — the scan's colours;
+     *  it was captured before its sticks turned red.
+     *
+     *  Drawn as strokes, one per width, colour and side: the far side's
+     *  sticks first, darker, then the near side's. Close up, every stick
+     *  gets a lit stripe along it, so it reads round. Grown once and
+     *  cached; placed by the local map at half height, which a plant this
+     *  size doesn't bend.
+     */
+    function drawFirestickBody(x: number, z: number, h: number, rot: number, sel: boolean, lw: number) {
+      const key = `${x}|${z}|${h}|${rot}`;
+      let grown = firestickGrown.get(key);
+      if (!grown) {
+        if (firestickGrown.size > 400) firestickGrown.clear(); // growth and edits mint new keys
+        const cr = Math.cos(rot);
+        const sr = Math.sin(rot);
+        grown = new Float32Array(FS_N * 6);
+        FS_STICKS.forEach((st, i) => {
+          for (let e = 0; e < 2; e++) {
+            const mx = st[e * 3];
+            const mz = st[e * 3 + 2];
+            grown!.set([x + (mx * cr - mz * sr) * h, st[e * 3 + 1] * h, z + (mx * sr + mz * cr) * h], i * 6 + e * 3);
+          }
+        });
+        firestickGrown.set(key, grown);
+      }
+      const tones = fsTones[sel ? 1 : 0];
+
+      const cy = h * 0.5;
+      const q = P(x, cy, z);
+      const qx = P(x + 1, cy, z);
+      const qy = P(x, cy + 1, z);
+      const qz = P(x, cy, z + 1);
+      const J0 = qx[0] - q[0];
+      const J1 = qy[0] - q[0];
+      const J2 = qz[0] - q[0];
+      const J3 = qx[1] - q[1];
+      const J4 = qy[1] - q[1];
+      const J5 = qz[1] - q[1];
+      // Toward the eye across the ground, to tell the near side.
+      const ex = eye[0] - x;
+      const ez = eye[2] - z;
+
+      for (const b of fsBuckets) b.length = 0;
+      for (let i = 0; i < FS_N; i++) {
+        const o = i * 6;
+        for (let e = 0; e < 2; e++) {
+          const dx = grown[o + e * 3] - x;
+          const dy = grown[o + e * 3 + 1] - cy;
+          const dz = grown[o + e * 3 + 2] - z;
+          fsScreen[i * 4 + e * 2] = q[0] + J0 * dx + J1 * dy + J2 * dz;
+          fsScreen[i * 4 + e * 2 + 1] = q[1] + J3 * dx + J4 * dy + J5 * dz;
+        }
+        const near = (grown[o] + grown[o + 3] - 2 * x) * ex + (grown[o + 2] + grown[o + 5] - 2 * z) * ez >= 0;
+        fsBuckets[FS_BATCH[i] + (near ? FS_BATCHES : 0)].push(i);
+      }
+
+      const footPx = Math.hypot(J1, J4);
+      const round = footPx * h > 150;
+      ctx!.lineCap = "round";
+      const pass = (side: number, tone: number, scale: number, shift: number) => {
+        for (let b = 0; b < FS_BATCHES; b++) {
+          const sticks = fsBuckets[b + side * FS_BATCHES];
+          if (!sticks.length) continue;
+          const w = Math.max(FS_WIDTHS[(b / 3) | 0] * h * footPx, 0.7);
+          ctx!.beginPath();
+          for (const i of sticks) {
+            ctx!.moveTo(fsScreen[i * 4] - w * shift, fsScreen[i * 4 + 1] - w * shift);
+            ctx!.lineTo(fsScreen[i * 4 + 2] - w * shift, fsScreen[i * 4 + 3] - w * shift);
+          }
+          ctx!.strokeStyle = tones[b % 3][tone];
+          ctx!.lineWidth = w * scale;
+          ctx!.stroke();
+        }
+      };
+      pass(0, 0, 1, 0);
+      pass(1, round ? 0 : 1, 1, 0);
+      if (round) pass(1, 2, 0.45, 0.18);
+      ctx!.lineCap = "butt";
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -6796,6 +6984,8 @@ export function LivingBlueprint({
         drawTotemBody(x, z, h, symRot, sel || hover);
       } else if (inst.model === "MadagascarPalm") {
         drawMadagascarBody(x, z, h, symRot, sel || hover, lw);
+      } else if (inst.model === "Firestick") {
+        drawFirestickBody(x, z, h, symRot, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
