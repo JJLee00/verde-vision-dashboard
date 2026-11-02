@@ -470,6 +470,31 @@ const TOTEM_GOLD = {
   crease: "rgb(116,80,36)",
 };
 
+/** Madagascar palm: long strap leaves, yellow-green on top with a pale
+ *  midrib, duller olive beneath, over a grey-brown trunk of pale spines. */
+const MADAGASCAR_COLOURS = {
+  shade: [72, 82, 40],
+  lit: [192, 202, 112],
+  under: [98, 108, 60],
+  underLit: [176, 184, 118],
+  midrib: "rgba(222,226,170,0.7)",
+  heart: "rgb(58,58,36)",
+  bark: [82, 70, 60],
+  barkLit: [182, 164, 140],
+  spine: "rgba(220,216,202,0.6)",
+};
+const MADAGASCAR_GOLD = {
+  shade: [140, 100, 46],
+  lit: [236, 200, 128],
+  under: [126, 90, 42],
+  underLit: [214, 178, 112],
+  midrib: "rgba(255,240,200,0.85)",
+  heart: "rgb(112,78,36)",
+  bark: [126, 88, 40],
+  barkLit: [226, 186, 120],
+  spine: "rgba(255,240,206,0.85)",
+};
+
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -5756,6 +5781,401 @@ export function LivingBlueprint({
       }
     }
 
+    // Grown once per plant and kept, as the trees are.
+    type MadagascarPlant = {
+      /** the trunk's ring centres, foot to neck, and its rings' points as
+       *  offsets, and each face's outward normal and tone */
+      axis: Float32Array;
+      ring: Float32Array;
+      faceN: Float32Array;
+      faceTone: Uint8Array;
+      /** spines on the trunk: where each sits, and which way it points */
+      spines: Float32Array;
+      /** the heart of the crown, where the leaves meet */
+      heart: [number, number, number];
+      /** each leaf's centre line and the half-width across it, as (x, y, z)
+       *  pairs, point by point; its middle; the normal of its upper face;
+       *  and its tone seen from above and from below */
+      leaf: Float32Array;
+      mid: Float32Array;
+      leafN: Float32Array;
+      leafTone: Uint8Array;
+    };
+    const MP_LEVELS = 8;
+    const MP_SIDES = 10;
+    const MP_PTS = 7;
+    const MP_LEAVES = 96;
+    const MP_SPINES = 160;
+    const mpRamp = (lo: number[], hi: number[]) =>
+      Array.from({ length: MP_LEVELS }, (_, i) => {
+        const t = i / (MP_LEVELS - 1);
+        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
+      });
+    // Leaf tones over, then under, then the bark's — the sheet's and gold.
+    const MP_TONES = [MADAGASCAR_COLOURS, MADAGASCAR_GOLD].map((pal) => [
+      ...mpRamp(pal.shade, pal.lit),
+      ...mpRamp(pal.under, pal.underLit),
+      ...mpRamp(pal.bark, pal.barkLit),
+    ]);
+    // The model in its own measure (its height = 1): the trunk leans from
+    // its foot to the neck where the leaves begin, thick and tapering, and
+    // the crown's heart sits just above, over the bounding box's middle.
+    const MP_FOOT = [0.06, 0.055];
+    const MP_NECK = [0.012, 0.02];
+    const MP_RINGS = [
+      [0, 0.05],
+      [0.14, 0.046],
+      [0.28, 0.041],
+      [0.42, 0.037],
+      [0.56, 0.035],
+    ];
+    const MP_HEART = [0.005, 0.56, 0.01];
+    // Where a leaf is along its length, and how wide: a narrow foot, a long
+    // strap, a rounded point.
+    const MP_ALONG = [0, 0.15, 0.35, 0.55, 0.75, 0.9, 1];
+    const MP_WIDE = [0.3, 0.9, 1, 1, 0.95, 0.7, 0.15];
+    // The leaves, the same on every plant as in the headset: a spiral up
+    // the neck, the oldest at the bottom hanging down the trunk, the middle
+    // ones arching out and drooping at the tips, the youngest standing up
+    // out of the top. Each as its centre line and half-width, point by
+    // point, in the model's measure.
+    const MP_LEAF = (() => {
+      const rng = rngFor("madagascar-palm");
+      const out = new Float32Array(MP_LEAVES * MP_PTS * 6);
+      const deg = Math.PI / 180;
+      for (let i = 0; i < MP_LEAVES; i++) {
+        const t = (i + 0.5) / MP_LEAVES;
+        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
+        const dx = Math.cos(az);
+        const dz = Math.sin(az);
+        const sx = -dz;
+        const sz = dx;
+        const rise = (-55 + 135 * Math.pow(t, 0.85) + (rng() - 0.5) * 24) * deg;
+        const bend = (0.55 + 0.8 * (1 - t)) * (0.7 + 0.6 * rng());
+        const tip = Math.max(rise - bend, -85 * deg);
+        // The oldest, hanging, are the shortest left.
+        const len = 0.36 * (0.85 + 0.3 * rng()) * (t < 0.25 ? 0.7 + 1.2 * t : 1);
+        const hw = 0.026 * (0.85 + 0.3 * rng());
+        const tw0 = (rng() - 0.5) * 1.0;
+        const tw1 = (rng() - 0.5) * 0.8;
+        let px = MP_HEART[0] + dx * 0.035;
+        let py = 0.46 + 0.2 * t;
+        let pz = MP_HEART[2] + dz * 0.035;
+        let prev = 0;
+        for (let j = 0; j < MP_PTS; j++) {
+          const sAt = MP_ALONG[j];
+          if (j > 0) {
+            // Along the stretch since the last point, at its middle angle.
+            const sm = (prev + sAt) / 2;
+            const th = rise + (tip - rise) * Math.pow(sm, 1.5);
+            const step = (sAt - prev) * len;
+            px += dx * Math.cos(th) * step;
+            py += Math.sin(th) * step;
+            pz += dz * Math.cos(th) * step;
+          }
+          prev = sAt;
+          const th = rise + (tip - rise) * Math.pow(sAt, 1.5);
+          // Across the leaf, twisted a little along it; up off it, the
+          // normal of its upper face before the twist.
+          const tw = tw0 + tw1 * sAt;
+          const ux = -Math.sin(th) * dx;
+          const uy = Math.cos(th);
+          const uz = -Math.sin(th) * dz;
+          const w = hw * MP_WIDE[j];
+          const o = (i * MP_PTS + j) * 6;
+          out[o] = px;
+          out[o + 1] = py;
+          out[o + 2] = pz;
+          out[o + 3] = (sx * Math.cos(tw) + ux * Math.sin(tw)) * w;
+          out[o + 4] = uy * Math.sin(tw) * w;
+          out[o + 5] = (sz * Math.cos(tw) + uz * Math.sin(tw)) * w;
+        }
+      }
+      return out;
+    })();
+    // Spines up the trunk on a spiral: each one's height and angle.
+    const MP_SPINE_AT = (() => {
+      const rng = rngFor("madagascar-spines");
+      const out = new Float32Array(MP_SPINES * 2);
+      for (let i = 0; i < MP_SPINES; i++) {
+        out[i * 2] = 0.02 + 0.4 * (i / MP_SPINES) + (rng() - 0.5) * 0.01;
+        out[i * 2 + 1] = i * 2.39996 + (rng() - 0.5) * 0.4;
+      }
+      return out;
+    })();
+    const madagascarGrown = new Map<string, MadagascarPlant>();
+    // Scratch, reused plant to plant.
+    const mpScreen = new Float32Array(MP_RINGS.length * MP_SIDES * 2);
+    const mpBuckets: number[][] = Array.from({ length: MP_LEVELS }, () => []);
+    const mpOrder: number[] = [];
+    const mpDepth = new Float32Array(MP_LEAVES + 2);
+
+    function growMadagascar(x: number, z: number, h: number, rot: number): MadagascarPlant {
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      type V3 = [number, number, number];
+      const level = (n: V3) =>
+        Math.max(0, Math.min(MP_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (MP_LEVELS - 1))));
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      const turnX = (mx: number, mz: number) => mx * cr - mz * sr;
+      const turnZ = (mx: number, mz: number) => mx * sr + mz * cr;
+      const put = (mx: number, my: number, mz: number): V3 => [x + turnX(mx, mz) * h, my * h, z + turnZ(mx, mz) * h];
+      const vec = (mx: number, my: number, mz: number): V3 => [turnX(mx, mz), my, turnZ(mx, mz)];
+
+      // The trunk: rings up the lean, faces shaded once.
+      const NR = MP_RINGS.length;
+      const axis = new Float32Array(NR * 3);
+      const ring = new Float32Array(NR * MP_SIDES * 2);
+      MP_RINGS.forEach(([y, r], l) => {
+        const f = Math.min(1, y / 0.42);
+        axis.set(put(MP_FOOT[0] + (MP_NECK[0] - MP_FOOT[0]) * f, y, MP_FOOT[1] + (MP_NECK[1] - MP_FOOT[1]) * f), l * 3);
+        for (let j = 0; j < MP_SIDES; j++) {
+          const a = rot + (j * Math.PI * 2) / MP_SIDES;
+          ring[(l * MP_SIDES + j) * 2] = Math.cos(a) * r * h;
+          ring[(l * MP_SIDES + j) * 2 + 1] = Math.sin(a) * r * h;
+        }
+      });
+      const faceN = new Float32Array((NR - 1) * MP_SIDES * 3);
+      const faceTone = new Uint8Array((NR - 1) * MP_SIDES);
+      for (let b = 0; b < NR - 1; b++) {
+        const taper = (MP_RINGS[b][1] - MP_RINGS[b + 1][1]) / (MP_RINGS[b + 1][0] - MP_RINGS[b][0]);
+        for (let j = 0; j < MP_SIDES; j++) {
+          const a = rot + ((j + 0.5) * Math.PI * 2) / MP_SIDES;
+          const l = Math.hypot(1, taper);
+          const n: V3 = [Math.cos(a) / l, taper / l, Math.sin(a) / l];
+          faceN.set(n, (b * MP_SIDES + j) * 3);
+          faceTone[b * MP_SIDES + j] = level(n);
+        }
+      }
+      // Its spines, each standing out of the bark where it sits.
+      const spines = new Float32Array(MP_SPINES * 6);
+      for (let i = 0; i < MP_SPINES; i++) {
+        const y = MP_SPINE_AT[i * 2];
+        const a = MP_SPINE_AT[i * 2 + 1] + rot;
+        const f = Math.min(1, y / 0.42);
+        const r = 0.05 + (0.037 - 0.05) * f;
+        const c = put(MP_FOOT[0] + (MP_NECK[0] - MP_FOOT[0]) * f, y, MP_FOOT[1] + (MP_NECK[1] - MP_FOOT[1]) * f);
+        spines.set([c[0] + Math.cos(a) * r * h, c[1], c[2] + Math.sin(a) * r * h, Math.cos(a), 0.35, Math.sin(a)], i * 6);
+      }
+
+      // The leaves, turned and scaled, each with its upper face's normal.
+      const leaf = new Float32Array(MP_LEAVES * MP_PTS * 6);
+      const mid = new Float32Array(MP_LEAVES * 3);
+      const leafN = new Float32Array(MP_LEAVES * 3);
+      const leafTone = new Uint8Array(MP_LEAVES * 2);
+      for (let i = 0; i < MP_LEAVES; i++) {
+        for (let j = 0; j < MP_PTS; j++) {
+          const o = (i * MP_PTS + j) * 6;
+          leaf.set(put(MP_LEAF[o], MP_LEAF[o + 1], MP_LEAF[o + 2]), o);
+          const w = vec(MP_LEAF[o + 3], MP_LEAF[o + 4], MP_LEAF[o + 5]);
+          leaf.set([w[0] * h, w[1] * h, w[2] * h], o + 3);
+        }
+        const a = (i * MP_PTS + 2) * 6;
+        const b = (i * MP_PTS + 4) * 6;
+        mid.set([leaf[(i * MP_PTS + 3) * 6], leaf[(i * MP_PTS + 3) * 6 + 1], leaf[(i * MP_PTS + 3) * 6 + 2]], i * 3);
+        // Up off the leaf: across it, crossed with along it.
+        const tx = leaf[b] - leaf[a];
+        const ty = leaf[b + 1] - leaf[a + 1];
+        const tz = leaf[b + 2] - leaf[a + 2];
+        const wx = leaf[(i * MP_PTS + 3) * 6 + 3];
+        const wy = leaf[(i * MP_PTS + 3) * 6 + 4];
+        const wz = leaf[(i * MP_PTS + 3) * 6 + 5];
+        let n: V3 = [wy * tz - wz * ty, wz * tx - wx * tz, wx * ty - wy * tx];
+        const nl = Math.hypot(n[0], n[1], n[2]) || 1;
+        n = [n[0] / nl, n[1] / nl, n[2] / nl];
+        leafN.set(n, i * 3);
+        leafTone[i * 2] = level(n);
+        leafTone[i * 2 + 1] = MP_LEVELS + level([-n[0], -n[1], -n[2]]);
+      }
+      return { axis, ring, faceN, faceTone, spines, heart: put(MP_HEART[0], MP_HEART[1], MP_HEART[2]), leaf, mid, leafN, leafTone };
+    }
+
+    /** Madagascar palm, after the app's model.
+     *
+     *  No palm at all: a thick grey-brown trunk, tapering and leaning a
+     *  little, studded with pale spines, and on top a shaggy fountain of
+     *  long strap leaves — the youngest standing up out of the middle, the
+     *  rest arching out and drooping at their tips, the oldest hanging down
+     *  the trunk. Yellow-green on top with a pale midrib, duller beneath.
+     *
+     *  The trunk, the dark heart of the crown and every leaf are drawn far
+     *  to near, so a hanging leaf behind the trunk stays behind it. The
+     *  trunk is a ring of shaded faces with, close up, its spines; a leaf
+     *  is a twisted ribbon in one tone — its upper face's or its under
+     *  face's, whichever shows — and, big enough to see, its midrib.
+     *  Grown once and cached; the leaves placed by the local map at the
+     *  crown, which a plant this size doesn't bend.
+     */
+    function drawMadagascarBody(x: number, z: number, h: number, rot: number, sel: boolean, lw: number) {
+      const key = `${x}|${z}|${h}|${rot}`;
+      let grown = madagascarGrown.get(key);
+      if (!grown) {
+        if (madagascarGrown.size > 400) madagascarGrown.clear(); // growth and edits mint new keys
+        grown = growMadagascar(x, z, h, rot);
+        madagascarGrown.set(key, grown);
+      }
+      const { axis, ring, faceN, faceTone, spines, heart, leaf, mid, leafN, leafTone } = grown;
+      const pal = sel ? MADAGASCAR_GOLD : MADAGASCAR_COLOURS;
+      const tones = MP_TONES[sel ? 1 : 0];
+      const NR = MP_RINGS.length;
+
+      // The local map at the heart: screen x, y and depth per foot.
+      const q = P(heart[0], heart[1], heart[2]);
+      const qx = P(heart[0] + 1, heart[1], heart[2]);
+      const qy = P(heart[0], heart[1] + 1, heart[2]);
+      const qz = P(heart[0], heart[1], heart[2] + 1);
+      const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+      const footPx = Math.hypot(J[1], J[4]);
+
+      // Far to near: each leaf by its middle, the trunk by its own, the
+      // heart by its.
+      mpOrder.length = 0;
+      for (let i = 0; i < MP_LEAVES; i++) {
+        const dx = mid[i * 3] - heart[0];
+        const dy = mid[i * 3 + 1] - heart[1];
+        const dz = mid[i * 3 + 2] - heart[2];
+        mpDepth[i] = q[2] + J[6] * dx + J[7] * dy + J[8] * dz;
+        mpOrder.push(i);
+      }
+      mpDepth[MP_LEAVES] = P(axis[3], axis[4], axis[5])[2];
+      mpOrder.push(MP_LEAVES);
+      mpDepth[MP_LEAVES + 1] = q[2];
+      mpOrder.push(MP_LEAVES + 1);
+      mpOrder.sort((a, b) => mpDepth[b] - mpDepth[a]);
+
+      const midribs = footPx * h > 90;
+      const sxOf = (px: number, py: number, pz: number) =>
+        q[0] + J[0] * (px - heart[0]) + J[1] * (py - heart[1]) + J[2] * (pz - heart[2]);
+      const syOf = (px: number, py: number, pz: number) =>
+        q[1] + J[3] * (px - heart[0]) + J[4] * (py - heart[1]) + J[5] * (pz - heart[2]);
+
+      for (const it of mpOrder) {
+        if (it === MP_LEAVES) {
+          // The trunk: its outline dark, then each face toward the eye.
+          const lc: [number, number, number][] = [];
+          for (let l = 0; l < NR; l++) lc.push(P(axis[l * 3], axis[l * 3 + 1], axis[l * 3 + 2]));
+          const jx0 = qx[0] - q[0];
+          const jx1 = qx[1] - q[1];
+          const jz0 = qz[0] - q[0];
+          const jz1 = qz[1] - q[1];
+          for (let l = 0; l < NR; l++) {
+            for (let j = 0; j < MP_SIDES; j++) {
+              const k2 = (l * MP_SIDES + j) * 2;
+              mpScreen[k2] = lc[l][0] + jx0 * ring[k2] + jz0 * ring[k2 + 1];
+              mpScreen[k2 + 1] = lc[l][1] + jx1 * ring[k2] + jz1 * ring[k2 + 1];
+            }
+          }
+          const hull = convexHull(Array.from({ length: NR * MP_SIDES }, (_, k): [number, number] => [mpScreen[k * 2], mpScreen[k * 2 + 1]]));
+          if (hull.length > 2) {
+            ctx!.beginPath();
+            ctx!.moveTo(hull[0][0], hull[0][1]);
+            for (let k = 1; k < hull.length; k++) ctx!.lineTo(hull[k][0], hull[k][1]);
+            ctx!.closePath();
+            ctx!.fillStyle = tones[2 * MP_LEVELS];
+            ctx!.fill();
+          }
+          let vx = eye[0] - axis[6];
+          let vy = eye[1] - axis[7];
+          let vz = eye[2] - axis[8];
+          const vl = Math.hypot(vx, vy, vz) || 1;
+          vx /= vl;
+          vy /= vl;
+          vz /= vl;
+          for (const bucket of mpBuckets) bucket.length = 0;
+          for (let f = 0; f < (NR - 1) * MP_SIDES; f++) {
+            if (faceN[f * 3] * vx + faceN[f * 3 + 1] * vy + faceN[f * 3 + 2] * vz > 0) mpBuckets[faceTone[f]].push(f);
+          }
+          mpBuckets.forEach((faces, t) => {
+            if (!faces.length) return;
+            ctx!.beginPath();
+            for (const f of faces) {
+              const b = (f / MP_SIDES) | 0;
+              const j = f % MP_SIDES;
+              const j1 = (j + 1) % MP_SIDES;
+              ctx!.moveTo(mpScreen[(b * MP_SIDES + j) * 2], mpScreen[(b * MP_SIDES + j) * 2 + 1]);
+              ctx!.lineTo(mpScreen[(b * MP_SIDES + j1) * 2], mpScreen[(b * MP_SIDES + j1) * 2 + 1]);
+              ctx!.lineTo(mpScreen[((b + 1) * MP_SIDES + j1) * 2], mpScreen[((b + 1) * MP_SIDES + j1) * 2 + 1]);
+              ctx!.lineTo(mpScreen[((b + 1) * MP_SIDES + j) * 2], mpScreen[((b + 1) * MP_SIDES + j) * 2 + 1]);
+              ctx!.closePath();
+            }
+            ctx!.fillStyle = tones[2 * MP_LEVELS + t];
+            ctx!.fill();
+          });
+          // Spines, close up: short pale points on the side toward the eye.
+          if (footPx * 0.05 * h > 4) {
+            const len = 0.014 * h;
+            ctx!.beginPath();
+            for (let i = 0; i < MP_SPINES; i++) {
+              const o = i * 6;
+              if (spines[o + 3] * vx + spines[o + 5] * vz < 0.1) continue;
+              const a = P(spines[o], spines[o + 1], spines[o + 2]);
+              ctx!.moveTo(a[0], a[1]);
+              ctx!.lineTo(
+                a[0] + (J[0] * spines[o + 3] + J[1] * spines[o + 4] + J[2] * spines[o + 5]) * len,
+                a[1] + (J[3] * spines[o + 3] + J[4] * spines[o + 4] + J[5] * spines[o + 5]) * len,
+              );
+            }
+            ctx!.strokeStyle = pal.spine;
+            ctx!.lineWidth = Math.max(footPx * 0.005 * h, 0.6);
+            ctx!.stroke();
+          }
+        } else if (it === MP_LEAVES + 1) {
+          // The heart, where the leaf bases crowd: dark.
+          const r = 0.07 * h;
+          ctx!.beginPath();
+          ctx!.ellipse(q[0], q[1], Math.hypot(J[0], J[3]) * r, Math.hypot(J[1], J[4]) * r * 1.6, 0, 0, Math.PI * 2);
+          ctx!.fillStyle = pal.heart;
+          ctx!.fill();
+        } else {
+          const i = it;
+          const o0 = i * MP_PTS * 6;
+          // Which face shows: up off the leaf, toward the eye or away.
+          const up =
+            leafN[i * 3] * (eye[0] - mid[i * 3]) +
+              leafN[i * 3 + 1] * (eye[1] - mid[i * 3 + 1]) +
+              leafN[i * 3 + 2] * (eye[2] - mid[i * 3 + 2]) >
+            0;
+          ctx!.beginPath();
+          for (let j = 0; j < MP_PTS; j++) {
+            const o = o0 + j * 6;
+            const cx = sxOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+            const cy = syOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+            const wx = J[0] * leaf[o + 3] + J[1] * leaf[o + 4] + J[2] * leaf[o + 5];
+            const wy = J[3] * leaf[o + 3] + J[4] * leaf[o + 4] + J[5] * leaf[o + 5];
+            if (j === 0) ctx!.moveTo(cx + wx, cy + wy);
+            else ctx!.lineTo(cx + wx, cy + wy);
+          }
+          for (let j = MP_PTS - 1; j >= 0; j--) {
+            const o = o0 + j * 6;
+            const cx = sxOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+            const cy = syOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+            const wx = J[0] * leaf[o + 3] + J[1] * leaf[o + 4] + J[2] * leaf[o + 5];
+            const wy = J[3] * leaf[o + 3] + J[4] * leaf[o + 4] + J[5] * leaf[o + 5];
+            ctx!.lineTo(cx - wx, cy - wy);
+          }
+          ctx!.closePath();
+          ctx!.fillStyle = tones[leafTone[i * 2 + (up ? 0 : 1)]];
+          ctx!.fill();
+          if (midribs && up) {
+            ctx!.beginPath();
+            for (let j = 1; j < MP_PTS - 1; j++) {
+              const o = o0 + j * 6;
+              const cx = sxOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+              const cy = syOf(leaf[o], leaf[o + 1], leaf[o + 2]);
+              if (j === 1) ctx!.moveTo(cx, cy);
+              else ctx!.lineTo(cx, cy);
+            }
+            ctx!.strokeStyle = pal.midrib;
+            ctx!.lineWidth = Math.max(footPx * 0.004 * h, 0.6);
+            ctx!.stroke();
+          }
+        }
+      }
+      ctx!.lineWidth = lw;
+    }
+
     /** Ocotillo: canes, and nothing else.
      *
      *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
@@ -6374,6 +6794,8 @@ export function LivingBlueprint({
         drawToothpickBody(x, z, h, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "TotemPole") {
         drawTotemBody(x, z, h, symRot, sel || hover);
+      } else if (inst.model === "MadagascarPalm") {
+        drawMadagascarBody(x, z, h, symRot, sel || hover, lw);
       } else if (meta.kind === "tree" || meta.kind === "shrub") {
         const isShrub = meta.kind === "shrub";
         if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
