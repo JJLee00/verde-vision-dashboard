@@ -194,6 +194,30 @@ const YELLOW_LANTANA_GOLD = {
   eye: "rgb(196,150,72)",
 };
 
+/** Ocotillo in leaf and flower, as the app's model is: pale grey bark, small
+ *  bright green leaves the length of every cane (a few yellowing), scarlet
+ *  tubes at the tips. Measured off the model's render. */
+const OCOTILLO_COLOURS = {
+  crown: "rgb(140,130,108)",
+  bark: "rgb(164,158,140)",
+  barkLit: "rgb(204,200,186)",
+  sleeve: "rgb(56,74,38)",
+  leafBack: "rgb(66,86,44)",
+  leaf: ["rgb(78,100,50)", "rgb(96,120,60)", "rgb(114,138,72)", "rgb(134,156,90)", "rgb(152,146,78)"],
+  flower: "rgb(192,66,44)",
+  flowerLit: "rgb(228,110,74)",
+};
+const OCOTILLO_GOLD = {
+  crown: "rgb(150,112,52)",
+  bark: "rgb(196,160,96)",
+  barkLit: "rgb(232,206,150)",
+  sleeve: "rgb(140,104,46)",
+  leafBack: "rgb(150,112,52)",
+  leaf: ["rgb(170,130,62)", "rgb(196,156,84)", "rgb(218,180,108)", "rgb(236,206,140)", "rgb(240,214,150)"],
+  flower: "rgb(240,214,150)",
+  flowerLit: "rgb(252,238,200)",
+};
+
 /** The aloe's flower spikes, on the lantana's terms: confined to the flowers,
  *  muted to sit on the sand, and absent from the plan symbol. A tall stalk of
  *  hanging yellow tubes is what tells an aloe from an agave at a glance —
@@ -8970,24 +8994,166 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    /** Ocotillo: canes, and nothing else.
+    // The model's canes, as splayed to the species' 12 ft: per cane nine
+    // points up its axis from the crown — x and z across the spread (1 = the
+    // plant's radius), y up its height (1 = the plant's height) — its
+    // half-girth at the crown and at the tip in thousandths of the radius,
+    // and 1 where it ends in a flower spike.
+    const OC_CANES: [number[], number, number, number][] = [
+      [[0.082, 0.005, -0.072, 0.132, 0.101, -0.083, 0.235, 0.197, -0.086, 0.337, 0.292, -0.069, 0.435, 0.388, -0.078, 0.52, 0.484, -0.143, 0.587, 0.58, -0.249, 0.66, 0.676, -0.352, 0.73, 0.771, -0.395], 15, 4, 0],
+      [[-0.04, 0.004, -0.094, -0.126, 0.113, -0.15, -0.251, 0.223, -0.199, -0.383, 0.333, -0.224, -0.505, 0.442, -0.242, -0.599, 0.552, -0.283, -0.656, 0.661, -0.361, -0.69, 0.771, -0.466, -0.722, 0.881, -0.554], 11, 2, 1],
+      [[0.032, 0.005, -0.018, 0.026, 0.1, -0.014, 0.012, 0.195, 0.016, -0.002, 0.291, 0.088, 0.007, 0.386, 0.19, 0.05, 0.481, 0.322, 0.134, 0.576, 0.497, 0.226, 0.672, 0.688, 0.301, 0.767, 0.886], 16, 3, 0],
+      [[0.024, 0.005, -0.078, 0.005, 0.123, -0.072, -0.006, 0.241, -0.066, 0.034, 0.359, -0.061, 0.135, 0.476, -0.061, 0.267, 0.594, -0.09, 0.394, 0.712, -0.172, 0.476, 0.829, -0.31, 0.526, 0.947, -0.477], 16, 3, 1],
+      [[-0.055, 0.003, -0.03, -0.162, 0.116, -0.01, -0.282, 0.228, 0.017, -0.402, 0.341, 0.088, -0.478, 0.453, 0.18, -0.55, 0.566, 0.296, -0.625, 0.678, 0.363, -0.707, 0.791, 0.354, -0.809, 0.903, 0.305], 15, 3, 0],
+      [[0.052, 0.004, -0.02, 0.092, 0.105, 0.021, 0.16, 0.206, 0.064, 0.247, 0.307, 0.105, 0.319, 0.408, 0.153, 0.361, 0.509, 0.215, 0.383, 0.61, 0.306, 0.401, 0.711, 0.392, 0.425, 0.812, 0.447], 14, 4, 0],
+      [[-0.013, 0.004, -0.113, -0.06, 0.108, -0.167, -0.113, 0.211, -0.231, -0.137, 0.314, -0.317, -0.112, 0.418, -0.419, -0.062, 0.521, -0.524, -0.024, 0.625, -0.624, -0.056, 0.728, -0.696, -0.111, 0.832, -0.721], 13, 4, 1],
+      [[0.011, 0.004, -0.042, 0.023, 0.123, -0.063, 0.025, 0.243, -0.088, 0.01, 0.362, -0.089, -0.004, 0.481, -0.047, -0.002, 0.6, 0.05, 0.002, 0.719, 0.215, -0.032, 0.839, 0.392, -0.084, 0.958, 0.502], 18, 4, 0],
+      [[0.051, 0.005, -0.06, 0.04, 0.119, -0.048, 0.036, 0.233, -0.037, 0.056, 0.347, -0.044, 0.114, 0.461, -0.084, 0.198, 0.575, -0.15, 0.303, 0.689, -0.232, 0.43, 0.803, -0.321, 0.57, 0.917, -0.406], 15, 4, 1],
+      [[-0.018, 0.008, -0.072, -0.007, 0.11, -0.062, 0.004, 0.213, -0.065, 0.003, 0.315, -0.089, -0.019, 0.417, -0.137, -0.077, 0.519, -0.193, -0.177, 0.622, -0.24, -0.305, 0.724, -0.263, -0.442, 0.826, -0.27], 17, 3, 0],
+      [[0.033, 0.005, -0.046, 0.04, 0.115, -0.043, 0.048, 0.225, -0.031, 0.046, 0.335, 0.016, 0.034, 0.444, 0.103, 0.021, 0.554, 0.228, 0.024, 0.664, 0.384, 0.06, 0.773, 0.556, 0.105, 0.883, 0.682], 13, 3, 0],
+      [[0.034, 0.007, -0.077, 0.019, 0.121, -0.054, -0.004, 0.235, -0.048, -0.03, 0.348, -0.07, -0.006, 0.462, -0.11, 0.093, 0.576, -0.159, 0.255, 0.69, -0.217, 0.402, 0.804, -0.303, 0.479, 0.918, -0.384], 15, 4, 0],
+      [[-0.032, 0.004, -0.005, -0.097, 0.119, 0.041, -0.205, 0.233, 0.102, -0.317, 0.347, 0.147, -0.453, 0.462, 0.202, -0.567, 0.576, 0.268, -0.659, 0.69, 0.353, -0.743, 0.805, 0.462, -0.798, 0.919, 0.54], 14, 4, 0],
+      [[0.083, 0.004, -0.05, 0.168, 0.101, -0.052, 0.278, 0.199, -0.058, 0.391, 0.297, -0.059, 0.484, 0.394, -0.045, 0.554, 0.492, -0.016, 0.611, 0.59, 0.027, 0.663, 0.687, 0.074, 0.699, 0.785, 0.104], 13, 5, 0],
+      [[0.012, 0.005, -0.056, 0.007, 0.09, -0.037, 0.002, 0.175, -0.014, -0.029, 0.259, -0.025, -0.062, 0.344, -0.08, -0.108, 0.429, -0.201, -0.179, 0.514, -0.342, -0.301, 0.599, -0.479, -0.454, 0.684, -0.579], 16, 2, 1],
+      [[0.012, 0.008, -0.021, 0.004, 0.127, -0.053, -0.002, 0.246, -0.072, 0.002, 0.365, -0.056, 0.013, 0.483, 0.003, 0.023, 0.602, 0.112, 0.017, 0.721, 0.254, -0.024, 0.84, 0.44, -0.081, 0.959, 0.587], 18, 4, 0],
+      [[0.072, 0.008, -0.095, 0.131, 0.111, -0.137, 0.215, 0.214, -0.177, 0.307, 0.317, -0.209, 0.375, 0.42, -0.24, 0.413, 0.523, -0.288, 0.416, 0.626, -0.364, 0.393, 0.729, -0.468, 0.365, 0.832, -0.564], 14, 4, 0],
+      [[-0.027, 0.008, -0.056, -0.079, 0.124, -0.065, -0.142, 0.24, -0.071, -0.208, 0.356, -0.053, -0.264, 0.471, -0.002, -0.298, 0.587, 0.048, -0.328, 0.703, 0.087, -0.35, 0.819, 0.092, -0.372, 0.934, 0.07], 17, 5, 1],
+      [[0.081, 0.005, -0.009, 0.126, 0.118, 0.038, 0.197, 0.232, 0.089, 0.292, 0.345, 0.128, 0.35, 0.459, 0.152, 0.378, 0.572, 0.195, 0.367, 0.686, 0.288, 0.327, 0.799, 0.406, 0.306, 0.913, 0.467], 12, 5, 0],
+      [[0.018, 0.003, -0.136, 0.012, 0.115, -0.268, 0.002, 0.227, -0.405, -0.001, 0.339, -0.559, 0.018, 0.451, -0.677, 0.067, 0.563, -0.785, 0.137, 0.675, -0.858, 0.228, 0.787, -0.93, 0.298, 0.899, -0.981], 12, 3, 0],
+      [[-0.01, 0.004, -0.01, -0.041, 0.124, 0.049, -0.106, 0.245, 0.136, -0.196, 0.365, 0.211, -0.298, 0.486, 0.288, -0.387, 0.607, 0.388, -0.435, 0.727, 0.528, -0.437, 0.848, 0.719, -0.418, 0.968, 0.906], 13, 3, 1],
+      [[0.07, 0.007, -0.07, 0.055, 0.1, -0.074, 0.05, 0.192, -0.1, 0.075, 0.285, -0.145, 0.139, 0.377, -0.198, 0.253, 0.469, -0.25, 0.405, 0.562, -0.288, 0.607, 0.654, -0.318, 0.79, 0.747, -0.341], 20, 4, 0],
+      [[0.002, 0.004, -0.068, 0.017, 0.055, -0.075, 0.014, 0.106, -0.085, -0.025, 0.157, -0.103, -0.107, 0.209, -0.132, -0.225, 0.26, -0.181, -0.372, 0.311, -0.264, -0.535, 0.362, -0.394, -0.655, 0.413, -0.516], 16, 3, 0],
+      [[0.039, 0.004, -0.02, 0.073, 0.066, 0.05, 0.09, 0.127, 0.156, 0.083, 0.188, 0.267, 0.085, 0.249, 0.36, 0.114, 0.31, 0.417, 0.181, 0.371, 0.449, 0.255, 0.433, 0.476, 0.288, 0.494, 0.506], 13, 4, 1],
+      [[0.047, 0.004, -0.093, 0.07, 0.05, -0.093, 0.086, 0.096, -0.11, 0.105, 0.142, -0.169, 0.134, 0.188, -0.266, 0.19, 0.234, -0.376, 0.301, 0.281, -0.504, 0.452, 0.327, -0.608, 0.653, 0.373, -0.702], 16, 3, 0],
+      [[-0.026, 0.003, -0.038, 0.022, 0.048, -0.046, 0.063, 0.092, -0.046, 0.056, 0.137, -0.051, -0.009, 0.182, -0.076, -0.112, 0.227, -0.109, -0.283, 0.272, -0.147, -0.481, 0.317, -0.145, -0.661, 0.362, -0.096], 11, 2, 0],
+      [[0.027, 0.007, -0.047, -0.008, 0.12, -0.05, -0.062, 0.232, -0.05, -0.076, 0.344, -0.058, -0.047, 0.457, -0.091, 0.042, 0.569, -0.158, 0.134, 0.682, -0.195, 0.264, 0.794, -0.191, 0.324, 0.907, -0.154], 17, 4, 0],
+      [[0.002, 0.004, -0.11, -0.007, 0.104, -0.173, 0.007, 0.204, -0.245, 0.025, 0.304, -0.304, 0.02, 0.403, -0.327, -0.027, 0.503, -0.317, -0.09, 0.603, -0.278, -0.138, 0.703, -0.223, -0.139, 0.803, -0.196], 11, 3, 0],
+      [[0.013, 0.008, -0.036, 0.007, 0.097, -0.084, -0.007, 0.185, -0.135, -0.034, 0.274, -0.172, -0.034, 0.362, -0.157, -0.021, 0.451, -0.105, -0.003, 0.539, -0.016, -0.003, 0.628, 0.089, -0.036, 0.717, 0.204], 13, 2, 0],
+      [[0.056, 0.007, -0.078, 0.113, 0.11, -0.109, 0.165, 0.213, -0.158, 0.194, 0.316, -0.205, 0.213, 0.419, -0.242, 0.228, 0.523, -0.238, 0.259, 0.626, -0.185, 0.309, 0.729, -0.081, 0.365, 0.832, 0.037], 11, 2, 0],
+      [[-0.013, 0.004, -0.061, 0.045, 0.093, -0.029, 0.1, 0.182, -0.012, 0.135, 0.271, -0.023, 0.15, 0.361, -0.056, 0.117, 0.45, -0.092, 0.052, 0.539, -0.095, -0.052, 0.628, -0.063, -0.168, 0.717, -0.002], 12, 3, 0],
+      [[0.034, 0.005, -0.036, -0, 0.105, -0.066, -0.041, 0.206, -0.092, -0.059, 0.306, -0.097, -0.047, 0.407, -0.093, 0.01, 0.508, -0.08, 0.124, 0.608, -0.048, 0.244, 0.709, 0.007, 0.32, 0.809, 0.061], 12, 3, 0],
+      [[0.01, 0.005, -0.093, 0.017, 0.104, -0.076, 0.031, 0.203, -0.05, 0.061, 0.302, -0.041, 0.086, 0.401, -0.055, 0.081, 0.5, -0.095, 0.033, 0.599, -0.156, -0.059, 0.698, -0.24, -0.119, 0.797, -0.294], 19, 5, 0],
+      [[-0.023, 0.008, -0.031, -0.069, 0.095, 0.006, -0.128, 0.183, 0.055, -0.184, 0.271, 0.081, -0.239, 0.359, 0.063, -0.286, 0.446, 0.012, -0.311, 0.534, -0.038, -0.301, 0.622, -0.045, -0.275, 0.709, -0.02], 16, 4, 0],
+    ];
+    type OcotilloCane = {
+      /** the axis, 9 points, feet */
+      ax: Float32Array;
+      /** half-girth at each axis point, feet */
+      r: Float32Array;
+      /** leaves, 8 numbers each: where along the axis (0–8), the leaf's
+       *  base and tip as offsets from there (feet), its tone (4 = yellowing) */
+      leaves: Float32Array;
+      /** flower tubes at the tip, 7 numbers each: base and tip offsets from
+       *  the cane's tip, lit or not */
+      flowers: Float32Array;
+      /** how far a flower spike stands past the tip, feet */
+      spike: number;
+    };
+    type OcotilloPlant = { canes: OcotilloCane[]; leafLen: number; tube: number };
+    const ocotilloGrown = new Map<string, OcotilloPlant>();
+    // Scratch for one cane's projected axis and depth order.
+    const ocSx = new Float32Array(9);
+    const ocSy = new Float32Array(9);
+    const ocDepth = new Float32Array(OC_CANES.length);
+    const ocOrder = new Int32Array(OC_CANES.length);
+
+    function growOcotillo(x: number, z: number, h: number, rw: number, rot: number, seed: string): OcotilloPlant {
+      const rng = rngFor("ocotillo:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const cr = Math.cos(rot);
+      const sr = Math.sin(rot);
+      // Leaves about two inches long on a grown plant, scaled with it as the
+      // app scales its model.
+      const leafLen = rw * 0.025;
+      const tube = rw * 0.02;
+      const canes = OC_CANES.map(([pts, g0, g1, flowering]) => {
+        const ax = new Float32Array(27);
+        const r = new Float32Array(9);
+        for (let i = 0; i < 9; i++) {
+          const mx = pts[i * 3];
+          const mz = pts[i * 3 + 2];
+          ax[i * 3] = x + (mx * cr - mz * sr) * rw;
+          ax[i * 3 + 1] = pts[i * 3 + 1] * h;
+          ax[i * 3 + 2] = z + (mx * sr + mz * cr) * rw;
+          r[i] = ((g0 + ((g1 - g0) * i) / 8) / 1000) * rw;
+        }
+        // The axis's direction at a point along it.
+        const tangent = (i: number): [number, number, number] => {
+          const a = Math.max(0, Math.min(7, Math.floor(i)));
+          const d = [ax[a * 3 + 3] - ax[a * 3], ax[a * 3 + 4] - ax[a * 3 + 1], ax[a * 3 + 5] - ax[a * 3 + 2]];
+          const l = Math.hypot(d[0], d[1], d[2]) || 1;
+          return [d[0] / l, d[1] / l, d[2] / l];
+        };
+        let len = 0;
+        for (let i = 1; i < 9; i++)
+          len += Math.hypot(ax[i * 3] - ax[i * 3 - 3], ax[i * 3 + 1] - ax[i * 3 - 2], ax[i * 3 + 2] - ax[i * 3 - 1]);
+        // Leaves the whole length of the cane, as the model has them, half
+        // as many.
+        const n = Math.round(len / (rw * 0.008));
+        const leaves = new Float32Array(n * 8);
+        for (let k = 0; k < n; k++) {
+          const along = 8 * (0.03 + (0.96 * (k + rng())) / n);
+          const t = tangent(along);
+          // Two directions square to the cane, to spin the leaf round it.
+          const up = Math.abs(t[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0];
+          let e1 = [t[1] * up[2] - t[2] * up[1], t[2] * up[0] - t[0] * up[2], t[0] * up[1] - t[1] * up[0]];
+          const l1 = Math.hypot(e1[0], e1[1], e1[2]);
+          e1 = [e1[0] / l1, e1[1] / l1, e1[2] / l1];
+          const e2 = [t[1] * e1[2] - t[2] * e1[1], t[2] * e1[0] - t[0] * e1[2], t[0] * e1[1] - t[1] * e1[0]];
+          const a = rng() * Math.PI * 2;
+          const rise = 0.3 + 0.5 * rng(); // leaves angle up the cane a little
+          const out = [Math.cos(a) * e1[0] + Math.sin(a) * e2[0], Math.cos(a) * e1[1] + Math.sin(a) * e2[1], Math.cos(a) * e1[2] + Math.sin(a) * e2[2]];
+          let d = [out[0] + t[0] * rise, out[1] + t[1] * rise, out[2] + t[2] * rise];
+          const ld = Math.hypot(d[0], d[1], d[2]);
+          d = [d[0] / ld, d[1] / ld, d[2] / ld];
+          const i0 = Math.min(8, Math.floor(along));
+          const rr = r[i0];
+          const ll = leafLen * (0.75 + 0.5 * rng());
+          // Lit toward the sun and higher up the fan; a few going yellow.
+          const lit = 0.5 + 0.5 * (d[0] * LX + d[1] * LY + d[2] * LZ);
+          const shade = (0.35 + 0.65 * lit) * (0.7 + 0.3 * (along / 8)) * (0.75 + 0.5 * rng());
+          const tone = rng() < 0.04 ? 4 : Math.max(0, Math.min(3, Math.floor(shade * 4)));
+          leaves.set([along, out[0] * rr, out[1] * rr, out[2] * rr, out[0] * rr + d[0] * ll, out[1] * rr + d[1] * ll, out[2] * rr + d[2] * ll, tone], k * 8);
+        }
+        // The spike: a cluster of red tubes up a short bare stalk past the
+        // tip, each angled out and up, the lower ones longer.
+        const spike = flowering ? rw * 0.09 : 0;
+        const fl: number[] = [];
+        if (flowering) {
+          const t = tangent(7.9);
+          for (let k = 0; k < 14; k++) {
+            const s = spike * (0.3 + (0.7 * k) / 13);
+            const a = rng() * Math.PI * 2;
+            const lean = 0.5 + 0.5 * rng();
+            let d = [Math.cos(a) * lean + t[0], t[1] + 0.2, Math.sin(a) * lean + t[2]];
+            const ld = Math.hypot(d[0], d[1], d[2]);
+            d = [d[0] / ld, d[1] / ld, d[2] / ld];
+            const tl = tube * (1.1 - 0.5 * (k / 13));
+            const b = [t[0] * s, t[1] * s, t[2] * s];
+            const lit = d[0] * LX + d[1] * LY + d[2] * LZ > 0.1 ? 1 : 0;
+            fl.push(b[0], b[1], b[2], b[0] + d[0] * tl, b[1] + d[1] * tl, b[2] + d[2] * tl, lit);
+          }
+        }
+        return { ax, r, leaves, flowers: new Float32Array(fl), spike };
+      });
+      return { canes, leafLen, tube };
+    }
+
+    /** Ocotillo, after the app's model: in leaf and in flower.
      *
-     *  A fan of bare whips out of one woody crown — no trunk, no canopy, no
-     *  rosette. It drew as a nine-blade agave until now, because its glyph
-     *  kind is `rosette` and that is the fallback body; with this plant the
-     *  silhouette IS the species, so it gets its own.
+     *  Thirty-four canes out of one woody crown, from the model, splayed as
+     *  it is to the species' spread: pale grey whips tapering to the tip,
+     *  sleeved their whole length in small bright leaves standing out from
+     *  the bark, eight of them ending in a spike of red tubes. A few short
+     *  young canes among the tall ones.
      *
-     *  The plant is a fountain: canes leave a crown barely a foot across
-     *  already leaning, rise steeply, and flare in the top third. So each
-     *  one is a near-straight whip whose control point is pulled INSIDE the
-     *  chord — bowing it the other way gave a splayed bowl, which is a yucca.
-     *
-     *  Height, lean and spacing are drawn independently of where a cane
-     *  stands. Tying them to its angle (the first pass took all three off a
-     *  golden-angle sweep) walked the tips around the plant in a spiral
-     *  staircase, which is the one thing an ocotillo never does: its canes
-     *  are a ragged handful of similar lengths, a few of them young and
-     *  short.
+     *  Each cane is a dark sleeve, the leaves behind it, the tapered bark,
+     *  then the leaves in front and its flowers, canes far to near. Its axis
+     *  is projected exactly; its leaves through a local map at the cane.
+     *  Far off, where a leaf is under a pixel or two, the sleeve and the bark
+     *  carry it. Grown once and cached.
      */
     function drawOcotilloBody(
       x: number,
@@ -8996,76 +9162,183 @@ export function LivingBlueprint({
       rw: number,
       rot: number,
       seed: string,
-      stroke: string,
-      fill: string,
-      lw: number,
+      sel: boolean,
     ) {
-      const rng = rngFor("oco:" + seed);
-      const N = 17;
-      const S = 8; // samples per cane — the projection has to curve, not kink
-      const r0 = rw * 0.055; // the crown is a knot, not a ring
-      const canes: { pts: [number, number][]; depth: number; w: number }[] = [];
-      for (let k = 0; k < N; k++) {
-        // Even round the crown, then jittered: canes come in a ragged
-        // handful, and a perfect ring reads as a manufactured object.
-        const a = rot + ((k + 0.5) / N) * Math.PI * 2 + (rng() - 0.5) * 0.62;
-        const young = rng() < 0.28; // the short ones coming up through
-        const yTip = h * (young ? 0.4 + rng() * 0.22 : 0.76 + rng() * 0.24);
-        const rTip = rw * (young ? 0.3 + rng() * 0.22 : 0.52 + rng() * 0.48);
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        // Pulled inside the chord: steep out of the crown, flaring late.
-        const cr = (r0 + rTip) / 2 - rTip * (0.16 + rng() * 0.1);
-        const cy = yTip * 0.52;
-        const pts: [number, number][] = [];
-        let depth = 0;
-        for (let i = 0; i <= S; i++) {
-          const t = i / S;
-          const u = 1 - t;
-          const r = u * u * r0 + 2 * u * t * cr + t * t * rTip;
-          const y = 2 * u * t * cy + t * t * yTip;
-          const q = P(x + ca * r, y, z + sa * r);
-          pts.push([q[0], q[1]]);
-          if (i === 0) depth = q[2];
-        }
-        canes.push({ pts, depth, w: lw * (0.85 + rng() * 0.45) });
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = ocotilloGrown.get(key);
+      if (!grown) {
+        if (ocotilloGrown.size > 400) ocotilloGrown.clear(); // growth and edits mint new keys
+        grown = growOcotillo(x, z, h, rw, rot, seed);
+        ocotilloGrown.set(key, grown);
       }
-      canes.sort((p, q) => q.depth - p.depth);
+      const pal = sel ? OCOTILLO_GOLD : OCOTILLO_COLOURS;
+      const { canes, leafLen, tube } = grown;
 
-      const budR = Math.max(ftPx(x, z, rw * 0.045), 1.3);
+      // The crown: the one woody knot the canes come out of, a ring on the
+      // ground a little wider than the canes' feet.
+      ctx!.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2;
+        const q = P(x + Math.cos(a) * rw * 0.07, 0, z + Math.sin(a) * rw * 0.07);
+        if (i) ctx!.lineTo(q[0], q[1]);
+        else ctx!.moveTo(q[0], q[1]);
+      }
+      ctx!.fillStyle = pal.crown;
+      ctx!.fill();
+
+      for (let k = 0; k < canes.length; k++) {
+        const a = canes[k].ax;
+        ocDepth[k] = P(a[12], a[13], a[14])[2];
+        ocOrder[k] = k;
+      }
+      ocOrder.sort((p, q) => ocDepth[q] - ocDepth[p]);
+
       ctx!.lineCap = "round";
       ctx!.lineJoin = "round";
-      ctx!.strokeStyle = stroke;
-      for (const cane of canes) {
-        ctx!.beginPath();
-        ctx!.moveTo(cane.pts[0][0], cane.pts[0][1]);
-        for (let i = 1; i < cane.pts.length; i++)
-          ctx!.lineTo(cane.pts[i][0], cane.pts[i][1]);
-        ctx!.lineWidth = cane.w;
-        ctx!.stroke();
-        const tip = cane.pts[cane.pts.length - 1];
-        ctx!.beginPath();
-        ctx!.arc(tip[0], tip[1], budR, 0, 7);
-        // Paper first, so a near cane's bud covers the one behind it.
-        ctx!.fillStyle = LEAF_BODY;
-        ctx!.fill();
-        ctx!.fillStyle = fill;
-        ctx!.fill();
-        ctx!.lineWidth = lw * 0.8;
-        ctx!.stroke();
-      }
+      for (const k of ocOrder) {
+        const cane = canes[k];
+        const { ax, r, leaves, flowers } = cane;
+        for (let i = 0; i < 9; i++) {
+          const q = P(ax[i * 3], ax[i * 3 + 1], ax[i * 3 + 2]);
+          ocSx[i] = q[0];
+          ocSy[i] = q[1];
+        }
+        // The local map at the cane's middle, for what hangs off the axis.
+        const mx = ax[12];
+        const my = ax[13];
+        const mz = ax[14];
+        const q = P(mx, my, mz);
+        const qx = P(mx + 1, my, mz);
+        const qy = P(mx, my + 1, mz);
+        const qz = P(mx, my, mz + 1);
+        const J = [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2]];
+        const footPx = Math.max(Math.hypot(J[0], J[3]), Math.hypot(J[2], J[5]), Math.hypot(J[1], J[4]));
+        const leafPx = leafLen * footPx;
 
-      // The crown: the one woody part of the plant, and what tells a viewer
-      // where the canes are rooted once the drawing tilts.
-      const c = P(x, 0, z);
-      const cr = Math.max(ftPx(x, z, r0 * 2.1), 1.6);
-      ctx!.beginPath();
-      ctx!.ellipse(c[0], c[1], cr, cr * 0.42, 0, 0, Math.PI * 2);
-      ctx!.fillStyle = fill;
-      ctx!.fill();
-      ctx!.lineWidth = lw;
-      ctx!.stroke();
+        const axisPath = () => {
+          ctx!.beginPath();
+          ctx!.moveTo(ocSx[0], ocSy[0]);
+          for (let i = 1; i < 9; i++) ctx!.lineTo(ocSx[i], ocSy[i]);
+        };
+        // Far off, where a leaf is a pixel or two, a band of green carries
+        // them; nearer, a narrower shadow among them.
+        const show = leafPx >= 1.5;
+        if (leafPx < 4) {
+          axisPath();
+          ctx!.lineCap = "butt";
+          ctx!.lineWidth = Math.max(1, (r[4] * 2 + leafLen * 1.2) * footPx * (show ? 0.6 : 1));
+          ctx!.strokeStyle = show ? pal.sleeve : pal.leaf[1];
+          ctx!.stroke();
+        }
+        const leafPaths = (front: boolean, tone: number) => {
+          ctx!.beginPath();
+          for (let o = 0; o < leaves.length; o += 8) {
+            if (leaves[o + 7] !== tone && tone >= 0) continue;
+            const far = J[6] * leaves[o + 4] + J[7] * leaves[o + 5] + J[8] * leaves[o + 6] > 0;
+            if (far === front) continue;
+            const al = leaves[o];
+            const i = Math.min(7, al | 0);
+            const f = al - i;
+            const bx = ocSx[i] + (ocSx[i + 1] - ocSx[i]) * f;
+            const by = ocSy[i] + (ocSy[i + 1] - ocSy[i]) * f;
+            ctx!.moveTo(bx + J[0] * leaves[o + 1] + J[1] * leaves[o + 2] + J[2] * leaves[o + 3], by + J[3] * leaves[o + 1] + J[4] * leaves[o + 2] + J[5] * leaves[o + 3]);
+            ctx!.lineTo(bx + J[0] * leaves[o + 4] + J[1] * leaves[o + 5] + J[2] * leaves[o + 6], by + J[3] * leaves[o + 4] + J[4] * leaves[o + 5] + J[5] * leaves[o + 6]);
+          }
+        };
+        // A leaf is a flat paddle: a square-ended dash half as wide as long.
+        ctx!.lineCap = "butt";
+        const leafW = Math.max(0.8, leafPx * 0.55);
+        if (show) {
+          leafPaths(false, -1);
+          ctx!.lineWidth = leafW;
+          ctx!.strokeStyle = pal.leafBack;
+          ctx!.stroke();
+        }
+
+        // The bark, tapering: a ribbon a half-girth either side of the axis.
+        ctx!.beginPath();
+        for (let side = 0; side < 2; side++) {
+          for (let s = 0; s < 9; s++) {
+            const i = side ? 8 - s : s;
+            const i0 = Math.max(0, i - 1);
+            const i1 = Math.min(8, i + 1);
+            const dx = ocSx[i1] - ocSx[i0];
+            const dy = ocSy[i1] - ocSy[i0];
+            const dl = Math.hypot(dx, dy) || 1;
+            const w = Math.max(0.45, r[i] * footPx) * (side ? -1 : 1);
+            const px = ocSx[i] - (dy / dl) * w;
+            const py = ocSy[i] + (dx / dl) * w;
+            if (s === 0 && side === 0) ctx!.moveTo(px, py);
+            else ctx!.lineTo(px, py);
+          }
+        }
+        ctx!.closePath();
+        ctx!.fillStyle = pal.bark;
+        ctx!.fill();
+        // Close up, its lit side.
+        if (r[2] * footPx > 2.5) {
+          ctx!.beginPath();
+          for (let i = 0; i < 9; i++) {
+            const i0 = Math.max(0, i - 1);
+            const i1 = Math.min(8, i + 1);
+            const dx = ocSx[i1] - ocSx[i0];
+            const dy = ocSy[i1] - ocSy[i0];
+            const dl = Math.hypot(dx, dy) || 1;
+            const w = r[i] * footPx * 0.45 * (dy / dl > 0 ? 1 : -1);
+            if (i) ctx!.lineTo(ocSx[i] + (dy / dl) * w, ocSy[i] - (dx / dl) * w);
+            else ctx!.moveTo(ocSx[i] + (dy / dl) * w, ocSy[i] - (dx / dl) * w);
+          }
+          ctx!.lineWidth = r[4] * footPx * 0.5;
+          ctx!.strokeStyle = pal.barkLit;
+          ctx!.stroke();
+        }
+
+        if (show) {
+          ctx!.lineWidth = leafW;
+          for (let t = 0; t < 5; t++) {
+            leafPaths(true, t);
+            ctx!.strokeStyle = pal.leaf[t];
+            ctx!.stroke();
+          }
+        }
+
+        // The flower spike: its stalk on past the tip, then the tubes; far
+        // off a fleck of red, never under a pixel and a bit.
+        if (cane.spike) {
+          const tx = ocSx[8];
+          const ty = ocSy[8];
+          const tubePx = tube * footPx;
+          if (tubePx < 2) {
+            // A flame on the end of the cane.
+            const sx = J[0] * (ax[24] - ax[21]) + J[1] * (ax[25] - ax[22]) + J[2] * (ax[26] - ax[23]);
+            const sy = J[3] * (ax[24] - ax[21]) + J[4] * (ax[25] - ax[22]) + J[5] * (ax[26] - ax[23]);
+            const sl = Math.hypot(sx, sy) || 1;
+            const reach = Math.max(2.5, cane.spike * footPx);
+            ctx!.beginPath();
+            ctx!.moveTo(tx, ty);
+            ctx!.lineTo(tx + (sx / sl) * reach, ty + (sy / sl) * reach);
+            ctx!.lineCap = "round";
+            ctx!.lineWidth = Math.max(1.4, cane.spike * footPx * 0.3);
+            ctx!.strokeStyle = pal.flowerLit;
+            ctx!.stroke();
+          } else {
+            ctx!.lineCap = "round";
+            ctx!.lineWidth = Math.max(0.8, tubePx * 0.45);
+            for (let lit = 0; lit < 2; lit++) {
+              ctx!.beginPath();
+              for (let o = 0; o < flowers.length; o += 7) {
+                if (flowers[o + 6] !== lit) continue;
+                ctx!.moveTo(tx + J[0] * flowers[o] + J[1] * flowers[o + 1] + J[2] * flowers[o + 2], ty + J[3] * flowers[o] + J[4] * flowers[o + 1] + J[5] * flowers[o + 2]);
+                ctx!.lineTo(tx + J[0] * flowers[o + 3] + J[1] * flowers[o + 4] + J[2] * flowers[o + 5], ty + J[3] * flowers[o + 3] + J[4] * flowers[o + 4] + J[5] * flowers[o + 5]);
+              }
+              ctx!.strokeStyle = lit ? pal.flowerLit : pal.flower;
+              ctx!.stroke();
+            }
+          }
+        }
+      }
       ctx!.lineCap = "butt";
+      ctx!.lineJoin = "miter";
     }
 
     /** AZ Boulder 1: the scanned rock itself.
@@ -9691,7 +9964,7 @@ export function LivingBlueprint({
       } else if (meta.kind === "boulder") {
         drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
-        drawOcotilloBody(x, z, h, rw, symRot, inst.id, stroke, fill, lw);
+        drawOcotilloBody(x, z, h, rw, symRot, inst.id, sel || hover);
       } else if (inst.model === "AgaveTruncata") {
         drawTruncataBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "AgaveAmericana") {
