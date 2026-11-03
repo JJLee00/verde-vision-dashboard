@@ -207,6 +207,33 @@ const OCOTILLO_COLOURS = {
   flower: "rgb(192,66,44)",
   flowerLit: "rgb(228,110,74)",
 };
+/** Beaked Yucca as the app's mature model is: a ball of dark green blades,
+ *  a skirt of straw-coloured dead leaves, a short brown trunk. Measured off
+ *  the model's render. */
+const BEAKED_YUCCA_COLOURS = {
+  trunk: "rgb(120,106,86)",
+  trunkLit: "rgb(152,136,110)",
+  trunkLine: "rgb(88,76,60)",
+  skirt: "rgb(140,126,102)",
+  skirtLit: "rgb(178,164,138)",
+  straw: ["rgb(116,102,80)", "rgb(150,136,112)", "rgb(184,170,144)"],
+  core: "rgb(30,42,22)",
+  back: ["rgb(38,54,26)", "rgb(48,66,32)"],
+  blade: ["rgb(50,70,30)", "rgb(60,82,34)", "rgb(72,94,40)", "rgb(92,114,50)", "rgb(118,142,62)"],
+  edge: "rgb(46,64,30)",
+};
+const BEAKED_YUCCA_GOLD = {
+  trunk: "rgb(150,112,52)",
+  trunkLit: "rgb(196,160,96)",
+  trunkLine: "rgb(120,88,40)",
+  skirt: "rgb(196,160,96)",
+  skirtLit: "rgb(232,206,150)",
+  straw: ["rgb(170,130,62)", "rgb(206,170,104)", "rgb(236,210,156)"],
+  core: "rgb(120,88,40)",
+  back: ["rgb(140,104,46)", "rgb(160,122,58)"],
+  blade: ["rgb(170,130,62)", "rgb(190,150,78)", "rgb(210,172,100)", "rgb(228,196,128)", "rgb(240,214,150)"],
+  edge: "rgb(140,104,46)",
+};
 const OCOTILLO_GOLD = {
   crown: "rgb(150,112,52)",
   bark: "rgb(196,160,96)",
@@ -9341,6 +9368,428 @@ export function LivingBlueprint({
       ctx!.lineJoin = "miter";
     }
 
+    type YuccaPlant = {
+      /** the ball's middle, feet */
+      gy: number;
+      /** blades, 7 numbers each: base and tip as offsets from the ball's
+       *  middle (feet), tone 0–4 */
+      blades: Float32Array;
+      /** dead leaves on the skirt, 8 each: top and tip as offsets from the
+       *  skirt's middle (feet), tone 0–2, how far it curls to one side */
+      straw: Float32Array;
+      /** the skirt's middle, feet up */
+      sy: number;
+      /** the skirt's outline, height and radius in feet, bottom up */
+      skirt: number[];
+      bladeLen: number;
+      bladeW: number;
+      strawLen: number;
+      trunkR: number;
+      trunkTop: number;
+      coreR: number;
+    };
+    const yuccaGrown = new Map<string, YuccaPlant>();
+    // Scratch for one plant's blades this frame: where each lands on
+    // screen, and the passes they go in, each blade sorted into its pass.
+    const ybx = new Float32Array(1500);
+    const yby = new Float32Array(1500);
+    const ytx = new Float32Array(1500);
+    const yty = new Float32Array(1500);
+    const yuccaKey = new Int8Array(1500);
+    const yuccaOrder = new Int16Array(1500);
+    const yuccaStart = new Int32Array(26);
+    const yuccaAt = new Int32Array(26);
+    // The app's mature model, metres: 4.27 tall, 1.40 at the widest radius.
+    const BY_H = 4.267;
+    const BY_R = 1.3985;
+
+    function growBeakedYucca(h: number, rw: number, rot: number, seed: string): YuccaPlant {
+      const rng = rngFor("beakedyucca:" + seed);
+      const LX = -0.44;
+      const LY = 0.79;
+      const LZ = -0.43;
+      const kx = rw / BY_R;
+      const ky = h / BY_H;
+      const gyM = 2.69;
+      // Blades, as the model's 1,880 run: straight out of a crown on the
+      // trunk's head (2.2–3.2 m up), the lowest angled 30° down, the top ones
+      // 72° up — the higher on the crown, the steeper — each 1.06–1.39 m.
+      const N = 1500;
+      const blades = new Float32Array(N * 7);
+      for (let k = 0; k < N; k++) {
+        const t = (k + rng()) / N;
+        const e = ((-30 + 102 * t) * Math.PI) / 180;
+        const a = k * 2.39996 + rot + (rng() - 0.5) * 0.4;
+        const dx = Math.cos(e) * Math.cos(a);
+        const dy = Math.sin(e);
+        const dz = Math.cos(e) * Math.sin(a);
+        const by = 2.22 + 0.94 * t + (rng() - 0.5) * 0.2 - gyM;
+        const len = 1.06 + 0.33 * rng();
+        // Lit half by where it is on the ball (the far side of the ball
+        // shades it) and half by its face: a flat blade's upper face, square
+        // to it and as near up as it can be, catches the sun from above.
+        let fx = -dx * dy;
+        let fy = 1 - dy * dy;
+        let fz = -dz * dy;
+        const fl = Math.hypot(fx, fy, fz) || 1;
+        fx /= fl;
+        fy /= fl;
+        fz /= fl;
+        const lit = 0.5 + 0.25 * (dx * LX + dy * LY + dz * LZ) + 0.25 * (fx * LX + fy * LY + fz * LZ);
+        const shade = (0.4 + 0.6 * lit) * (0.5 + rng());
+        blades.set(
+          [
+            Math.cos(a) * 0.02 * kx,
+            by * ky,
+            Math.sin(a) * 0.02 * kx,
+            (Math.cos(a) * 0.02 + dx * len) * kx,
+            (by + dy * len) * ky,
+            (Math.sin(a) * 0.02 + dz * len) * kx,
+            Math.max(0, Math.min(4, Math.floor(shade * 5))),
+          ],
+          k * 7,
+        );
+      }
+      // The skirt: last years' leaves hanging straight down the trunk from
+      // under the ball, a straw column a little wider at the top.
+      const ring: [number, number][] = [
+        [0.62, 0.15],
+        [0.8, 0.26],
+        [1.05, 0.32],
+        [1.45, 0.35],
+        [1.9, 0.34],
+        [2.3, 0.28],
+      ];
+      const skirt: number[] = [];
+      for (const [y, r] of ring) skirt.push(y * ky, r * kx);
+      const syM = 1.45;
+      const S = 720;
+      const straw = new Float32Array(S * 8);
+      for (let k = 0; k < S; k++) {
+        const y0 = 0.8 + 1.5 * rng();
+        let r0 = 0.15;
+        for (let i = 1; i < ring.length; i++)
+          if (y0 <= ring[i][0]) {
+            const f = (y0 - ring[i - 1][0]) / (ring[i][0] - ring[i - 1][0]);
+            r0 = ring[i - 1][1] + (ring[i][1] - ring[i - 1][1]) * f;
+            break;
+          }
+        // From the trunk, as the model's do, hanging out to the skirt's edge.
+        r0 = 0.15 + (r0 - 0.15) * 0.4;
+        const a = rng() * Math.PI * 2;
+        const drop = ((60 + 22 * rng()) * Math.PI) / 180;
+        const len = Math.min(0.3 + 0.25 * rng(), (y0 - 0.55) / Math.sin(drop));
+        const ca = Math.cos(a);
+        const sa = Math.sin(a);
+        const lit = 0.5 + 0.5 * (ca * LX + sa * LZ) * 0.9;
+        const tone = Math.max(0, Math.min(2, Math.floor((0.3 + 0.7 * lit) * (0.7 + 0.6 * rng()) * 3)));
+        straw.set(
+          [
+            ca * r0 * kx,
+            (y0 - syM) * ky,
+            sa * r0 * kx,
+            (ca * (r0 + Math.cos(drop) * len)) * kx,
+            (y0 - syM - Math.sin(drop) * len) * ky,
+            (sa * (r0 + Math.cos(drop) * len)) * kx,
+            tone,
+            (rng() - 0.5) * 0.5, // dead leaves curl as they dry
+          ],
+          k * 8,
+        );
+      }
+      return {
+        gy: gyM * ky,
+        blades,
+        straw,
+        sy: syM * ky,
+        skirt,
+        bladeLen: 1.22 * kx,
+        bladeW: 0.088 * kx,
+        strawLen: 0.42 * kx,
+        trunkR: 0.165 * kx,
+        trunkTop: 1.0 * ky,
+        coreR: 0.55 * kx,
+      };
+    }
+
+    // The local map at a point: screen and depth per foot along x, y, z.
+    function localMap(x: number, y: number, z: number): number[] {
+      const q = P(x, y, z);
+      const qx = P(x + 1, y, z);
+      const qy = P(x, y + 1, z);
+      const qz = P(x, y, z + 1);
+      return [qx[0] - q[0], qy[0] - q[0], qz[0] - q[0], qx[1] - q[1], qy[1] - q[1], qz[1] - q[1], qx[2] - q[2], qy[2] - q[2], qz[2] - q[2], q[0], q[1]];
+    }
+
+    /** Beaked Yucca, after the app's mature model: the clean-trunked globe.
+     *
+     *  A ball of stiff, straight, dark-green blades radiating from the head
+     *  of a short trunk — the lowest angled down, the top ones near upright
+     *  — over a skirt of last years' leaves hanging in straw, and below it
+     *  a little of the trunk itself, latticed with old leaf bases.
+     *
+     *  The blades on the far side of the ball first, darker; the trunk and
+     *  the skirt; a dark heart; then the near blades, lit toward the sun.
+     *  Far off a blade is a stroke; close up a long pointed blade. All
+     *  through a local map at the ball and one at the skirt. Grown once and
+     *  cached.
+     */
+    function drawBeakedYuccaBody(
+      x: number,
+      z: number,
+      h: number,
+      rw: number,
+      rot: number,
+      seed: string,
+      sel: boolean,
+    ) {
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = yuccaGrown.get(key);
+      if (!grown) {
+        if (yuccaGrown.size > 400) yuccaGrown.clear(); // growth and edits mint new keys
+        grown = growBeakedYucca(h, rw, rot, seed);
+        yuccaGrown.set(key, grown);
+      }
+      const pal = sel ? BEAKED_YUCCA_GOLD : BEAKED_YUCCA_COLOURS;
+      const { blades, straw, skirt } = grown;
+      const G = localMap(x, grown.gy, z);
+      const S = localMap(x, grown.sy, z);
+      const gPx = Math.max(Math.hypot(G[0], G[3]), Math.hypot(G[2], G[5]), Math.hypot(G[1], G[4]));
+      const sPx = Math.max(Math.hypot(S[0], S[3]), Math.hypot(S[2], S[5]), Math.hypot(S[1], S[4]));
+      const wPx = grown.bladeW * gPx;
+      // Where the sun falls on screen, for the lit sides.
+      const lsx = S[0] * -0.44 + S[2] * -0.43;
+      const lsy = S[3] * -0.44 + S[5] * -0.43;
+      const lsl = Math.hypot(lsx, lsy) || 1;
+
+      // Each blade once this frame: where it lands, and its pass — the far
+      // side of the ball, or how far toward the camera its tip comes in
+      // quarters of a blade — by tone.
+      const kite = wPx >= 2.4;
+      const bladePx = grown.bladeLen * gPx;
+      const n = blades.length / 7;
+      const dz = grown.bladeLen * Math.hypot(G[6], G[7], G[8]);
+      yuccaStart.fill(0);
+      for (let o = 0, k = 0; k < n; o += 7, k++) {
+        ybx[k] = G[9] + G[0] * blades[o] + G[1] * blades[o + 1] + G[2] * blades[o + 2];
+        yby[k] = G[10] + G[3] * blades[o] + G[4] * blades[o + 1] + G[5] * blades[o + 2];
+        ytx[k] = G[9] + G[0] * blades[o + 3] + G[1] * blades[o + 4] + G[2] * blades[o + 5];
+        yty[k] = G[10] + G[3] * blades[o + 3] + G[4] * blades[o + 4] + G[5] * blades[o + 5];
+        const d = -(G[6] * blades[o + 3] + G[7] * blades[o + 4] + G[8] * blades[o + 5]) / dz;
+        const band = d < 0 ? 0 : 1 + Math.min(3, Math.floor(d * 4.4));
+        yuccaKey[k] = band * 5 + blades[o + 6];
+        yuccaStart[yuccaKey[k] + 1]++;
+      }
+      for (let b = 0; b < 25; b++) yuccaStart[b + 1] += yuccaStart[b];
+      yuccaAt.set(yuccaStart);
+      for (let k = 0; k < n; k++) yuccaOrder[yuccaAt[yuccaKey[k]]++] = k;
+
+      // A long pointed blade, widest a third of the way out, narrower the
+      // more end-on it is to us. Close up it is two halves either side of
+      // its keel: side 1 the half to the sun, -1 the other, 0 both.
+      const blade = (k: number, side: number) => {
+        const bx = ybx[k];
+        const by = yby[k];
+        const tx = ytx[k];
+        const ty = yty[k];
+        if (!kite) {
+          ctx!.moveTo(bx, by);
+          ctx!.lineTo(tx, ty);
+          return;
+        }
+        const ux = tx - bx;
+        const uy = ty - by;
+        const ul = Math.hypot(ux, uy) || 1;
+        const half = wPx * 0.36 * Math.sqrt(Math.min(1, ul / bladePx));
+        let nx = (-uy / ul) * half;
+        let ny = (ux / ul) * half;
+        if (nx * lsx + ny * lsy < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        const mx = bx + ux * 0.35;
+        const my = by + uy * 0.35;
+        if (side === 0) {
+          ctx!.moveTo(bx + nx * 0.4, by + ny * 0.4);
+          ctx!.lineTo(mx + nx, my + ny);
+          ctx!.lineTo(tx, ty);
+          ctx!.lineTo(mx - nx, my - ny);
+          ctx!.lineTo(bx - nx * 0.4, by - ny * 0.4);
+        } else {
+          ctx!.moveTo(bx, by);
+          ctx!.lineTo(bx + nx * 0.4 * side, by + ny * 0.4 * side);
+          ctx!.lineTo(mx + nx * side, my + ny * side);
+          ctx!.lineTo(tx, ty);
+        }
+      };
+      // One colour's pass: the blades of one or two buckets.
+      const pass = (colour: string, b1: number, side1: number, b2: number, side2: number) => {
+        if (kite) ctx!.fillStyle = colour;
+        else ctx!.strokeStyle = colour;
+        ctx!.beginPath();
+        let m = 0;
+        for (let r = 0; r < 2; r++) {
+          const b = r ? b2 : b1;
+          if (b < 0) continue;
+          const side = r ? side2 : side1;
+          for (let i = yuccaStart[b]; i < yuccaStart[b + 1]; i++) {
+            blade(yuccaOrder[i], side);
+            // Many overlapping shapes in one fill get slow: fill in batches.
+            if (kite && ++m === 150) {
+              ctx!.fill();
+              ctx!.beginPath();
+              m = 0;
+            }
+          }
+        }
+        if (kite) ctx!.fill();
+        else ctx!.stroke();
+      };
+      ctx!.lineCap = "butt";
+      ctx!.lineWidth = Math.max(0.6, wPx * 0.5);
+
+      // The far side of the ball, a tone darker: over the top of it, it is
+      // as much in the sun as the near side.
+      for (let t = 0; t < 5; t++) pass(t === 0 ? pal.back[0] : t === 1 ? pal.back[1] : pal.blade[t - 2], t, 0, -1, 0);
+
+      // The trunk: what shows of it under the skirt.
+      const t0 = P(x, 0, z);
+      const t1 = P(x, grown.trunkTop, z);
+      const tdx = t1[0] - t0[0];
+      const tdy = t1[1] - t0[1];
+      const tdl = Math.hypot(tdx, tdy) || 1;
+      const tr = Math.max(0.8, grown.trunkR * sPx);
+      const tnx = (-tdy / tdl) * tr;
+      const tny = (tdx / tdl) * tr;
+      const trunkPath = () => {
+        ctx!.beginPath();
+        ctx!.moveTo(t0[0] + tnx, t0[1] + tny);
+        ctx!.lineTo(t1[0] + tnx, t1[1] + tny);
+        ctx!.lineTo(t1[0] - tnx, t1[1] - tny);
+        ctx!.lineTo(t0[0] - tnx, t0[1] - tny);
+        ctx!.closePath();
+      };
+      trunkPath();
+      ctx!.fillStyle = pal.trunk;
+      ctx!.fill();
+      const litSide = (tnx * lsx + tny * lsy) / lsl > 0 ? 1 : -1;
+      if (tr > 2) {
+        ctx!.beginPath();
+        ctx!.moveTo(t0[0] + tnx * 0.55 * litSide, t0[1] + tny * 0.55 * litSide);
+        ctx!.lineTo(t1[0] + tnx * 0.55 * litSide, t1[1] + tny * 0.55 * litSide);
+        ctx!.lineWidth = tr * 0.6;
+        ctx!.strokeStyle = pal.trunkLit;
+        ctx!.stroke();
+      }
+      // Close up, the lattice of old leaf bases.
+      if (tr > 5) {
+        ctx!.save();
+        trunkPath();
+        ctx!.clip();
+        const step = tr * 0.32;
+        const reach = tdl + tr * 2;
+        ctx!.beginPath();
+        for (let s = -tr * 2; s < reach; s += step) {
+          const ax = t0[0] + (tdx / tdl) * s;
+          const ay = t0[1] + (tdy / tdl) * s;
+          ctx!.moveTo(ax - tnx * 1.2, ay - tny * 1.2);
+          ctx!.lineTo(ax + tnx * 1.2 + (tdx / tdl) * tr * 0.7, ay + tny * 1.2 + (tdy / tdl) * tr * 0.7);
+          ctx!.moveTo(ax + tnx * 1.2, ay + tny * 1.2);
+          ctx!.lineTo(ax - tnx * 1.2 + (tdx / tdl) * tr * 0.7, ay - tny * 1.2 + (tdy / tdl) * tr * 0.7);
+        }
+        ctx!.lineWidth = Math.max(0.7, tr * 0.05);
+        ctx!.strokeStyle = pal.trunkLine;
+        ctx!.stroke();
+        ctx!.restore();
+      }
+
+      // The skirt: its outline in straw, the side to the sun paler.
+      const skirtHull = (scale: number, shift: number) => {
+        const pts: [number, number][] = [];
+        for (let i = 0; i < skirt.length; i += 2) {
+          const y = skirt[i] - grown.sy;
+          const r = skirt[i + 1] * scale;
+          for (let k = 0; k < 12; k++) {
+            const a = (k / 12) * Math.PI * 2;
+            const ox = Math.cos(a) * r + -0.44 * shift * skirt[i + 1];
+            const oz = Math.sin(a) * r + -0.43 * shift * skirt[i + 1];
+            pts.push([S[9] + S[0] * ox + S[1] * y + S[2] * oz, S[10] + S[3] * ox + S[4] * y + S[5] * oz]);
+          }
+        }
+        const hull = convexHull(pts);
+        ctx!.beginPath();
+        hull.forEach(([px, py], i) => (i ? ctx!.lineTo(px, py) : ctx!.moveTo(px, py)));
+        ctx!.closePath();
+      };
+      skirtHull(1, 0);
+      ctx!.fillStyle = pal.skirt;
+      ctx!.fill();
+      skirtHull(0.78, 0.3);
+      ctx!.fillStyle = pal.skirtLit;
+      ctx!.fill();
+      // Close up, the hanging leaves themselves.
+      if (grown.strawLen * sPx >= 3) {
+        ctx!.lineWidth = Math.max(0.6, 0.018 * (rw / BY_R) * sPx);
+        for (let t = 0; t < 3; t++) {
+          ctx!.beginPath();
+          for (let o = 0; o < straw.length; o += 8) {
+            if (straw[o + 6] !== t) continue;
+            if (S[6] * straw[o] + S[8] * straw[o + 2] > 0) continue;
+            const ax = S[9] + S[0] * straw[o] + S[1] * straw[o + 1] + S[2] * straw[o + 2];
+            const ay = S[10] + S[3] * straw[o] + S[4] * straw[o + 1] + S[5] * straw[o + 2];
+            const bx = S[9] + S[0] * straw[o + 3] + S[1] * straw[o + 4] + S[2] * straw[o + 5];
+            const by = S[10] + S[3] * straw[o + 3] + S[4] * straw[o + 4] + S[5] * straw[o + 5];
+            const c = straw[o + 7];
+            ctx!.moveTo(ax, ay);
+            ctx!.quadraticCurveTo((ax + bx) / 2 - (by - ay) * c, (ay + by) / 2 + (bx - ax) * c, bx, by);
+          }
+          ctx!.strokeStyle = pal.straw[t];
+          ctx!.stroke();
+        }
+        ctx!.lineWidth = Math.max(0.6, wPx * 0.5);
+      }
+
+      // The ball's dark heart, so gaps between near blades read as depth.
+      ctx!.beginPath();
+      ctx!.arc(G[9], G[10], Math.max(1, grown.coreR * gPx), 0, Math.PI * 2);
+      ctx!.fillStyle = pal.core;
+      ctx!.fill();
+
+      // The near blades, toward the sun lighter, a band at a time far to
+      // near so the tones lie among each other; each blade's shaded half a
+      // tone darker than its sunny one. Close up each one's shaded edge is
+      // drawn in, or where they crowd — the fan up from the crown — they
+      // melt into one sheet.
+      for (let band = 1; band <= 4; band++) {
+        const b0 = band * 5;
+        for (let t = 0; t < 5; t++) {
+          // a stroke far off: a tone down, as its shaded half and edge are
+          if (!kite) pass(t ? pal.blade[t - 1] : pal.back[1], b0 + t, 0, -1, 0);
+          else pass(pal.blade[t], b0 + t, t === 0 ? 0 : 1, t < 4 ? b0 + t + 1 : -1, -1);
+        }
+        if (wPx < 3) continue;
+        ctx!.beginPath();
+        for (let i = yuccaStart[b0]; i < yuccaStart[b0 + 5]; i++) {
+          const k = yuccaOrder[i];
+          const ux = ytx[k] - ybx[k];
+          const uy = yty[k] - yby[k];
+          const ul = Math.hypot(ux, uy) || 1;
+          const half = wPx * 0.36 * Math.sqrt(Math.min(1, ul / bladePx));
+          let nx = (-uy / ul) * half;
+          let ny = (ux / ul) * half;
+          if (nx * lsx + ny * lsy > 0) {
+            nx = -nx;
+            ny = -ny;
+          }
+          ctx!.moveTo(ybx[k] + ux * 0.35 + nx, yby[k] + uy * 0.35 + ny);
+          ctx!.lineTo(ytx[k], yty[k]);
+        }
+        ctx!.lineWidth = Math.max(0.6, wPx * 0.1);
+        ctx!.strokeStyle = pal.edge;
+        ctx!.stroke();
+      }
+    }
+
     /** AZ Boulder 1: the scanned rock itself.
      *
      *  The boulder body below is a jittered solid, a fair stand-in for a
@@ -9965,6 +10414,8 @@ export function LivingBlueprint({
         drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
       } else if (inst.model === "Ocotillo") {
         drawOcotilloBody(x, z, h, rw, symRot, inst.id, sel || hover);
+      } else if (inst.model.startsWith("YuccaRostrata")) {
+        drawBeakedYuccaBody(x, z, h, rw, symRot, inst.id, sel || hover);
       } else if (inst.model === "AgaveTruncata") {
         drawTruncataBody(x, z, h, symRot, sel || hover, lw);
       } else if (inst.model === "AgaveAmericana") {

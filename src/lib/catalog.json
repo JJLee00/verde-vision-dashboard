@@ -1,6 +1,6 @@
 {
   "source": "Verde-Vision app PlantItem.sampleCatalog",
-  "generatedAt": "2026-11-02",
+  "generatedAt": "2026-11-03",
   "sizeOrder": [
     "1g",
     "5g",
@@ -1344,8 +1344,8 @@
           "modelName": "YuccaRostrataMd"
         }
       ],
-      "matureHeightFt": 14,
-      "matureWidthFt": 6,
+      "matureHeightFt": 8.5,
+      "matureWidthFt": 5.5,
       "sun": "Full Sun",
       "water": "Low",
       "origin": "Chihuahuan Desert — West Texas and northern Mexico",
