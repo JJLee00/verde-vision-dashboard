@@ -1,14 +1,17 @@
 // The house outline as a project stores it (migration 020).
 //
-// Written by the project page's House outline card, read back by that card
-// and by /api/vision-pro/projects, which hands it to the headset. The
+// Written by the site plan builder (version 2; version 1 came from the old
+// House outline card), read back by the builder and by /api/vision-pro/projects, which hands it to the headset. The
 // headset decodes `candidate` with the same type it uses for /api/blueprint
 // responses, so it MUST stay exactly that shape — minus the image bytes.
 
 import type { BlueprintCandidate } from "./types";
 
 export interface StoredBlueprint {
-  version: 1;
+  /** 1: a house and a lot (the House outline card). 2: a whole site plan
+   *  (src/lib/site-plan/plan.ts), with `candidate` derived from it so this
+   *  reader, and every headset, still gets the house and the lot. */
+  version: 1 | 2;
   /**
    * Where the outline came from: "trace" when it was drawn on the
    * dashboard (trace.ts), or a parcel provider like "maricopa" for one

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
+import { headsetFeatures, readPlan, type HeadsetFeature } from "@/lib/site-plan/plan";
 import { ANCHOR_STEPS } from "@/lib/markers";
 
 /**
@@ -136,12 +137,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // House outlines picked at a desk (migration 020). Its own query so a
+  // Site plans traced at a desk (migration 020). Its own query so a
   // database that hasn't run 020 still serves the project list — the outline
   // is a head start, never a reason to fail the list.
   const outlines = new Map<
     string,
-    { stored: StoredBlueprint; fetchedAt: string | null; orthoPath: string | null }
+    {
+      stored: StoredBlueprint;
+      features: HeadsetFeature[] | null;
+      fetchedAt: string | null;
+      orthoPath: string | null;
+    }
   >();
   const { data: outlineRows } = await supabase
     .from("projects")
@@ -151,8 +157,12 @@ export async function GET(request: NextRequest) {
   for (const row of outlineRows ?? []) {
     const stored = readStored(row.blueprint_payload);
     if (!stored) continue;
+    // A site plan (version 2) carries every shape traced at the desk; a
+    // version-1 outline only the house and the lot, which `candidate` holds.
+    const plan = stored.version === 2 ? readPlan(row.blueprint_payload) : null;
     outlines.set(row.id, {
       stored,
+      features: plan ? headsetFeatures(plan) : null,
       // Normalised to millisecond ISO-8601: the headset compares it with its
       // own copy's date, and Postgres's microsecond form is not one Foundation
       // parses reliably.
@@ -297,12 +307,15 @@ export async function GET(request: NextRequest) {
       // the corner walk with no lookup in the yard. `candidate` is the same
       // shape /api/blueprint returns, minus the image — the tile is a
       // separate signed download, never base64 in a list the headset polls.
+      // `features` is every shape on a site plan, main house first; headsets
+      // that predate it ignore the key and walk `candidate` as before.
       blueprint: (() => {
         const outline = outlines.get(p.id);
         if (!outline) return null;
         return {
           provider: outline.stored.provider,
           candidate: outline.stored.candidate,
+          features: outline.features,
           fetched_at: outline.fetchedAt,
           ortho_url: orthoUrls[p.id] ?? null,
         };

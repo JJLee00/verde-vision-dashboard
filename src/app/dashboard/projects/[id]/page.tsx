@@ -21,8 +21,10 @@ import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
 import { VideoManager, type VideoItem } from "./video-manager";
-import { HouseOutline } from "./house-outline";
-import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
+import { SitePlanCard } from "./site-plan/card";
+import { readPlan, type SitePlan } from "@/lib/site-plan/plan";
+import { placedAt, placedPlan } from "@/lib/site-plan/placed";
+import { FIXTURE_PLAN } from "@/lib/site-plan/fixture";
 
 // The project page: everything the dashboard knows about one project.
 // The card on /dashboard stays a glance; this is the record — cover,
@@ -69,12 +71,12 @@ type PageData = {
   notes: string | null;
   videos: VideoItem[];
   markers: SiteMarker[];
-  // The house outline traced for the headset (migration 020).
-  houseOutline: {
-    stored: StoredBlueprint;
-    fetchedAt: string | null;
-  } | null;
-  houseOutlineReady: boolean; // false until migration-020 has been run
+  // The site plan traced for the headset (migration 020) — as placed on
+  // site once the corner walk has run.
+  sitePlan: SitePlan | null;
+  sitePlanSavedAt: string | null;
+  sitePlanPlacedAt: string | null;
+  sitePlanReady: boolean; // false until migration-020 has been run
   modeSeconds: Record<string, number> | null;
   // The designer whose folder holds this project's media ({client_id}/
   // {project_id}/…) — owner uploads land there too, one canonical spot.
@@ -86,38 +88,6 @@ type PageData = {
   readOnly: boolean; // dev fixture
   deleted: boolean; // soft-deleted (migration 018); false before it has run
   rail: { rows: RailRow[]; subtotal: number | null };
-};
-
-// A made-up yard and L-shaped house for the dev fixture — synthetic on
-// purpose, so no real property's outline lives in the repo. On the aerial
-// it lands on some real neighbourhood; it isn't meant to match a roof.
-const FIXTURE_OUTLINE: StoredBlueprint = {
-  version: 1,
-  provider: "trace",
-  lookupAddress: "27210 N Rio Verde Dr, Rio Verde, AZ",
-  candidate: {
-    apn: "",
-    address: "27210 N Rio Verde Dr, Rio Verde, AZ",
-    centroid: { lat: 33.72, lng: -111.67 },
-    parcelXZ: [
-      [-16, -22],
-      [16, -22],
-      [16, 22],
-      [-16, 22],
-    ],
-    attributes: {},
-    houseXZ: [
-      [-10, -14],
-      [8, -14],
-      [8, -2],
-      [0, -2],
-      [0, 6],
-      [-10, 6],
-    ],
-    houseAreaSqFt: 3186,
-    imagery: null,
-    warnings: [],
-  },
 };
 
 // Mode-time buckets in display order. "clientView" is the presenting
@@ -144,8 +114,10 @@ function buildFixtureData(): PageData {
     markers: buildSiteMarkers([], {}, {
       origin: { text: "Garage frame, 4 ft up", updated_at: "2026-10-02T18:00:00Z" },
     }),
-    houseOutline: { stored: FIXTURE_OUTLINE, fetchedAt: "2026-07-12T16:00:00Z" },
-    houseOutlineReady: true,
+    sitePlan: FIXTURE_PLAN,
+    sitePlanSavedAt: "2026-07-12T16:00:00Z",
+    sitePlanPlacedAt: null,
+    sitePlanReady: true,
     modeSeconds: { design: 5820, blueprint: 1560, clientView: 1320, night: 240 },
     mediaOwnerId: "fixture",
     designerName: null,
@@ -279,7 +251,8 @@ async function loadPageData(id: string): Promise<PageData | null> {
     blueprint_payload?: unknown;
     blueprint_fetched_at?: string | null;
   } | null;
-  const storedOutline = readStored(outlineRow?.blueprint_payload);
+  const plan = readPlan(outlineRow?.blueprint_payload);
+  const placed = projectJson?.outlinePlacement ? placedAt(projectJson) : null;
 
   // No cover photo here: it is set and shown on the project CARD, so
   // signing a URL for it on every project page render bought nothing.
@@ -361,13 +334,15 @@ async function loadPageData(id: string): Promise<PageData | null> {
     createdAt: base.created_at,
     projectDate: base.project_date,
     estimateAmount: base.estimate_amount,
-    // Drawn from the saved design on every open; the stored PDF only for a
-    // project that has none on the dashboard.
-    blueprintUrl: projectJson
-      ? `/dashboard/projects/${base.id}/blueprint/pdf`
-      : base.blueprint_path
-        ? (docUrls.get(base.blueprint_path) ?? null)
-        : null,
+    // Drawn from the saved design (or, before the headset has drawn
+    // anything, the site plan) on every open; the stored PDF only for a
+    // project that has neither on the dashboard.
+    blueprintUrl:
+      projectJson || plan
+        ? `/dashboard/projects/${base.id}/blueprint/pdf`
+        : base.blueprint_path
+          ? (docUrls.get(base.blueprint_path) ?? null)
+          : null,
     estimateUrl: base.estimate_path
       ? (docUrls.get(base.estimate_path) ?? null)
       : null,
@@ -383,13 +358,13 @@ async function loadPageData(id: string): Promise<PageData | null> {
     notes,
     videos,
     markers,
-    houseOutline: storedOutline
-      ? {
-          stored: storedOutline,
-          fetchedAt: outlineRow?.blueprint_fetched_at ?? null,
-        }
-      : null,
-    houseOutlineReady: !outlineRes.error,
+    sitePlan:
+      plan && projectJson?.outlinePlacement
+        ? (placedPlan(plan, projectJson) ?? plan)
+        : plan,
+    sitePlanSavedAt: outlineRow?.blueprint_fetched_at ?? null,
+    sitePlanPlacedAt: placed?.toISOString() ?? null,
+    sitePlanReady: !outlineRes.error,
     modeSeconds:
       (projectJson?.modeSeconds as Record<string, number> | null) ?? null,
     mediaOwnerId: base.client_id,
@@ -631,11 +606,25 @@ export default async function ProjectPage({
             </SectionCard>
           </div>
 
-          <SectionCard title="House outline">
-            <HouseOutline
+          <SectionCard
+            title="Site plan"
+            action={
+              data.sitePlan ? (
+                <Link
+                  href={`/dashboard/projects/${data.id}/site-plan`}
+                  className="text-xs font-semibold text-accent transition hover:text-accent-bright"
+                >
+                  Open builder →
+                </Link>
+              ) : undefined
+            }
+          >
+            <SitePlanCard
               projectId={data.id}
-              outline={data.houseOutline}
-              ready={data.houseOutlineReady}
+              plan={data.sitePlan}
+              placed={data.sitePlanPlacedAt}
+              savedAt={data.sitePlanSavedAt}
+              ready={data.sitePlanReady}
               disabled={disabled}
             />
           </SectionCard>

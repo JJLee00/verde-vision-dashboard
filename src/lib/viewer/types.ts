@@ -39,6 +39,9 @@ export type FeaturePolygonJSON = {
   featureType: string;
   customLabel?: string | null;
   vertices: LocalPoint[];
+  // False for a run that isn't closed — a fence or a retaining wall from a
+  // desk site plan. Absent (every headset save today) means closed.
+  isClosed?: boolean | null;
 };
 
 export type HardscapeAreaJSON = {
@@ -85,6 +88,20 @@ export type ProjectFileJSON = {
   // true → rebuildPlantRows keeps a Labor line on this project's estimate.
   // Absent on every project saved before the switch moved onto the project.
   includeLabor?: boolean | null;
+  // Where the headset's corner walk put the dashboard's site plan
+  // (OutlinePlacement in the app): the fit from the plan's frame (metres
+  // from its origin, x east, z south) to local, local = R(rotation)·geo +
+  // translation. The fit is absent on outlines placed before the app kept
+  // it. Present at all means the plan has been placed on site.
+  outlinePlacement?: {
+    rotation?: number | null;
+    translationX?: number | null;
+    translationZ?: number | null;
+    padHeight?: number | null;
+    houseFeatureID?: string | null;
+    boundaryPointIDs?: string[] | null;
+    placedAt?: string | number | null;
+  } | null;
 };
 
 export const METERS_TO_FEET = 3.28084;

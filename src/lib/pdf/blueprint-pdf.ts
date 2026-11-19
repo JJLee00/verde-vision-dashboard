@@ -18,6 +18,7 @@ import {
   type ScheduleRow,
   type SheetLayout,
 } from "@/lib/blueprint/sheet";
+import { featureStyle, type RGB01 } from "@/lib/blueprint/feature-style";
 import { surfaceSqFt, surfaceStyle } from "@/lib/surfaces";
 import { speciesMeta } from "@/lib/viewer/catalog";
 import { drawPlanSymbol, edgeRadius, symbolFor, type PlanSymbol } from "@/lib/viewer/symbols";
@@ -88,58 +89,40 @@ const FEATURE_ORDER = [
 ];
 
 function featureHatch(type: string): Hatch {
-  if (type === "House" || type === "Shed" || type === "Garage") {
-    return {
-      stroke: gray(0.15),
-      label: gray(0.2),
-      draw: (doc, r) =>
-        lines(doc, gray(0.3), 1, 0.35, () => {
-          for (let y = r.y - r.w; y < r.y + r.h; y += 5) {
-            doc.moveTo(r.x, y).lineTo(r.x + r.w, y + r.w);
+  const style = featureStyle(type);
+  const c = (v: RGB01): RGB => rgb(v[0], v[1], v[2]);
+  const fill = style.fill;
+  let draw: Hatch["draw"];
+  if (fill.kind === "waves") {
+    draw = (doc, r) =>
+      lines(doc, c(fill.color), 1, fill.width, () => {
+        const wl = fill.wavelength;
+        const amp = fill.amplitude;
+        for (let y = r.y + 2; y < r.y + r.h; y += fill.spacing) {
+          doc.moveTo(r.x, y);
+          for (let x = r.x; x < r.x + r.w; x += wl) {
+            quad(doc, x, y, x + wl / 4, y - amp, x + wl / 2, y);
+            quad(doc, x + wl / 2, y, x + (3 * wl) / 4, y + amp, x + wl, y);
           }
-        }),
-    };
-  }
-  if (type === "Pool") {
-    return {
-      stroke: rgb(0.24, 0.48, 0.61),
-      label: rgb(0.2, 0.4, 0.52),
-      draw: (doc, r) =>
-        lines(doc, rgb(0.35, 0.58, 0.71), 1, 0.45, () => {
-          const wl = 8;
-          const amp = 0.8;
-          for (let y = r.y + 2; y < r.y + r.h; y += 4) {
-            doc.moveTo(r.x, y);
-            for (let x = r.x; x < r.x + r.w; x += wl) {
-              quad(doc, x, y, x + wl / 4, y - amp, x + wl / 2, y);
-              quad(doc, x + wl / 2, y, x + (3 * wl) / 4, y + amp, x + wl, y);
-            }
-          }
-        }),
-    };
-  }
-  if (type === "Patio" || type === "Walkway" || type === "Driveway" || type === "Deck") {
-    return {
-      stroke: gray(0.4),
-      label: gray(0.3),
-      draw: (doc, r) =>
-        dots(doc, gray(0.5), 1, () => {
-          for (let y = r.y + 3; y < r.y + r.h; y += 6) {
-            for (let x = r.x + 3; x < r.x + r.w; x += 6) doc.circle(x, y, 0.6);
-          }
-        }),
-    };
-  }
-  return {
-    stroke: gray(0.4),
-    label: gray(0.25),
-    draw: (doc, r) =>
-      lines(doc, gray(0.6), 1, 0.35, () => {
-        for (let o = -r.w; o < r.h; o += 5) {
+        }
+      });
+  } else if (fill.kind === "dots") {
+    draw = (doc, r) =>
+      dots(doc, c(fill.color), 1, () => {
+        const half = fill.spacing / 2;
+        for (let y = r.y + half; y < r.y + r.h; y += fill.spacing) {
+          for (let x = r.x + half; x < r.x + r.w; x += fill.spacing) doc.circle(x, y, fill.radius);
+        }
+      });
+  } else {
+    draw = (doc, r) =>
+      lines(doc, c(fill.color), 1, fill.width, () => {
+        for (let o = -r.w; o < r.h; o += fill.spacing) {
           doc.moveTo(r.x, r.y + o).lineTo(r.x + r.w, r.y + o + r.w);
         }
-      }),
-  };
+      });
+  }
+  return { stroke: c(style.stroke), label: c(style.label), draw };
 }
 
 // ── Surface hatches (FeaturePatterns.swift, hardscapeStyle) ─────────────
@@ -372,6 +355,56 @@ function drawArea(doc: Doc, layout: SheetLayout, verts: LocalPoint[], hatch: Hat
   chipLabel(doc, label, px, py, F.featureLabel, hatch.label);
 }
 
+/**
+ * A run that isn't closed: a fence (a line with cross-ticks) or a retaining
+ * wall (a heavy line with a grey core) — as the site plan builder draws
+ * them. Labelled on its longest stretch, if that's long enough to carry it.
+ */
+function drawRun(doc: Doc, layout: SheetLayout, verts: LocalPoint[], type: string, label: string) {
+  const pts = verts.map((v) => layout.toPDF(...layout.rotate(v.positionX, v.positionZ)));
+  const path = () => {
+    doc.moveTo(pts[0][0], pts[0][1]);
+    for (const [x, y] of pts.slice(1)) doc.lineTo(x, y);
+  };
+  const ink = gray(0.1);
+  doc.save();
+  if (type === "Retaining Wall") {
+    path();
+    doc.lineWidth(3.3).lineJoin("miter").strokeColor(ink).stroke();
+    path();
+    doc.lineWidth(1.7).lineJoin("miter").strokeColor(gray(0.6)).stroke();
+  } else {
+    path();
+    doc.lineWidth(0.9).lineJoin("miter").strokeColor(ink).stroke();
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      const len = Math.hypot(x1 - x0, y1 - y0);
+      if (len < 1) continue;
+      const ux = (x1 - x0) / len;
+      const uy = (y1 - y0) / len;
+      for (let t = 4.5; t < len - 2; t += 9) {
+        const cx = x0 + ux * t;
+        const cy = y0 + uy * t;
+        doc.moveTo(cx - uy * 2.3, cy + ux * 2.3).lineTo(cx + uy * 2.3, cy - ux * 2.3);
+      }
+    }
+    doc.lineWidth(0.8).strokeColor(ink).stroke();
+  }
+  doc.restore();
+  let best = -1;
+  let longest = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    if (l > longest) [longest, best] = [l, i];
+  }
+  if (best >= 0 && longest > measure(doc, label, F.featureLabel).w + 24) {
+    const [x0, y0] = pts[best];
+    const [x1, y1] = pts[best + 1];
+    chipLabel(doc, label, (x0 + x1) / 2, (y0 + y1) / 2, F.featureLabel, ink);
+  }
+}
+
 function swatch(doc: Doc, x: number, y: number, hatch: Hatch) {
   const r = { x, y, w: 14, h: 10 };
   doc.save().rect(r.x, r.y, r.w, r.h).clip();
@@ -443,8 +476,12 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   // Features.
   const features = project.featurePolygons ?? [];
   for (const f of features) {
-    if ((f.vertices ?? []).length < 3) continue;
     const label = f.featureType === "Other" ? (f.customLabel ?? "Other") : f.featureType;
+    if (f.isClosed === false) {
+      if ((f.vertices ?? []).length >= 2) drawRun(doc, layout, f.vertices, f.featureType, label.toUpperCase());
+      continue;
+    }
+    if ((f.vertices ?? []).length < 3) continue;
     drawArea(doc, layout, f.vertices, featureHatch(f.featureType), 1.2, label.toUpperCase());
   }
 

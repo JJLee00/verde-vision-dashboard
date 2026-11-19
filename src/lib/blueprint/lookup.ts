@@ -1,8 +1,8 @@
 // Address → parcel candidates → one enriched parcel.
 //
-// LEGACY (Oct 2026): outlines are now traced by hand on the project page
-// (trace.ts), which works at any address; this county + Solar pipeline only
-// ever covered Maricopa. It stays for the /api/blueprint route, which
+// LEGACY (Oct 2026): outlines are now traced by hand in the site plan
+// builder (src/lib/site-plan), which works at any address; this county +
+// Solar pipeline only ever covered Maricopa. It stays for the /api/blueprint route, which
 // headset builds from before the change still call from their in-app
 // lookup. Once those are gone, so can this be.
 

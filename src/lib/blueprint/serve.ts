@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { renderBlueprintPDF } from "@/lib/pdf/blueprint-pdf";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
+import { readPlan } from "@/lib/site-plan/plan";
+import { sheetDesign } from "@/lib/site-plan/sheet-design";
 
 // One answer for every blueprint link — the project page, the cards, the
 // viewer and the share link: the sheet drawn now from the saved design.
@@ -17,6 +19,8 @@ export type BlueprintRow = {
   blueprint_path: string | null;
   project_json: unknown;
   customer_name?: string | null;
+  /** The site plan; drawn on the sheet until the headset draws anything. */
+  blueprint_payload?: unknown;
 };
 
 const SIGNED_URL_TTL_SECONDS = 60;
@@ -28,7 +32,11 @@ export async function serveBlueprint(
 ): Promise<Response> {
   if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const design = row.project_json as ProjectFileJSON | null;
+  const design = sheetDesign(
+    row.project_json as ProjectFileJSON | null,
+    readPlan(row.blueprint_payload),
+    row.name,
+  );
   if (design) {
     const dated = design.createdDate ?? row.project_date ?? row.created_at;
     const pdf = await renderBlueprintPDF(design, {

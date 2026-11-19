@@ -48,7 +48,7 @@ export async function GET(
   // Split the same way the project page reads them: the design and the
   // customer came in later migrations, and either missing must not stop the
   // stored PDF from being served.
-  const [baseRes, designRes, customerRes] = await Promise.all([
+  const [baseRes, designRes, customerRes, planRes] = await Promise.all([
     supabase
       .from("projects")
       .select("name, project_date, created_at, blueprint_path")
@@ -56,6 +56,8 @@ export async function GET(
       .single(),
     supabase.from("projects").select("project_json").eq("id", id).single(),
     supabase.from("projects").select("customer_name").eq("id", id).single(),
+    // And the site plan (migration 020), drawn until the headset draws.
+    supabase.from("projects").select("blueprint_payload").eq("id", id).single(),
   ]);
   if (baseRes.error || !baseRes.data) {
     return Response.json({ error: "Project not found" }, { status: 404 });
@@ -68,6 +70,8 @@ export async function GET(
       project_json: designRes.data?.project_json ?? null,
       customer_name:
         (customerRes.data as { customer_name?: string | null } | null)?.customer_name ?? null,
+      blueprint_payload:
+        (planRes.data as { blueprint_payload?: unknown } | null)?.blueprint_payload ?? null,
     },
     download
   );

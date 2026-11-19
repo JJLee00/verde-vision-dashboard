@@ -6,7 +6,7 @@
 // satellite map as their example of what is forbidden. Esri's World Imagery
 // licence says the layer may be used "to support data collection and
 // editing, with the results used internally or shared with others" — which
-// is exactly the House outline card.
+// is exactly the site plan builder.
 //
 // The second base map, World Topographic, draws house footprints as clean
 // grey shapes (and lot lines where a county has contributed them), which

@@ -34,7 +34,8 @@ import {
 export const maxDuration = 60;
 
 // The lookup itself lives in @/lib/blueprint/lookup, shared with the project
-// page's House outline card — the normal path, run at a desk. This route is
+// page's old House outline card. Desk projects are traced in the site plan
+// builder now. This route is
 // the headset's backup for a project nobody looked up beforehand.
 
 export async function GET(request: NextRequest) {
