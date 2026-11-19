@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { mainHouse, outlineOf, polygonArea, SQ_FT_PER_SQ_M, type SitePlan, type XZ } from "@/lib/site-plan/plan";
+import { boundaryOutline, mainHouse, outlineOf, polygonArea, SQ_FT_PER_SQ_M, type SitePlan, type XZ } from "@/lib/site-plan/plan";
 import { BoundaryArt, byLayer, FeatureArt, PlanPatterns, SHEET_PAPER, type Pt } from "./drawing";
 
 /**
@@ -52,7 +52,7 @@ export function SitePlanCard({
 
   const house = mainHouse(plan);
   const houseArea = house ? polygonArea(outlineOf(house)) : 0;
-  const lotArea = plan.boundary.length >= 3 ? polygonArea(plan.boundary) : 0;
+  const lotArea = plan.boundary.length >= 3 ? polygonArea(boundaryOutline(plan)) : 0;
   const sqft = (m2: number) => `${Math.round(m2 * SQ_FT_PER_SQ_M).toLocaleString("en-US")} sq ft`;
   const count = plan.features.length;
 
@@ -110,7 +110,7 @@ const PAD = 14;
 
 /** The plan on paper, north up, fitted to the card. */
 function Thumbnail({ plan }: { plan: SitePlan }) {
-  const all: XZ[] = [...plan.boundary, ...plan.features.flatMap(outlineOf)];
+  const all: XZ[] = [...boundaryOutline(plan), ...plan.features.flatMap(outlineOf)];
   const xs = all.map((p) => p[0]);
   const zs = all.map((p) => p[1]);
   const [x0, x1, z0, z1] = all.length
@@ -121,9 +121,17 @@ function Thumbnail({ plan }: { plan: SitePlan }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" style={{ background: SHEET_PAPER }}>
       <PlanPatterns />
-      {plan.boundary.length >= 3 && <BoundaryArt pts={plan.boundary.map(S)} halo={0} />}
+      {plan.boundary.length >= 3 && <BoundaryArt pts={plan.boundary.map(S)} smooth={plan.boundarySmooth} halo={0} />}
       {byLayer(plan.features).map((f) => (
-        <FeatureArt key={f.id} feature={f} pts={f.points.map(S)} radius={(f.radius ?? 0) * scale} halo={0} wash={0} />
+        <FeatureArt
+          key={f.id}
+          feature={f}
+          pts={f.points.map(S)}
+          radius={(f.radius ?? 0) * scale}
+          smooth={f.smooth}
+          halo={0}
+          wash={0}
+        />
       ))}
     </svg>
   );

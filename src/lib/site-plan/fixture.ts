@@ -34,8 +34,22 @@ export const FIXTURE_PLAN: SitePlan = finishPlan({
     },
     { id: id(2), type: "Driveway", shape: "area", points: [[2, -22], [8, -22], [8, -14], [2, -14]] },
     { id: id(3), type: "Walkway", shape: "area", points: [[-4, -22], [-2.6, -22], [-2.6, -14], [-4, -14]] },
-    { id: id(4), type: "Patio", shape: "area", points: [[-10, 6], [0, 6], [0, 10], [-10, 10]] },
-    { id: id(5), type: "Pool", shape: "area", points: [[-8, 12.5], [2, 12.5], [2, 17.5], [-8, 17.5]] },
+    // A patio with a bowed front edge, and a pool with a rounded end:
+    // each a smooth corner between two sharp ones.
+    {
+      id: id(4),
+      type: "Patio",
+      shape: "area",
+      points: [[-10, 6], [0, 6], [0, 10], [-5, 11.2], [-10, 10]],
+      smooth: [false, false, false, true, false],
+    },
+    {
+      id: id(5),
+      type: "Pool",
+      shape: "area",
+      points: [[-8, 12.5], [2, 12.5], [4.5, 15], [2, 17.5], [-8, 17.5]],
+      smooth: [false, false, true, false, false],
+    },
     { id: id(6), type: "Fire Pit", shape: "circle", points: [[9, 14]], radius: 1.1 },
     { id: id(7), type: "AC Unit", shape: "area", points: [[8.4, -6], [9.6, -6], [9.6, -4.8], [8.4, -4.8]] },
     { id: id(8), type: "Shed", shape: "area", points: [[10.5, 18], [15.4, 18], [15.4, 21.4], [10.5, 21.4]] },

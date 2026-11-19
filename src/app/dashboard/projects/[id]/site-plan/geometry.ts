@@ -72,19 +72,15 @@ function meet(p: XZ, u: XZ, q: XZ, v: XZ): XZ | null {
 
 /* ── Snapping ────────────────────────────────────────────────────── */
 
-/** Directions to square up to: each mod a quarter turn, in radians. */
-export function referenceAngles(runs: XZ[][], closed: boolean[]): number[] {
+/** Directions to square up to, from straight edges: each mod a quarter
+ *  turn, in radians. */
+export function referenceAngles(edges: [XZ, XZ][]): number[] {
   const out: number[] = [0];
-  runs.forEach((pts, r) => {
-    const n = closed[r] ? pts.length : pts.length - 1;
-    for (let i = 0; i < n; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      if (dist(a, b) < 1) continue; // short edges are corner noise
-      const ang = mod(Math.atan2(b[1] - a[1], b[0] - a[0]), Math.PI / 2);
-      if (!out.some((o) => angleGap(o, ang) < (0.5 * Math.PI) / 180)) out.push(ang);
-    }
-  });
+  for (const [a, b] of edges) {
+    if (dist(a, b) < 1) continue; // short edges are corner noise
+    const ang = mod(Math.atan2(b[1] - a[1], b[0] - a[0]), Math.PI / 2);
+    if (!out.some((o) => angleGap(o, ang) < (0.5 * Math.PI) / 180)) out.push(ang);
+  }
   return out;
 }
 
@@ -95,7 +91,7 @@ const angleGap = (a: number, b: number) => {
   return Math.min(d, Math.PI / 2 - d);
 };
 
-export type SnapKind = "corner" | "edge" | "square" | "square+edge" | null;
+export type SnapKind = "corner" | "edge" | "square" | "square+edge" | "grid" | null;
 export type Snapped = { p: XZ; kind: SnapKind; guide?: [XZ, XZ] };
 
 export interface SnapContext {
@@ -104,6 +100,8 @@ export interface SnapContext {
   angles: number[];
   /** Pixels per metre, so the reach is the same on screen at any zoom. */
   ppm: number;
+  /** The grid's spacing in metres, when snapping to it. */
+  grid: number | null;
 }
 
 const CORNER_PX = 10;
@@ -114,7 +112,8 @@ const SQUARE_DEG = 3;
  * Where a click at `p` lands: on a corner if one is close; on a square
  * line from `from` (the last corner) where the new edge is within a few
  * degrees of square to the house or the lot — onto an edge too, where
- * that line crosses one; else on an edge.
+ * that line crosses one; else on an edge. Snapping to the grid takes the
+ * square lines' place: corners and edges still win, the grid otherwise.
  */
 export function snap(p: XZ, from: XZ | null, ctx: SnapContext): Snapped {
   const reachC = CORNER_PX / ctx.ppm;
@@ -132,6 +131,12 @@ export function snap(p: XZ, from: XZ | null, ctx: SnapContext): Snapped {
   for (const [a, b] of ctx.edges) {
     const { q, d } = nearestOnSegment(p, a, b);
     if (d < edgeD) [edgeHit, edgeD] = [{ q, a, b }, d];
+  }
+
+  if (ctx.grid) {
+    if (edgeHit) return { p: edgeHit.q, kind: "edge" };
+    const g = ctx.grid;
+    return { p: [Math.round(p[0] / g) * g, Math.round(p[1] / g) * g], kind: "grid" };
   }
 
   if (from && dist(p, from) * ctx.ppm > 15) {
@@ -201,6 +206,81 @@ export function squareUp(points: XZ[], closed: boolean): XZ[] {
     }
     return meet(before.mid, before.u, after.mid, after.u) ?? p;
   });
+}
+
+/* ── The grid ────────────────────────────────────────────────────── */
+
+/** Grid spacings in feet, each a whole number of the one before. */
+const GRID_FEET = [1, 5, 10, 50, 100, 500, 1000];
+const GRID_MIN_PX = 9;
+
+/**
+ * The grid at this zoom: the finest spacing at least 9 px apart, the
+ * next one up drawn heavier, and how strongly to draw the fine one — it
+ * fades in as it opens up rather than popping. Metres and feet.
+ */
+export function gridAt(ppm: number) {
+  const pxPerFoot = ppm / FEET_PER_METER;
+  const i = Math.max(0, GRID_FEET.findIndex((f) => f * pxPerFoot >= GRID_MIN_PX));
+  const minorFt = GRID_FEET[i];
+  const majorFt = GRID_FEET[Math.min(i + 1, GRID_FEET.length - 1)];
+  return {
+    minor: minorFt / FEET_PER_METER,
+    major: majorFt / FEET_PER_METER,
+    minorFt,
+    strength: Math.min(1, Math.max(0.35, (minorFt * pxPerFoot - GRID_MIN_PX) / 12 + 0.35)),
+  };
+}
+
+/* ── Smooth corners ──────────────────────────────────────────────── */
+
+/** A corner turning less than this is a bend in a curve; more is a real
+ *  corner — where a driveway meets the street. */
+const SMOOTH_TURN = (80 * Math.PI) / 180;
+
+/**
+ * What Smooth makes of a shape: every gentle corner smooth, every sharp
+ * turn kept. A shape that's all sharp turns (a rectangle) goes smooth all
+ * round. An open run's ends stay sharp.
+ */
+export function smoothCorners(points: XZ[], closed: boolean): boolean[] {
+  const n = points.length;
+  const inner = (i: number) => closed || (i > 0 && i < n - 1);
+  const turn = (i: number) => {
+    const p = points[i];
+    const a = points[(i - 1 + n) % n];
+    const b = points[(i + 1) % n];
+    const t = Math.atan2(b[1] - p[1], b[0] - p[0]) - Math.atan2(p[1] - a[1], p[0] - a[0]);
+    return Math.abs(Math.atan2(Math.sin(t), Math.cos(t)));
+  };
+  const gentle = points.map((_, i) => inner(i) && turn(i) < SMOOTH_TURN);
+  return gentle.some(Boolean) ? gentle : points.map((_, i) => inner(i));
+}
+
+/** Corners and their smoothness with corner i taken out. */
+export function dropCorner(points: XZ[], smooth: boolean[] | undefined, i: number) {
+  return { pts: points.filter((_, j) => j !== i), smooth: smooth?.filter((_, j) => j !== i) };
+}
+
+/** Corners and their smoothness with a new corner after corner i —
+ *  smooth when it lands on a curve. */
+export function addCorner(points: XZ[], smooth: boolean[] | undefined, i: number, q: XZ, curved: boolean) {
+  const pts = [...points];
+  pts.splice(i + 1, 0, q);
+  if (!smooth && !curved) return { pts, smooth: undefined };
+  const out = [...(smooth ?? points.map(() => false))];
+  out.splice(i + 1, 0, curved);
+  return { pts, smooth: out };
+}
+
+/** The nearest point on a run of short pieces, and how far it is. */
+export function nearestOnRun(p: XZ, run: XZ[]): { q: XZ; d: number } {
+  let best = { q: run[0], d: dist(p, run[0]) };
+  for (let k = 0; k + 1 < run.length; k++) {
+    const hit = nearestOnSegment(p, run[k], run[k + 1]);
+    if (hit.d < best.d) best = hit;
+  }
+  return best;
 }
 
 /* ── Lengths ─────────────────────────────────────────────────────── */

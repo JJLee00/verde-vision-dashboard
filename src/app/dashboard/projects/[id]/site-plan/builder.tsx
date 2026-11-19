@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { xzMetersToRing } from "@/lib/blueprint/normalize";
 import type { LatLng } from "@/lib/blueprint/types";
 import {
+  boundaryOutline,
   crosses,
   FEATURE_TYPES,
   isLineType,
   mainHouse,
+  outlineOf,
   pathLength,
   polygonArea,
+  withCurves,
   type FeatureType,
   type PlanDraft,
   type PlanFeature,
@@ -22,7 +25,21 @@ import { clearSitePlan, saveSitePlan } from "./actions";
 import { AddressSearch, addressFor, HouseCheckLine, useHouseAddress } from "./address-search";
 import { displayName, PlanPatterns, TypeSwatch } from "./drawing";
 import { feetInches, squareUp, sqFt } from "./geometry";
-import { BOUNDARY_ID, duplicate, Sheet, type Doc, type DrawTarget, type SheetHandle, type Tool } from "./sheet";
+import { LockIcon } from "./icons";
+import {
+  BOUNDARY_ID,
+  duplicate,
+  nameOf,
+  removeShape,
+  setLocked,
+  Sheet,
+  shapeOf,
+  toggleSmooth,
+  type Doc,
+  type DrawTarget,
+  type SheetHandle,
+  type Tool,
+} from "./sheet";
 
 /**
  * The site plan builder: find the property, lock the view, and trace
@@ -63,6 +80,8 @@ function history(h: History, a: HistoryAction): History {
 
 const docOf = (plan: SitePlan | null): Doc => ({
   boundary: plan?.boundary ?? [],
+  ...(plan?.boundarySmooth ? { boundarySmooth: plan.boundarySmooth } : {}),
+  ...(plan?.boundaryLocked ? { boundaryLocked: true } : {}),
   features: plan?.features ?? [],
   ...(plan?.mainHouseId ? { mainHouseId: plan.mainHouseId } : {}),
 });
@@ -135,6 +154,8 @@ export function SitePlanBuilder({
   const [kind, setKind] = useState<UnderlayKind>(initial?.underlay.kind ?? "satellite");
   const [opacity, setOpacity] = useState(initial?.underlay.opacity ?? 1);
   const [lotLines, setLotLines] = useState(false);
+  const [grid, setGrid] = useState(true);
+  const [gridSnap, setGridSnap] = useState(false);
   const [tool, setTool] = useState<Tool>("select");
   const [target, setTarget] = useState<DrawTarget>("House");
   const [toolFor, setToolFor] = useState<Partial<Record<DrawTarget, Tool>>>({});
@@ -157,6 +178,8 @@ export function SitePlanBuilder({
           underlay: { kind, opacity },
           ...(initial?.mapOffset ? { mapOffset: initial.mapOffset } : {}),
           boundary: doc.boundary,
+          ...(doc.boundarySmooth ? { boundarySmooth: doc.boundarySmooth } : {}),
+          ...(doc.boundaryLocked ? { boundaryLocked: true } : {}),
           features: doc.features,
           ...(doc.mainHouseId ? { mainHouseId: doc.mainHouseId } : {}),
         }
@@ -253,7 +276,7 @@ export function SitePlanBuilder({
   /* ── The address check, on the main house ── */
 
   const house = mainHouse(doc);
-  const houseRing = house && origin && house.shape === "area" ? xzMetersToRing(house.points, origin) : [];
+  const houseRing = house && origin && house.shape === "area" ? xzMetersToRing(outlineOf(house), origin) : [];
   const check = useHouseAddress(houseRing, address);
 
   const status = readOnly
@@ -326,36 +349,31 @@ export function SitePlanBuilder({
             <input type="checkbox" checked={lotLines} onChange={(e) => setLotLines(e.target.checked)} className="accent-[var(--accent)]" />
             Lot lines
           </label>
-          {!readOnly &&
-            (framing ? (
-              <>
-                {frame && (
-                  <button type="button" onClick={() => setFraming(false)} className="text-sm font-semibold text-muted hover:text-ink">
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={!origin}
-                  onClick={lock}
-                  className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
-                >
-                  Lock view
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setFraming(true);
-                  setTool("select");
-                  setSelected(null);
-                }}
-                className="rounded-lg border border-rule-strong px-3 py-1.5 text-sm font-semibold text-body transition hover:border-accent hover:text-accent"
-              >
-                Reframe
-              </button>
-            ))}
+          <span className="h-5 w-px bg-rule" aria-hidden />
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} className="accent-[var(--accent)]" />
+            Grid
+          </label>
+          <label className={`flex items-center gap-1.5 text-xs text-muted ${grid ? "" : "opacity-40"}`}>
+            <input
+              type="checkbox"
+              checked={grid && gridSnap}
+              disabled={!grid}
+              onChange={(e) => setGridSnap(e.target.checked)}
+              className="accent-[var(--accent)]"
+            />
+            Snap to grid
+          </label>
+          {!readOnly && framing && (
+            <button
+              type="button"
+              disabled={!origin}
+              onClick={lock}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              Lock view
+            </button>
+          )}
           <span className="w-36 text-right text-xs">
             {saveError ? (
               <span className="text-clay" title={saveError}>
@@ -382,12 +400,6 @@ export function SitePlanBuilder({
             </ToolButton>
             <ToolButton on={tool === "measure"} onClick={() => setTool("measure")} title="Measure (M)">
               Measure
-            </ToolButton>
-            <ToolButton on={false} disabled={past.length === 0 || !editable} onClick={() => dispatch({ type: "undo" })} title="Undo (⌘Z)">
-              ↶
-            </ToolButton>
-            <ToolButton on={false} disabled={future.length === 0 || !editable} onClick={() => dispatch({ type: "redo" })} title="Redo (⇧⌘Z)">
-              ↷
             </ToolButton>
           </div>
           <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-faint">Draw</p>
@@ -449,6 +461,8 @@ export function SitePlanBuilder({
             apply={(change) => apply(change)}
             undo={() => dispatch({ type: "undo" })}
             redo={() => dispatch({ type: "redo" })}
+            canUndo={past.length > 0}
+            canRedo={future.length > 0}
             selected={selected}
             onSelect={setSelected}
             tool={tool}
@@ -466,6 +480,9 @@ export function SitePlanBuilder({
             lotLines={lotLines}
             mapOffset={initial?.mapOffset ?? null}
             framing={framing && origin != null}
+            onFrame={setFrame}
+            grid={grid}
+            gridSnap={gridSnap}
           />
           {!origin && !readOnly && (
             <div className="absolute inset-0 flex items-start justify-center bg-paper/60 pt-[14vh]">
@@ -518,7 +535,8 @@ export function SitePlanBuilder({
                   on={selected === BOUNDARY_ID}
                   swatch={<BoundarySwatch />}
                   name="Yard boundary"
-                  size={sqFt(polygonArea(doc.boundary))}
+                  size={sqFt(polygonArea(boundaryOutline(doc)))}
+                  locked={!!doc.boundaryLocked}
                   onClick={() => setSelected(BOUNDARY_ID)}
                 />
               )}
@@ -530,16 +548,17 @@ export function SitePlanBuilder({
                   name={displayName(f)}
                   badge={f === house && doc.features.filter((x) => x.type === "House").length > 1 ? "walked" : undefined}
                   size={sizeOf(f)}
+                  locked={!!f.locked}
                   onClick={() => setSelected(f.id)}
                 />
               ))}
             </ul>
           )}
-          {!readOnly && !empty && (
+          {!readOnly && (frame != null || !empty) && (
             <div className="mt-auto border-t border-rule px-4 py-3">
               {confirmClear ? (
                 <div className="flex items-center gap-3 text-sm">
-                  <span className="text-body">Clear the whole plan?</span>
+                  <span className="text-body">{empty ? "Start again at a new address?" : "Clear the whole plan?"}</span>
                   <button type="button" onClick={() => void clearAll()} className="font-semibold text-clay">
                     Clear
                   </button>
@@ -549,7 +568,7 @@ export function SitePlanBuilder({
                 </div>
               ) : (
                 <button type="button" onClick={() => setConfirmClear(true)} className="text-sm font-semibold text-muted hover:text-clay">
-                  Clear plan
+                  {empty ? "Start over" : "Clear plan"}
                 </button>
               )}
             </div>
@@ -578,11 +597,13 @@ function Selection({
   say: (text: string) => void;
 }) {
   if (!selected) return null;
+  const shape = shapeOf(doc, selected);
+  if (!shape) return null;
   const boundary = selected === BOUNDARY_ID;
-  const f = boundary ? null : doc.features.find((x) => x.id === selected);
-  if (!boundary && !f) return null;
-  const points = boundary ? doc.boundary : f!.points;
-  const closed = boundary || f!.shape !== "line";
+  const f = shape.feature ?? null;
+  const { pts: points, closed, locked } = shape;
+  const ring = withCurves(points, shape.smooth, closed);
+  const smoothed = !!shape.smooth?.some(Boolean);
   const houses = doc.features.filter((x) => x.type === "House" && x.shape !== "line");
 
   const update = (change: (f: PlanFeature) => PlanFeature, merge?: string) =>
@@ -590,16 +611,13 @@ function Selection({
 
   function square() {
     const next = squareUp(points, closed);
-    if (crosses(next, closed)) return say("Squaring this one would make its edges cross.");
+    if (crosses(withCurves(next, shape!.smooth, closed), closed)) return say("Squaring this one would make its edges cross.");
     apply((d) => (boundary ? { ...d, boundary: next } : { ...d, features: d.features.map((x) => (x.id === selected ? { ...x, points: next } : x)) }));
   }
 
   function remove() {
-    apply((d) =>
-      boundary
-        ? { ...d, boundary: [] }
-        : { ...d, features: d.features.filter((x) => x.id !== selected), mainHouseId: d.mainHouseId === selected ? undefined : d.mainHouseId }
-    );
+    if (locked) return say(`The ${nameOf(doc, selected!)} is locked. Unlock it to delete it.`);
+    apply((d) => removeShape(d, selected!));
     onSelect(null);
   }
 
@@ -624,16 +642,16 @@ function Selection({
         ) : closed ? (
           <>
             <dt className="text-muted">Area</dt>
-            <dd>{sqFt(polygonArea(points))}</dd>
+            <dd>{sqFt(polygonArea(ring))}</dd>
             <dt className="text-muted">Around</dt>
-            <dd>{feetInches(pathLength(points, true))}</dd>
+            <dd>{feetInches(pathLength(ring, true))}</dd>
             <dt className="text-muted">Corners</dt>
             <dd>{points.length}</dd>
           </>
         ) : (
           <>
             <dt className="text-muted">Length</dt>
-            <dd>{feetInches(pathLength(points, false))}</dd>
+            <dd>{feetInches(pathLength(ring, false))}</dd>
           </>
         )}
       </dl>
@@ -687,7 +705,31 @@ function Selection({
             </label>
           )}
           <div className="flex flex-wrap gap-2">
-            {f?.shape !== "circle" && points.length >= 3 && (
+            <SmallButton
+              onClick={() => apply((d) => setLocked(d, selected!, !locked))}
+              title={locked ? "Unlock it to move or change it" : "Lock it so it can't be moved by accident"}
+              on={locked}
+            >
+              <span className="flex items-center gap-1">
+                <LockIcon open={!locked} size={13} />
+                {locked ? "Unlock" : "Lock"}
+              </span>
+            </SmallButton>
+            {f?.shape !== "circle" && !locked && (
+              <SmallButton
+                onClick={() => {
+                  const next = toggleSmooth(doc, selected!);
+                  const t = shapeOf(next, selected!)!;
+                  if (crosses(withCurves(t.pts, t.smooth, t.closed), t.closed)) return say("Smoothing this one would make its edges cross.");
+                  apply(() => next);
+                }}
+                title={smoothed ? "Make every corner sharp again" : "Curve the outline smoothly through its corners"}
+                on={smoothed}
+              >
+                Smooth
+              </SmallButton>
+            )}
+            {f?.shape !== "circle" && points.length >= 3 && !locked && (
               <SmallButton onClick={square} title="Turn nearly-square corners exactly square">
                 Square corners
               </SmallButton>
@@ -711,8 +753,9 @@ function Selection({
             </SmallButton>
           </div>
           <p className="text-[11px] leading-relaxed text-faint">
-            Drag a corner to move it, a dot on an edge to add one, the round handle to turn it. Click a corner, then ⌫,
-            to take it out.
+            {locked
+              ? "Locked: it can't be moved, reshaped or deleted until it's unlocked."
+              : "Drag a corner to move it, a dot mid-edge to add one, the round handle to turn it. Smooth curves the outline through its corners — gentle ones; sharp turns stay sharp. Double-click a corner to switch it between smooth and sharp. Click a corner, then ⌫, to take it out."}
           </p>
         </div>
       )}
@@ -724,8 +767,8 @@ function Selection({
 
 function sizeOf(f: PlanFeature): string {
   if (f.shape === "circle") return `${feetInches((f.radius ?? 0) * 2)} across`;
-  if (f.shape === "line") return feetInches(pathLength(f.points, false));
-  return sqFt(polygonArea(f.points));
+  if (f.shape === "line") return feetInches(pathLength(outlineOf(f), false));
+  return sqFt(polygonArea(outlineOf(f)));
 }
 
 function ListRow({
@@ -734,6 +777,7 @@ function ListRow({
   name,
   size,
   badge,
+  locked,
   onClick,
 }: {
   on: boolean;
@@ -741,6 +785,7 @@ function ListRow({
   name: string;
   size: string;
   badge?: string;
+  locked: boolean;
   onClick: () => void;
 }) {
   return (
@@ -757,6 +802,11 @@ function ListRow({
           {name}
           {badge && <span className="ml-1.5 rounded bg-accent/15 px-1 py-px text-[10px] font-semibold text-accent">{badge}</span>}
         </span>
+        {locked && (
+          <span className="shrink-0 text-faint" title="Locked">
+            <LockIcon size={13} />
+          </span>
+        )}
         <span className="shrink-0 text-xs text-muted" style={{ fontVariantNumeric: "tabular-nums" }}>
           {size}
         </span>
@@ -832,11 +882,13 @@ function SmallButton({
   onClick,
   title,
   danger = false,
+  on = false,
   children,
 }: {
   onClick: () => void;
   title: string;
   danger?: boolean;
+  on?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -844,8 +896,12 @@ function SmallButton({
       type="button"
       title={title}
       onClick={onClick}
-      className={`rounded-lg border border-rule-strong px-2.5 py-1 text-xs font-semibold transition ${
-        danger ? "text-muted hover:border-clay hover:text-clay" : "text-body hover:border-accent hover:text-accent"
+      className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition ${
+        on
+          ? "border-accent bg-accent/10 text-accent"
+          : danger
+            ? "border-rule-strong text-muted hover:border-clay hover:text-clay"
+            : "border-rule-strong text-body hover:border-accent hover:text-accent"
       }`}
     >
       {children}

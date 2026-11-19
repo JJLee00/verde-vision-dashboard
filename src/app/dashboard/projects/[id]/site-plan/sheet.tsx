@@ -6,30 +6,41 @@ import { ringToXZMeters, xzMetersToRing } from "@/lib/blueprint/normalize";
 import type { MapOffset } from "@/lib/blueprint/trace";
 import type { LatLng } from "@/lib/blueprint/types";
 import {
+  bezierAt,
   centroid,
   crosses,
   FEET_PER_METER,
   mainHouse,
+  MAX_REACH_M,
+  outlineOf,
   pathLength,
   polygonArea,
+  edgeCurves,
+  edgeRuns,
+  withCurves,
   type FeatureType,
   type PlanFeature,
   type PlanFrame,
   type UnderlayKind,
   type XZ,
 } from "@/lib/site-plan/plan";
-import { BoundaryArt, byLayer, FeatureArt, PlanPatterns, SHEET_PAPER, type Pt } from "./drawing";
+import { BoundaryArt, byLayer, FeatureArt, INK, pathOf, PlanPatterns, SHEET_PAPER, type Pt } from "./drawing";
 import {
+  addCorner,
   dist,
+  dropCorner,
   feetInches,
   fitView,
+  gridAt,
   MAX_PPM,
   MIN_PPM,
+  nearestOnRun,
   nearestOnSegment,
   parseLength,
   pointInPolygon,
   referenceAngles,
   rotateAbout,
+  smoothCorners,
   snap,
   sqFt,
   toPlan,
@@ -39,6 +50,7 @@ import {
   type Snapped,
   type View,
 } from "./geometry";
+import { CopyIcon, CurveIcon, LockIcon, RedoIcon, TrashIcon, UndoIcon } from "./icons";
 
 /**
  * The drafting sheet: the locked photo of the yard under a sheet of paper,
@@ -57,7 +69,13 @@ import {
 export const BOUNDARY_ID = "boundary";
 
 /** What one undo step covers: the shapes, not the view or the photo. */
-export type Doc = { boundary: XZ[]; features: PlanFeature[]; mainHouseId?: string };
+export type Doc = {
+  boundary: XZ[];
+  boundarySmooth?: boolean[];
+  boundaryLocked?: boolean;
+  features: PlanFeature[];
+  mainHouseId?: string;
+};
 export type Tool = "select" | "area" | "rect" | "line" | "circle" | "measure";
 /** What the drawing tools make: a feature type, or the yard boundary. */
 export type DrawTarget = FeatureType | "Boundary";
@@ -71,27 +89,68 @@ export interface SheetHandle {
   shift(dx: number, dz: number): void;
 }
 
+/** The desk the sheet of paper lies on, round the photo frame. */
+const DESK = "#e4dccb";
+
 /** Room left around the locked frame, in screen pixels. */
 export const LOCK_INSET = 28;
 /** A pointer that moves less than this between down and up clicked. */
 const CLICK_SLOP = 4;
 const MIN_EDGE_M = 0.1;
 
-type Shape = { pts: XZ[]; closed: boolean; radius?: number; feature?: PlanFeature };
+type Shape = { pts: XZ[]; closed: boolean; radius?: number; smooth?: boolean[]; locked: boolean; feature?: PlanFeature };
 
-function shapeOf(doc: Doc, id: string): Shape | null {
-  if (id === BOUNDARY_ID) return doc.boundary.length >= 3 ? { pts: doc.boundary, closed: true } : null;
+export function shapeOf(doc: Doc, id: string): Shape | null {
+  if (id === BOUNDARY_ID) {
+    return doc.boundary.length >= 3
+      ? { pts: doc.boundary, closed: true, smooth: doc.boundarySmooth, locked: !!doc.boundaryLocked }
+      : null;
+  }
   const f = doc.features.find((x) => x.id === id);
   if (!f) return null;
-  return { pts: f.points, closed: f.shape !== "line", radius: f.radius, feature: f };
+  return { pts: f.points, closed: f.shape !== "line", radius: f.radius, smooth: f.smooth, locked: !!f.locked, feature: f };
 }
 
+/** A shape's outline with its curves filled in. */
+const outline = (s: Pick<Shape, "pts" | "smooth" | "closed">) => withCurves(s.pts, s.smooth, s.closed);
+
+/** Moves a shape's corners; its curves ride along. */
 function withPoints(doc: Doc, id: string, pts: XZ[]): Doc {
   if (id === BOUNDARY_ID) return { ...doc, boundary: pts };
   return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, points: pts } : f)) };
 }
 
-/** A copy of a shape a metre down and right, as a new shape. */
+/** Sets a shape's corners and which are smooth together, for when the
+ *  corners themselves change. */
+export function withEdges(doc: Doc, id: string, pts: XZ[], smooth: boolean[] | undefined): Doc {
+  const sm = smooth?.some(Boolean) ? smooth : undefined;
+  if (id === BOUNDARY_ID) return { ...doc, boundary: pts, boundarySmooth: sm };
+  return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, points: pts, smooth: sm } : f)) };
+}
+
+/** Smooths a shape's gentle corners — or, when it has any smooth corners,
+ *  makes them all sharp again. */
+export function toggleSmooth(doc: Doc, id: string): Doc {
+  const s = shapeOf(doc, id);
+  if (!s || s.radius != null) return doc;
+  return withEdges(doc, id, s.pts, s.smooth?.some(Boolean) ? undefined : smoothCorners(s.pts, s.closed));
+}
+
+export function setLocked(doc: Doc, id: string, locked: boolean): Doc {
+  if (id === BOUNDARY_ID) return { ...doc, boundaryLocked: locked || undefined };
+  return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, locked: locked || undefined } : f)) };
+}
+
+export function removeShape(doc: Doc, id: string): Doc {
+  if (id === BOUNDARY_ID) return { ...doc, boundary: [], boundarySmooth: undefined, boundaryLocked: undefined };
+  return {
+    ...doc,
+    features: doc.features.filter((f) => f.id !== id),
+    mainHouseId: doc.mainHouseId === id ? undefined : doc.mainHouseId,
+  };
+}
+
+/** A copy of a shape a metre down and right, as a new, unlocked shape. */
 export function duplicate(doc: Doc, id: string): { doc: Doc; id: string } | null {
   const f = doc.features.find((x) => x.id === id);
   if (!f) return null;
@@ -99,8 +158,16 @@ export function duplicate(doc: Doc, id: string): { doc: Doc; id: string } | null
     ...f,
     id: crypto.randomUUID(),
     points: f.points.map(([x, z]) => [x + 1, z + 1] as XZ),
+    locked: undefined,
   };
   return { doc: { ...doc, features: [...doc.features, copy] }, id: copy.id };
+}
+
+/** What a shape is called in a sentence. */
+export function nameOf(doc: Doc, id: string): string {
+  if (id === BOUNDARY_ID) return "yard boundary";
+  const f = doc.features.find((x) => x.id === id);
+  return f ? (f.type === "Other" ? f.label?.trim() || "shape" : f.type.toLowerCase()) : "shape";
 }
 
 /* ── The photo ───────────────────────────────────────────────────── */
@@ -191,7 +258,16 @@ type Gesture =
   | { kind: "vertex"; id: string; index: number; base: Doc; start: Pt; moved: boolean }
   | { kind: "move"; id: string; base: Doc; start: Pt; from: XZ; moved: boolean }
   | { kind: "rotate"; id: string; base: Doc; centre: XZ; a0: number }
-  | { kind: "radius"; id: string; base: Doc };
+  | { kind: "radius"; id: string; base: Doc }
+  | { kind: "frame"; sides: FrameSides; base: PlanFrame; start: Pt; moved: boolean };
+
+/** Which of the frame's edges a handle moves: −1 the west or north
+ *  edge, 1 the east or south, 0 neither. */
+type FrameSides = { x: -1 | 0 | 1; z: -1 | 0 | 1 };
+
+/** The smallest photo frame, in metres across. */
+const MIN_FRAME_M = 10;
+
 
 type Draft = { tool: Tool; target: DrawTarget; points: XZ[] };
 
@@ -201,6 +277,8 @@ export function Sheet({
   apply,
   undo,
   redo,
+  canUndo,
+  canRedo,
   selected,
   onSelect,
   tool: toolProp,
@@ -215,12 +293,17 @@ export function Sheet({
   lotLines,
   mapOffset,
   framing,
+  onFrame,
+  grid,
+  gridSnap,
 }: {
   handle: RefObject<SheetHandle | null>;
   doc: Doc;
   apply: (change: (d: Doc) => Doc) => void;
   undo: () => void;
   redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   selected: string | null;
   onSelect: (id: string | null) => void;
   tool: Tool;
@@ -240,6 +323,10 @@ export function Sheet({
   mapOffset: MapOffset | null;
   /** Show the rectangle Lock view will keep. */
   framing: boolean;
+  /** The frame was dragged to a new size. */
+  onFrame: (frame: PlanFrame) => void;
+  grid: boolean;
+  gridSnap: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
@@ -255,6 +342,8 @@ export function Sheet({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [panning, setPanning] = useState(false);
+  const [liveFrame, setLiveFrame] = useState<PlanFrame | null>(null);
+  const [frameCursor, setFrameCursor] = useState<string | null>(null);
 
   const tool: Tool = editable ? toolProp : toolProp === "measure" ? "measure" : "select";
   const shown = live ?? doc;
@@ -335,41 +424,31 @@ export function Sheet({
   function snapContext(base: Doc, v: View, exclude?: { id: string; index: number }, extra: XZ[] = []): SnapContext {
     const corners: XZ[] = [...extra];
     const edges: [XZ, XZ][] = [];
-    const add = (id: string, pts: XZ[], closed: boolean) => {
+    // Square to the house, the lot, and the shape's own first edges — their
+    // straight edges, that is.
+    const square: [XZ, XZ][] = extra.slice(1).map((p, i) => [extra[i], p]);
+    const add = (id: string, pts: XZ[], smooth: boolean[] | undefined, closed: boolean, reference: boolean) => {
       const n = pts.length;
       pts.forEach((p, i) => {
         if (exclude?.id === id && exclude.index === i) return;
         corners.push(p);
       });
-      const m = closed ? n : n - 1;
-      for (let i = 0; i < m; i++) {
+      // A curve snaps along itself.
+      edgeRuns(pts, smooth, closed).forEach((run, i) => {
         const j = (i + 1) % n;
-        if (exclude?.id === id && (exclude.index === i || exclude.index === j)) continue;
-        edges.push([pts[i], pts[j]]);
-      }
+        if (exclude?.id === id && (exclude.index === i || exclude.index === j)) return;
+        for (let k = 0; k + 1 < run.length; k++) edges.push([run[k], run[k + 1]]);
+        if (reference && run.length === 2) square.push([pts[i], pts[j]]);
+      });
     };
-    if (base.boundary.length >= 3) add(BOUNDARY_ID, base.boundary, true);
+    const house = mainHouse(base);
+    if (base.boundary.length >= 3) add(BOUNDARY_ID, base.boundary, base.boundarySmooth, true, true);
     for (const f of base.features) {
       if (f.shape === "circle") corners.push(f.points[0]);
-      else add(f.id, f.points, f.shape === "area");
+      else add(f.id, f.points, f.smooth, f.shape === "area", f === house);
     }
-    // Square to the house, the lot, and the shape's own first edges.
-    const runs: XZ[][] = [];
-    const closed: boolean[] = [];
-    const house = mainHouse(base);
-    if (house) {
-      runs.push(house.points);
-      closed.push(true);
-    }
-    if (base.boundary.length >= 3) {
-      runs.push(base.boundary);
-      closed.push(true);
-    }
-    if (extra.length >= 2) {
-      runs.push(extra);
-      closed.push(false);
-    }
-    return { corners, edges, angles: referenceAngles(runs, closed), ppm: v.ppm };
+    const g = grid && gridSnap ? gridAt(v.ppm).minor : null;
+    return { corners, edges, angles: referenceAngles(square), ppm: v.ppm, grid: g };
   }
 
   function snapAt(screen: Pt, free: boolean): Snapped | null {
@@ -407,7 +486,7 @@ export function Sheet({
 
   function finishShape(shape: PlanFeature["shape"], points: XZ[], radius?: number) {
     if (target === "Boundary") {
-      apply((d) => ({ ...d, boundary: points }));
+      apply((d) => ({ ...d, boundary: points, boundarySmooth: undefined }));
       onDrawn(BOUNDARY_ID);
     } else {
       const f: PlanFeature = { id: crypto.randomUUID(), type: target, shape, points };
@@ -439,6 +518,9 @@ export function Sheet({
       setDraft({ tool, target, points: [...pts, next] });
       setTyped("");
     };
+    if (pts.length === 0 && target === "Boundary" && tool !== "measure" && doc.boundaryLocked) {
+      return say("The yard boundary is locked. Unlock it to draw it again.");
+    }
     switch (tool) {
       case "area":
         if (pts.length === 0) return start(p);
@@ -489,43 +571,83 @@ export function Sheet({
       return false;
     };
     // The lot only by its line: its inside is the whole yard.
-    if (shown.boundary.length >= 3 && nearRun(shown.boundary, true)) consider(BOUNDARY_ID, 1);
+    if (shown.boundary.length >= 3 && nearRun(withCurves(shown.boundary, shown.boundarySmooth, true), true)) consider(BOUNDARY_ID, 1);
     for (const f of shown.features) {
       if (f.shape === "circle") {
         const d = dist(p, f.points[0]);
         const r = f.radius ?? 0;
         if (Math.abs(d - r) < tol) consider(f.id, 0);
         else if (d < r) consider(f.id, Math.PI * r * r);
-      } else if (f.shape === "line") {
-        if (nearRun(f.points, false)) consider(f.id, 0);
-      } else if (nearRun(f.points, true)) consider(f.id, 0);
-      else if (pointInPolygon(p, f.points)) consider(f.id, polygonArea(f.points));
+        continue;
+      }
+      const ring = outlineOf(f);
+      if (f.shape === "line") {
+        if (nearRun(ring, false)) consider(f.id, 0);
+      } else if (nearRun(ring, true)) consider(f.id, 0);
+      else if (pointInPolygon(p, ring)) consider(f.id, polygonArea(ring));
     }
     return best;
   }
 
-  /** The selected shape's handles, in screen pixels. */
+  /** The selected shape's handles, in screen pixels. A locked shape has
+   *  none: it can be looked at, not changed. */
   function handlesOf(id: string | null, v: View) {
     if (!id || !editable || tool !== "select") return null;
     const s = shapeOf(shown, id);
-    if (!s) return null;
+    if (!s || s.locked) return null;
     const scr = s.pts.map((p) => toScreen(v, size, p));
     if (s.radius != null) {
       const [cx, cy] = scr[0];
-      return { vertices: [], mids: [], rotate: null, radius: [cx + s.radius * v.ppm, cy] as Pt };
+      return { vertices: [], smooth: [], mids: [], rotate: null, radius: [cx + s.radius * v.ppm, cy] as Pt };
     }
-    const n = s.closed ? scr.length : scr.length - 1;
-    const mids: { at: Pt; index: number }[] = [];
-    for (let i = 0; i < n; i++) {
-      const a = scr[i];
-      const b = scr[(i + 1) % scr.length];
-      if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 34) mids.push({ at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], index: i });
-    }
-    const ys = scr.map((p) => p[1]);
-    const xs = scr.map((p) => p[0]);
+    // A dot in the middle of each edge long enough to hold one — on the
+    // curve, where it's curved: drag it to add a corner there.
+    const mids: { at: Pt; plan: XZ; index: number; curved: boolean }[] = [];
+    edgeCurves(s.pts, s.smooth, s.closed).forEach((c, i) => {
+      const a = s.pts[i];
+      const b = s.pts[(i + 1) % s.pts.length];
+      if (dist(a, b) * v.ppm <= 34) return;
+      const plan: XZ = c ? bezierAt(a, c[0], c[1], b, 0.5) : [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      mids.push({ at: toScreen(v, size, plan), plan, index: i, curved: c != null });
+    });
+    const smooth = s.pts.map((_, i) => !!s.smooth?.[i] && (s.closed || (i > 0 && i < s.pts.length - 1)));
+    const ring = outline(s).map((p) => toScreen(v, size, p));
+    const ys = ring.map((p) => p[1]);
+    const xs = ring.map((p) => p[0]);
     const top: Pt = [(Math.min(...xs) + Math.max(...xs)) / 2, Math.min(...ys)];
     const rotate = id === BOUNDARY_ID ? null : { stem: top, at: [top[0], top[1] - 26] as Pt };
-    return { vertices: scr, mids, rotate, radius: null };
+    return { vertices: scr, smooth, mids, rotate, radius: null };
+  }
+
+  /** The frame's handles: its corners and the middles of its sides. */
+  function frameHandles(v: View): { at: Pt; sides: FrameSides }[] {
+    const f = liveFrame ?? frame;
+    if (!f || !editable || tool !== "select") return [];
+    const out: { at: Pt; sides: FrameSides }[] = [];
+    for (const z of [-1, 0, 1] as const) {
+      for (const x of [-1, 0, 1] as const) {
+        if (x === 0 && z === 0) continue;
+        out.push({ at: toScreen(v, size, [f.cx + x * f.halfWidth, f.cz + z * f.halfHeight]), sides: { x, z } });
+      }
+    }
+    return out;
+  }
+
+  /** The frame handle under the pointer, or the side of the frame. */
+  function frameHit(at: Pt, v: View, sidesToo: boolean): FrameSides | null {
+    const handles = frameHandles(v);
+    const h = handles.find((x) => Math.hypot(x.at[0] - at[0], x.at[1] - at[1]) < 9);
+    if (h) return h.sides;
+    if (!sidesToo || handles.length === 0) return null;
+    const [x0, y0] = handles[0].at;
+    const [x1, y1] = handles[handles.length - 1].at;
+    const inX = at[0] > x0 && at[0] < x1;
+    const inY = at[1] > y0 && at[1] < y1;
+    if (inY && Math.abs(at[0] - x0) < 5) return { x: -1, z: 0 };
+    if (inY && Math.abs(at[0] - x1) < 5) return { x: 1, z: 0 };
+    if (inX && Math.abs(at[1] - y0) < 5) return { x: 0, z: -1 };
+    if (inX && Math.abs(at[1] - y1) < 5) return { x: 0, z: 1 };
+    return null;
   }
 
   /* ── Pointer ── */
@@ -572,19 +694,24 @@ export function Sheet({
         gesture.current = { kind: "vertex", id: selected, index: vi, base: shown, start: at, moved: false };
         return;
       }
-      const mid = h.mids.find((m) => near(m.at, 7));
+      const mid = h.mids.find((m) => near(m.at, 8));
       if (mid) {
         // A new corner on the edge, dragged from where it was made.
         const s = shapeOf(shown, selected)!;
-        const pts = [...s.pts];
-        pts.splice(mid.index + 1, 0, toPlan(view, size, mid.at));
-        const base = withPoints(shown, selected, pts);
+        const cut = addCorner(s.pts, s.smooth, mid.index, mid.plan, mid.curved);
+        const base = withEdges(shown, selected, cut.pts, cut.smooth);
         setLive(base);
         setVertexSel({ id: selected, index: mid.index + 1 });
         gesture.current = { kind: "vertex", id: selected, index: mid.index + 1, base, start: at, moved: true };
         return;
       }
     }
+
+    const startFrame = (sides: FrameSides) => {
+      gesture.current = { kind: "frame", sides, base: (liveFrame ?? frame)!, start: at, moved: false };
+    };
+    const corner = frameHit(at, view, false);
+    if (corner) return startFrame(corner);
 
     const p = toPlan(view, size, at);
     const hit = hitShape(p, view);
@@ -593,14 +720,48 @@ export function Sheet({
         onSelect(hit);
         setVertexSel(null);
       }
-      if (editable) gesture.current = { kind: "move", id: hit, base: shown, start: at, from: p, moved: false };
-      else pan(null);
+      // A locked shape stays put: dragging it pans instead.
+      if (editable && !shapeOf(shown, hit)?.locked) {
+        gesture.current = { kind: "move", id: hit, base: shown, start: at, from: p, moved: false };
+      } else pan(null);
       return;
     }
+    const side = frameHit(at, view, true);
+    if (side) return startFrame(side);
     pan(() => {
       onSelect(null);
       setVertexSel(null);
     });
+  }
+
+  /** Double click: a corner turns smooth or sharp; an edge gets a new corner. */
+  function onDoubleClick(e: React.MouseEvent) {
+    if (!view || !selected || e.button !== 0) return;
+    const h = handlesOf(selected, view);
+    const s = shapeOf(doc, selected);
+    if (!h || !s || s.radius != null) return;
+    const at = local(e);
+    const near = (q: Pt, r: number) => Math.hypot(q[0] - at[0], q[1] - at[1]) < r;
+    const vi = h.vertices.findIndex((q) => near(q, 8));
+    if (vi >= 0) {
+      // An open run's ends have nothing to curve between.
+      if (!s.closed && (vi === 0 || vi === s.pts.length - 1)) return;
+      const smooth = s.pts.map((_, i) => (i === vi ? !h.smooth[i] : !!s.smooth?.[i]));
+      const next = withEdges(doc, selected, s.pts, smooth);
+      if (crosses(withCurves(s.pts, smooth, s.closed), s.closed)) return say("Smoothing that corner would make the edges cross.");
+      apply(() => next);
+      return;
+    }
+    const p = toPlan(view, size, at);
+    const runs = edgeRuns(s.pts, s.smooth, s.closed);
+    for (let i = 0; i < runs.length; i++) {
+      const hit = nearestOnRun(p, runs[i]);
+      if (hit.d * view.ppm >= 7) continue;
+      const cut = addCorner(s.pts, s.smooth, i, hit.q, runs[i].length > 2);
+      apply((d) => withEdges(d, selected, cut.pts, cut.smooth));
+      setVertexSel({ id: selected, index: i + 1 });
+      return;
+    }
   }
 
   function onPointerMove(e: React.PointerEvent) {
@@ -612,6 +773,8 @@ export function Sheet({
         const snapped = snapAt(at, e.altKey);
         if (snapped) setHover({ screen: at, snapped });
       } else if (hover) setHover(null);
+      const sides = drawing ? null : frameHit(at, view, true);
+      setFrameCursor(sides ? frameCursorFor(sides) : null);
       return;
     }
     const far = (start: Pt) => Math.hypot(at[0] - start[0], at[1] - start[1]) > CLICK_SLOP;
@@ -634,6 +797,20 @@ export function Sheet({
           : snap(toPlan(view, size, at), prev, snapContext(g.base, view, { id: g.id, index: g.index })).p;
         const pts = s.pts.map((q, i) => (i === g.index ? p : q));
         setLive(withPoints(g.base, g.id, pts));
+        return;
+      }
+      case "frame": {
+        if (!g.moved && !far(g.start)) return;
+        g.moved = true;
+        const [px, pz] = toPlan(view, size, at);
+        const f = g.base;
+        let [x0, x1, z0, z1] = [f.cx - f.halfWidth, f.cx + f.halfWidth, f.cz - f.halfHeight, f.cz + f.halfHeight];
+        const reach = MAX_REACH_M;
+        if (g.sides.x < 0) x0 = Math.max(-reach, Math.min(px, x1 - MIN_FRAME_M));
+        if (g.sides.x > 0) x1 = Math.min(reach, Math.max(px, x0 + MIN_FRAME_M));
+        if (g.sides.z < 0) z0 = Math.max(-reach, Math.min(pz, z1 - MIN_FRAME_M));
+        if (g.sides.z > 0) z1 = Math.min(reach, Math.max(pz, z0 + MIN_FRAME_M));
+        setLiveFrame({ cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, halfWidth: (x1 - x0) / 2, halfHeight: (z1 - z0) / 2 });
         return;
       }
       case "move": {
@@ -672,15 +849,61 @@ export function Sheet({
       if (!g.moved) g.onClick?.();
       return;
     }
+    if (g.kind === "frame") {
+      const f = liveFrame;
+      setLiveFrame(null);
+      if (f && g.moved) onFrame(f);
+      return;
+    }
     const next = live;
     setLive(null);
     if (!next || ("moved" in g && !g.moved)) return;
     const s = shapeOf(next, g.id);
-    if (s && s.radius == null && crosses(s.pts, s.closed)) {
+    if (s && s.radius == null && crosses(outline(s), s.closed)) {
       say("That would make the edges cross, so the corner went back.");
       return;
     }
     apply(() => next);
+  }
+
+  /* ── Changes from the keys and the toolbars ── */
+
+  /** Undo — or, while drawing, take back the last point. */
+  function undoStep() {
+    if (active) {
+      if (active.points.length <= 1) resetDraft();
+      else setDraft({ ...active, points: active.points.slice(0, -1) });
+    } else undo();
+  }
+
+  function removeSelected() {
+    if (!editable || !selected) return;
+    const s = shapeOf(doc, selected);
+    if (!s) return;
+    if (s.locked) return say(`The ${nameOf(doc, selected)} is locked. Unlock it to delete it.`);
+    apply((d) => removeShape(d, selected));
+    onSelect(null);
+    setVertexSel(null);
+  }
+
+  function smoothSelected() {
+    if (!editable || !selected) return;
+    const s = shapeOf(doc, selected);
+    if (!s) return;
+    if (s.locked) return say(`The ${nameOf(doc, selected)} is locked. Unlock it to change it.`);
+    const next = toggleSmooth(doc, selected);
+    const t = shapeOf(next, selected)!;
+    if (crosses(outline(t), t.closed)) return say("Smoothing this one would make its edges cross.");
+    apply(() => next);
+  }
+
+  function duplicateSelected() {
+    if (!editable || !selected) return;
+    const copy = duplicate(doc, selected);
+    if (copy) {
+      apply(() => copy.doc);
+      onSelect(copy.id);
+    }
   }
 
   /* ── Keys ── */
@@ -700,12 +923,8 @@ export function Sheet({
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        // While drawing, undo takes back the last point instead.
-        if (active && !e.shiftKey) {
-          if (active.points.length <= 1) resetDraft();
-          else setDraft({ ...active, points: active.points.slice(0, -1) });
-        } else if (e.shiftKey) redo();
-        else undo();
+        if (e.shiftKey) redo();
+        else undoStep();
         return;
       }
       if (mod && e.key.toLowerCase() === "y") {
@@ -715,11 +934,7 @@ export function Sheet({
       }
       if (mod && e.key.toLowerCase() === "d" && editable && selected) {
         e.preventDefault();
-        const copy = duplicate(doc, selected);
-        if (copy) {
-          apply(() => copy.doc);
-          onSelect(copy.id);
-        }
+        duplicateSelected();
         return;
       }
       if (mod || e.altKey) return;
@@ -754,24 +969,16 @@ export function Sheet({
           if (!editable || !selected) return;
           const s = shapeOf(doc, selected);
           if (!s) return;
-          if (vertexSel?.id === selected && s.radius == null && s.pts.length > (s.closed ? 3 : 2)) {
-            const pts = s.pts.filter((_, i) => i !== vertexSel.index);
-            if (crosses(pts, s.closed)) return say("Taking that corner out would make the edges cross.");
-            apply((d) => withPoints(d, selected, pts));
+          if (vertexSel?.id === selected && !s.locked && s.radius == null && s.pts.length > (s.closed ? 3 : 2)) {
+            const cut = dropCorner(s.pts, s.smooth, vertexSel.index);
+            if (crosses(withCurves(cut.pts, cut.smooth, s.closed), s.closed)) {
+              return say("Taking that corner out would make the edges cross.");
+            }
+            apply((d) => withEdges(d, selected, cut.pts, cut.smooth));
             setVertexSel(null);
             return;
           }
-          apply((d) =>
-            selected === BOUNDARY_ID
-              ? { ...d, boundary: [] }
-              : {
-                  ...d,
-                  features: d.features.filter((f) => f.id !== selected),
-                  mainHouseId: d.mainHouseId === selected ? undefined : d.mainHouseId,
-                }
-          );
-          onSelect(null);
-          setVertexSel(null);
+          removeSelected();
           return;
         }
         case "Escape":
@@ -820,10 +1027,11 @@ export function Sheet({
   const S = (p: XZ) => toScreen(view, size, p);
   const photo = underlay.kind === "none" ? 0 : underlay.opacity;
   const wash = 0.4 * photo;
-  const frameRect = frame
+  const shownFrame = liveFrame ?? frame;
+  const frameRect = shownFrame
     ? (() => {
-        const [x0, y0] = S([frame.cx - frame.halfWidth, frame.cz - frame.halfHeight]);
-        const [x1, y1] = S([frame.cx + frame.halfWidth, frame.cz + frame.halfHeight]);
+        const [x0, y0] = S([shownFrame.cx - shownFrame.halfWidth, shownFrame.cz - shownFrame.halfHeight]);
+        const [x1, y1] = S([shownFrame.cx + shownFrame.halfWidth, shownFrame.cz + shownFrame.halfHeight]);
         return { left: x0, top: y0, width: x1 - x0, height: y1 - y0 };
       })()
     : { left: 0, top: 0, width: size.w, height: size.h };
@@ -831,76 +1039,90 @@ export function Sheet({
   const features = byLayer(shown.features);
   const sel = selected ? shapeOf(shown, selected) : null;
   const h = handlesOf(selected, view);
+  const fh = frameHandles(view);
 
   const pts = active?.points ?? [];
   const next = hover && drawing ? nextPoint() : null;
   const preview = pts.length > 0 && next ? previewOf(tool, target, pts, next) : null;
 
-  const cursor = panning
-    ? "grabbing"
-    : spaceHeld
-      ? "grab"
-      : drawing
-        ? "crosshair"
-        : "default";
+  // The selected shape's toolbar, under it — or over it, near the bottom.
+  const bar = (() => {
+    if (!sel || !editable || tool !== "select" || live) return null;
+    const ring = sel.radius != null ? circleBox(sel.pts[0], sel.radius) : outline(sel);
+    const scr = ring.map(S);
+    const ys = scr.map((p) => p[1]);
+    const xs = scr.map((p) => p[0]);
+    const w = (sel.feature ? 150 : 116) + (sel.radius == null ? 80 : 0);
+    const x = Math.min(size.w - 56 - w / 2, Math.max(12 + w / 2, (Math.min(...xs) + Math.max(...xs)) / 2));
+    let y = Math.max(...ys) + 30;
+    if (y + 40 > size.h - 64) y = Math.min(...ys) - (h?.rotate ? 44 : 18) - 40;
+    return { x, y: Math.max(64, Math.min(size.h - 104, y)) };
+  })();
+
+  const cursor = panning ? "grabbing" : spaceHeld ? "grab" : drawing ? "crosshair" : (frameCursor ?? "default");
+  // Clicks on the floating controls stay off the sheet underneath.
+  const shield = {
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onDoubleClick: (e: React.MouseEvent) => e.stopPropagation(),
+  };
+
+  const tileImg = (t: Tile, dx: number, dy: number) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      key={t.key}
+      src={t.src}
+      alt=""
+      draggable={false}
+      decoding="async"
+      className="pointer-events-none absolute max-w-none"
+      style={{ left: t.x - dx, top: t.y - dy, width: t.w, height: t.h }}
+    />
+  );
 
   return (
     <div
       ref={boxRef}
       className="relative h-full w-full touch-none select-none overflow-hidden"
-      style={{ background: frame ? "#e4dccb" : SHEET_PAPER, cursor }}
+      style={{ background: shownFrame ? DESK : SHEET_PAPER, cursor }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onPointerLeave={() => !gesture.current && setHover(null)}
+      onDoubleClick={onDoubleClick}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {/* While the frame is dragged, the photo it would take in, faintly. */}
+      {liveFrame && photo > 0 && (
+        <div className="absolute inset-0" style={{ opacity: 0.3 * photo }}>
+          {tiles.map((t) => tileImg(t, 0, 0))}
+        </div>
+      )}
+
       {/* The sheet of paper, and the photo cut to it. */}
       <div className="absolute overflow-hidden" style={{ ...frameRect, background: SHEET_PAPER }}>
         <div className="absolute inset-0" style={{ opacity: photo }}>
-          {tiles.map((t) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={t.key}
-              src={t.src}
-              alt=""
-              draggable={false}
-              decoding="async"
-              className="pointer-events-none absolute max-w-none"
-              style={{ left: t.x - frameRect.left, top: t.y - frameRect.top, width: t.w, height: t.h }}
-            />
-          ))}
+          {tiles.map((t) => tileImg(t, frameRect.left, frameRect.top))}
         </div>
         {lotTiles.length > 0 && (
           <div className="absolute inset-0" style={{ filter: LOT_LINE_FILTER[underlay.kind] }}>
-            {lotTiles.map((t) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={t.key}
-                src={t.src}
-                alt=""
-                draggable={false}
-                decoding="async"
-                className="pointer-events-none absolute max-w-none"
-                style={{ left: t.x - frameRect.left, top: t.y - frameRect.top, width: t.w, height: t.h }}
-              />
-            ))}
+            {lotTiles.map((t) => tileImg(t, frameRect.left, frameRect.top))}
           </div>
         )}
       </div>
 
       <svg className="absolute inset-0" width={size.w} height={size.h}>
         <PlanPatterns />
-        {frame && (
+        {grid && <Grid view={view} size={size} rect={frameRect} />}
+        {shownFrame && (
           <rect
             x={frameRect.left}
             y={frameRect.top}
             width={frameRect.width}
             height={frameRect.height}
             fill="none"
-            stroke="#1c2a21"
-            strokeOpacity={0.35}
+            stroke={INK}
+            strokeOpacity={liveFrame ? 0.7 : 0.35}
           />
         )}
         {framing && (
@@ -910,29 +1132,49 @@ export function Sheet({
             width={Math.max(0, size.w - 2 * LOCK_INSET)}
             height={Math.max(0, size.h - 2 * LOCK_INSET)}
             fill="none"
-            stroke="#1c2a21"
+            stroke={INK}
             strokeWidth={1.5}
             strokeDasharray="8 6"
             strokeOpacity={0.7}
           />
         )}
 
-        {shown.boundary.length >= 3 && <BoundaryArt pts={shown.boundary.map(S)} halo={photo} />}
+        {shown.boundary.length >= 3 && (
+          <BoundaryArt pts={shown.boundary.map(S)} smooth={shown.boundarySmooth} halo={photo} />
+        )}
         {features.map((f) => (
           <FeatureArt
             key={f.id}
             feature={f}
             pts={f.points.map(S)}
             radius={(f.radius ?? 0) * view.ppm}
+            smooth={f.smooth}
             halo={photo}
             wash={wash}
+            locked={f.locked}
+          />
+        ))}
+
+        {/* The frame's handles: drag them to take in more photo, or less. */}
+        {fh.map(({ at: [x, y], sides }) => (
+          <rect
+            key={`${sides.x}${sides.z}`}
+            x={x - 4.5}
+            y={y - 4.5}
+            width={9}
+            height={9}
+            fill="#fff"
+            stroke={INK}
+            strokeOpacity={0.6}
+            strokeWidth={1.3}
+            pointerEvents="none"
           />
         ))}
 
         {/* The selection, its sizes, and its handles. */}
         {sel && (
           <g pointerEvents="none">
-            <Outline shape={sel} S={S} ppm={view.ppm} />
+            <Outline shape={sel} S={S} ppm={view.ppm} dashed={sel.locked} />
             <Dims shape={sel} S={S} ppm={view.ppm} />
           </g>
         )}
@@ -949,7 +1191,18 @@ export function Sheet({
             ))}
             {h.vertices.map(([x, y], i) => {
               const on = vertexSel?.id === selected && vertexSel.index === i;
-              return (
+              // Smooth corners are round, sharp ones square.
+              return h.smooth[i] ? (
+                <circle
+                  key={i}
+                  cx={x}
+                  cy={y}
+                  r={5}
+                  fill={on ? "var(--accent)" : "#fff"}
+                  stroke="var(--accent)"
+                  strokeWidth={1.5}
+                />
+              ) : (
                 <rect
                   key={i}
                   x={x - 4.5}
@@ -998,7 +1251,7 @@ export function Sheet({
                 width={first ? 11 : 7}
                 height={first ? 11 : 7}
                 fill="#fff"
-                stroke="#1c2a21"
+                stroke={INK}
                 strokeWidth={1.2}
                 pointerEvents="none"
               />
@@ -1026,11 +1279,67 @@ export function Sheet({
         </div>
       )}
 
-      <ScaleBar ppm={view.ppm} />
+      {/* Undo and redo, big, where the work is. */}
+      {editable && (
+        <div className="absolute left-3 top-3 flex gap-1 rounded-xl border border-rule-strong bg-card p-1 shadow-md" {...shield}>
+          <BigButton title="Undo (⌘Z)" disabled={!canUndo && !active} onClick={undoStep}>
+            <UndoIcon />
+          </BigButton>
+          <BigButton title="Redo (⇧⌘Z)" disabled={!canRedo || !!active} onClick={redo}>
+            <RedoIcon />
+          </BigButton>
+        </div>
+      )}
+
+      {bar && sel && selected && (
+        <div
+          className="absolute flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-rule-strong bg-card p-1 shadow-md"
+          style={{ left: bar.x, top: bar.y }}
+          {...shield}
+        >
+          <button
+            type="button"
+            title={sel.locked ? "Unlock it to move or change it" : "Lock it so it can't be moved by accident"}
+            onClick={() => apply((d) => setLocked(d, selected, !sel.locked))}
+            className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition ${
+              sel.locked ? "bg-accent/15 text-accent" : "text-body hover:bg-card-hover hover:text-ink"
+            }`}
+          >
+            <LockIcon open={!sel.locked} />
+            {sel.locked ? "Locked" : "Lock"}
+          </button>
+          {sel.radius == null && (
+            <button
+              type="button"
+              title={
+                sel.smooth?.some(Boolean)
+                  ? "Make every corner sharp again"
+                  : "Curve the outline smoothly through its corners. Double-click a corner to switch it."
+              }
+              onClick={smoothSelected}
+              className={`flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition ${
+                sel.smooth?.some(Boolean) ? "bg-accent/15 text-accent" : "text-body hover:bg-card-hover hover:text-ink"
+              }`}
+            >
+              <CurveIcon />
+              Smooth
+            </button>
+          )}
+          {sel.feature && (
+            <BarButton title="Duplicate (⌘D)" onClick={duplicateSelected}>
+              <CopyIcon />
+            </BarButton>
+          )}
+          <BarButton title="Delete (⌫)" onClick={removeSelected} danger>
+            <TrashIcon />
+          </BarButton>
+        </div>
+      )}
+
       <div className="pointer-events-none absolute right-3 top-3 rounded-md bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-body shadow-sm">
         N ↑
       </div>
-      <div className="absolute right-3 top-10 flex flex-col overflow-hidden rounded-md border border-rule-strong bg-card shadow-sm">
+      <div className="absolute right-3 top-10 flex flex-col overflow-hidden rounded-md border border-rule-strong bg-card shadow-sm" {...shield}>
         {[
           { label: "+", title: "Zoom in", f: 1.4 },
           { label: "−", title: "Zoom out", f: 1 / 1.4 },
@@ -1039,19 +1348,17 @@ export function Sheet({
             key={b.label}
             type="button"
             title={b.title}
-            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => setView((v) => (v ? { ...v, ppm: Math.min(MAX_PPM, Math.max(MIN_PPM, v.ppm * b.f)) } : v))}
             className="h-7 w-7 text-sm font-semibold text-body transition hover:bg-card-hover hover:text-ink"
           >
             {b.label}
           </button>
         ))}
-        {frame && (
+        {shownFrame && (
           <button
             type="button"
             title="Back to the whole yard"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => setView(fitView(frame, size))}
+            onClick={() => setView(fitView(shownFrame, size))}
             className="h-7 w-7 border-t border-rule text-[11px] font-semibold text-body transition hover:bg-card-hover hover:text-ink"
           >
             ⤢
@@ -1060,12 +1367,15 @@ export function Sheet({
       </div>
 
       <div className="pointer-events-none absolute bottom-2 left-3 right-3 flex items-end justify-between gap-4">
-        <p className={`rounded-md px-2 py-1 text-xs shadow-sm ${notice ? "bg-clay text-white" : "bg-card/90 text-body"}`}>
-          {notice ?? hint(tool, target, pts.length, editable, frame != null)}
-        </p>
+        <div className="flex flex-col items-start gap-1.5">
+          <ScaleBar ppm={view.ppm} grid={grid ? gridAt(view.ppm).minorFt : null} />
+          <p className={`rounded-md px-2 py-1 text-xs shadow-sm ${notice ? "bg-clay text-white" : "bg-card/90 text-body"}`}>
+            {notice ?? hint(tool, target, pts.length, editable, frame != null, sel ? (sel.locked ? "locked" : "open") : null)}
+          </p>
+        </div>
         {underlay.kind !== "none" && (
           <p
-            onPointerDown={(e) => e.stopPropagation()}
+            {...shield}
             className="pointer-events-auto max-w-[45%] truncate rounded bg-card/80 px-1.5 py-0.5 text-[10px] text-faint hover:whitespace-normal"
             dangerouslySetInnerHTML={{
               __html: BASEMAPS[underlay.kind].attribution + (lotLines ? ` · ${LOT_LINES.attribution}` : ""),
@@ -1076,6 +1386,18 @@ export function Sheet({
     </div>
   );
 }
+
+/** The cursor over each frame handle and side. */
+function frameCursorFor({ x, z }: FrameSides): string {
+  if (x === 0) return "ns-resize";
+  if (z === 0) return "ew-resize";
+  return x === z ? "nwse-resize" : "nesw-resize";
+}
+
+const circleBox = ([x, z]: XZ, r: number): XZ[] => [
+  [x - r, z - r],
+  [x + r, z + r],
+];
 
 /* ── Pieces ──────────────────────────────────────────────────────── */
 
@@ -1123,23 +1445,28 @@ function Band({ pts }: { pts: Pt[] }) {
   return (
     <>
       <path d={d} fill="none" stroke={SHEET_PAPER} strokeOpacity={0.8} strokeWidth={4} />
-      <path d={d} fill="none" stroke="#1c2a21" strokeWidth={1.5} strokeDasharray="6 4" />
+      <path d={d} fill="none" stroke={INK} strokeWidth={1.5} strokeDasharray="6 4" />
     </>
   );
 }
 
-function Outline({ shape, S, ppm }: { shape: Shape; S: (p: XZ) => Pt; ppm: number }) {
+type Drawn = Pick<Shape, "pts" | "closed" | "radius" | "smooth">;
+
+/** The selection's outline; dashed when it's locked. */
+function Outline({ shape, S, ppm, dashed }: { shape: Drawn; S: (p: XZ) => Pt; ppm: number; dashed: boolean }) {
+  const dash = dashed ? "7 4" : undefined;
   if (shape.radius != null) {
     const [x, y] = S(shape.pts[0]);
-    return <circle cx={x} cy={y} r={shape.radius * ppm} fill="none" stroke="var(--accent)" strokeWidth={2} />;
+    return <circle cx={x} cy={y} r={shape.radius * ppm} fill="none" stroke="var(--accent)" strokeWidth={2} strokeDasharray={dash} />;
   }
-  const d = `M${shape.pts.map((p) => S(p).map((v) => v.toFixed(1)).join(" ")).join("L")}${shape.closed ? "Z" : ""}`;
-  return <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" />;
+  const d = pathOf(shape.pts.map(S), shape.closed, shape.smooth);
+  return <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2} strokeLinejoin="round" strokeDasharray={dash} />;
 }
 
-/** Every edge's length in feet and inches, outside the shape; the area
- *  in square feet in the middle. */
-function Dims({ shape, S, ppm }: { shape: Shape; S: (p: XZ) => Pt; ppm: number }) {
+/** Every straight edge's length in feet and inches, outside the shape;
+ *  the area in square feet in the middle. Curves go unlabelled — a length
+ *  on every stretch of one is clutter. */
+function Dims({ shape, S, ppm }: { shape: Drawn; S: (p: XZ) => Pt; ppm: number }) {
   const out: React.ReactNode[] = [];
   if (shape.radius != null) {
     const [x, y] = S(shape.pts[0]);
@@ -1160,11 +1487,12 @@ function Dims({ shape, S, ppm }: { shape: Shape; S: (p: XZ) => Pt; ppm: number }
     signed += x0 * z1 - x1 * z0;
   }
   const outward = signed >= 0 ? -1 : 1;
+  const curves = edgeCurves(pts, shape.smooth, shape.closed);
   for (let i = 0; i < n; i++) {
     const a = pts[i];
     const b = pts[(i + 1) % pts.length];
     const len = dist(a, b);
-    if (len * ppm < 38) continue;
+    if (len * ppm < 38 || curves[i]) continue;
     const [ax, ay] = S(a);
     const [bx, by] = S(b);
     const ux = (bx - ax) / (len * ppm);
@@ -1178,12 +1506,13 @@ function Dims({ shape, S, ppm }: { shape: Shape; S: (p: XZ) => Pt; ppm: number }
       <DimChip key={i} x={(ax + bx) / 2 - uy * reach * side} y={(ay + by) / 2 + ux * reach * side} text={text} />
     );
   }
+  const ring = outline(shape);
   if (shape.closed && pts.length >= 3) {
-    const [cx, cy] = S(centroid(pts));
-    out.push(<DimChip key="area" x={cx} y={cy + 16} text={sqFt(polygonArea(pts))} quiet />);
-  } else if (!shape.closed && pts.length > 2) {
+    const [cx, cy] = S(centroid(ring));
+    out.push(<DimChip key="area" x={cx} y={cy + 16} text={sqFt(polygonArea(ring))} quiet />);
+  } else if (!shape.closed && (pts.length > 2 || curves.some(Boolean))) {
     const [x, y] = S(pts[pts.length - 1]);
-    out.push(<DimChip key="run" x={x} y={y + 16} text={`${feetInches(pathLength(pts, false))} total`} quiet />);
+    out.push(<DimChip key="run" x={x} y={y + 16} text={`${feetInches(pathLength(ring, false))} total`} quiet />);
   }
   return <>{out}</>;
 }
@@ -1247,27 +1576,129 @@ function SnapMark({ snapped, S }: { snapped: Snapped; S: (p: XZ) => Pt }) {
   );
 }
 
-/** A bar 60–140 px long at a round number of feet. */
-function ScaleBar({ ppm }: { ppm: number }) {
+/** A bar 60–140 px long at a round number of feet, and the grid's size. */
+function ScaleBar({ ppm, grid }: { ppm: number; grid: number | null }) {
   const pxPerFoot = ppm / FEET_PER_METER;
   const feet = [1, 2, 5, 10, 20, 25, 50, 100, 200, 500, 1000, 2000].find((f) => f * pxPerFoot >= 60) ?? 2000;
   const w = feet * pxPerFoot;
   return (
-    <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-card/90 px-2 py-1 shadow-sm">
+    <div className="rounded-md bg-card/90 px-2 py-1 shadow-sm">
       <div className="h-1.5 border-x-2 border-b-2 border-ink" style={{ width: w }} />
-      <p className="mt-0.5 text-[10px] font-semibold text-body">{feet} ft</p>
+      <p className="mt-0.5 text-[10px] font-semibold text-body">
+        {feet} ft
+        {grid != null && <span className="ml-2 font-normal text-muted">grid {grid} ft</span>}
+      </p>
     </div>
   );
 }
 
-function hint(tool: Tool, target: DrawTarget, points: number, editable: boolean, locked: boolean): string {
+/**
+ * Drafting paper: a line every foot (or 5, 10… as you zoom out) and a
+ * heavier one every fifth or tenth, square to north from the plan's origin,
+ * on the paper only.
+ */
+function Grid({ view, size, rect }: { view: View; size: Size; rect: { left: number; top: number; width: number; height: number } }) {
+  const g = gridAt(view.ppm);
+  const ratio = Math.round(g.major / g.minor);
+  const left = Math.max(0, rect.left);
+  const top = Math.max(0, rect.top);
+  const right = Math.min(size.w, rect.left + rect.width);
+  const bottom = Math.min(size.h, rect.top + rect.height);
+  if (right <= left || bottom <= top) return null;
+  const [x0, z0] = toPlan(view, size, [left, top]);
+  const [x1, z1] = toPlan(view, size, [right, bottom]);
+  let minor = "";
+  let major = "";
+  const f = (v: number) => v.toFixed(1);
+  for (let i = Math.ceil(x0 / g.minor); i * g.minor <= x1; i++) {
+    const sx = f(toScreen(view, size, [i * g.minor, 0])[0]);
+    const seg = `M${sx} ${f(top)}V${f(bottom)}`;
+    if (((i % ratio) + ratio) % ratio === 0) major += seg;
+    else minor += seg;
+  }
+  for (let i = Math.ceil(z0 / g.minor); i * g.minor <= z1; i++) {
+    const sy = f(toScreen(view, size, [0, i * g.minor])[1]);
+    const seg = `M${f(left)} ${sy}H${f(right)}`;
+    if (((i % ratio) + ratio) % ratio === 0) major += seg;
+    else minor += seg;
+  }
+  return (
+    <g pointerEvents="none">
+      <path d={minor} stroke={INK} strokeOpacity={0.085 * g.strength} strokeWidth={1} />
+      <path d={major} stroke={INK} strokeOpacity={0.17} strokeWidth={1} />
+    </g>
+  );
+}
+
+function BigButton({
+  title,
+  disabled,
+  onClick,
+  children,
+}: {
+  title: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-10 w-10 items-center justify-center rounded-lg text-ink transition hover:bg-card-hover disabled:text-faint disabled:opacity-50 disabled:hover:bg-transparent"
+    >
+      {children}
+    </button>
+  );
+}
+
+function BarButton({
+  title,
+  onClick,
+  danger = false,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className={`flex h-8 w-8 items-center justify-center rounded-md text-body transition hover:bg-card-hover ${
+        danger ? "hover:text-clay" : "hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function hint(
+  tool: Tool,
+  target: DrawTarget,
+  points: number,
+  editable: boolean,
+  locked: boolean,
+  selection: "open" | "locked" | null
+): string {
   if (!locked) return "Frame the yard inside the dashed line, then Lock view.";
   const name = target === "Boundary" ? "yard boundary" : target.toLowerCase();
   switch (tool) {
     case "select":
-      return editable
-        ? "Click a shape to change it. Drag to pan, scroll to zoom."
-        : "Click a shape to see its sizes. Drag to pan, scroll to zoom.";
+      if (!editable) return "Click a shape to see its sizes. Drag to pan, scroll to zoom.";
+      if (selection === "locked") return "Locked: it can't be moved or changed. Unlock it to work on it.";
+      if (selection === "open") {
+        return "Drag a corner to move it, or a dot mid-edge to add one. Smooth curves the outline; double-click a corner to switch it.";
+      }
+      return "Click a shape to change it. Drag the photo's corner handles to take in more of the yard.";
     case "measure":
       return points === 0 ? "Click two points to measure between them." : "Click the second point.";
     case "rect":

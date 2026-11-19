@@ -8,7 +8,7 @@
 // at any zoom, the way a hatch does on paper.
 
 import { cssColor, featureStyle, type FeatureFill } from "@/lib/blueprint/feature-style";
-import type { FeatureType, PlanFeature } from "@/lib/site-plan/plan";
+import { edgeCurves, withCurves, type FeatureType, type PlanFeature } from "@/lib/site-plan/plan";
 
 export type Pt = [number, number];
 
@@ -17,7 +17,7 @@ const K = 1.5;
 
 /** The drawing sheet: warm white, like the printed page. */
 export const SHEET_PAPER = "#f8f4ea";
-const INK = "#1c2a21";
+export const INK = "#1c2a21";
 
 const FILL_IDS: Record<FeatureFill["kind"] | "light", string> = {
   lines: "vv-hatch-lines",
@@ -74,10 +74,23 @@ export function PlanPatterns() {
   );
 }
 
-const pathOf = (pts: Pt[], closed: boolean) =>
-  pts.length === 0
-    ? ""
-    : `M${pts.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join("L")}${closed ? "Z" : ""}`;
+const f1 = (v: number) => v.toFixed(1);
+
+/** A run as an SVG path, through its smooth corners as true curves
+ *  (plan.ts edgeCurves). */
+export function pathOf(pts: Pt[], closed: boolean, smooth?: boolean[]): string {
+  if (pts.length === 0) return "";
+  const curves = edgeCurves(pts, smooth, closed);
+  let d = `M${f1(pts[0][0])} ${f1(pts[0][1])}`;
+  curves.forEach((c, i) => {
+    const [x, y] = pts[(i + 1) % pts.length];
+    d += c ? `C${f1(c[0][0])} ${f1(c[0][1])} ${f1(c[1][0])} ${f1(c[1][1])} ${f1(x)} ${f1(y)}` : `L${f1(x)} ${f1(y)}`;
+  });
+  return d + (closed ? "Z" : "");
+}
+
+/** Screen points along a run's curves, close enough for ticks and labels. */
+const along = (pts: Pt[], closed: boolean, smooth?: boolean[]) => withCurves(pts, smooth, closed, 6);
 
 /** Pavement first, buildings over it, runs on top — the sheet's stacking. */
 const LAYER: Record<FeatureType, number> = {
@@ -116,28 +129,35 @@ export function FeatureArt({
   feature,
   pts,
   radius = 0,
+  smooth,
   halo,
   wash,
   label = true,
   dim = false,
+  locked = false,
 }: {
   feature: Pick<PlanFeature, "type" | "label" | "shape">;
   /** Screen points: the corners, the run, or [centre] for a circle. */
   pts: Pt[];
   /** Screen pixels, for a circle. */
   radius?: number;
+  /** Which corners are smooth. */
+  smooth?: boolean[];
   halo: number;
   wash: number;
   label?: boolean;
   /** Drawn faintly: a placed shape's old copy, or one being dragged. */
   dim?: boolean;
+  /** Locked in the builder: a padlock on its label. */
+  locked?: boolean;
 }) {
   const style = featureStyle(feature.type);
   const stroke = cssColor(style.stroke);
   const opacity = dim ? 0.45 : 1;
 
   if (feature.shape === "line") {
-    const d = pathOf(pts, false);
+    const d = pathOf(pts, false, smooth);
+    const run = along(pts, false, smooth);
     const fence = feature.type === "Fence";
     return (
       <g opacity={opacity}>
@@ -147,7 +167,7 @@ export function FeatureArt({
         {fence ? (
           <>
             <path d={d} fill="none" stroke={INK} strokeWidth={1.4} strokeLinejoin="round" />
-            <FenceTicks pts={pts} />
+            <FenceTicks pts={run} />
           </>
         ) : (
           <>
@@ -155,13 +175,13 @@ export function FeatureArt({
             <path d={d} fill="none" stroke="#9a968c" strokeWidth={2.6} strokeLinejoin="miter" />
           </>
         )}
-        {label && <RunLabel pts={pts} text={displayName(feature)} />}
+        {label && <RunLabel pts={run} text={displayName(feature)} locked={locked} />}
       </g>
     );
   }
 
   const fill = `url(#${fillId(feature.type)})`;
-  const d = pathOf(pts, true);
+  const d = pathOf(pts, true, smooth);
   const el = (props: { fill: string; fillOpacity?: number; stroke?: string; strokeOpacity?: number; strokeWidth?: number }) =>
     feature.shape === "circle" ? (
       <circle cx={pts[0][0]} cy={pts[0][1]} r={radius} {...props} />
@@ -174,7 +194,15 @@ export function FeatureArt({
       {el({ fill })}
       {halo > 0 && el({ fill: "none", stroke: SHEET_PAPER, strokeOpacity: 0.85 * halo, strokeWidth: 4.5 })}
       {el({ fill: "none", stroke, strokeWidth: 1.2 * K })}
-      {label && <AreaLabel pts={pts} radius={radius} text={displayName(feature)} color={cssColor(style.label)} />}
+      {label && (
+        <AreaLabel
+          pts={radius > 0 ? pts : along(pts, true, smooth)}
+          radius={radius}
+          text={displayName(feature)}
+          color={cssColor(style.label)}
+          locked={locked}
+        />
+      )}
     </g>
   );
 }
@@ -199,8 +227,18 @@ function FenceTicks({ pts }: { pts: Pt[] }) {
 }
 
 /** The yard boundary: the sheet's heaviest line, a survey dash. */
-export function BoundaryArt({ pts, closed = true, halo }: { pts: Pt[]; closed?: boolean; halo: number }) {
-  const d = pathOf(pts, closed);
+export function BoundaryArt({
+  pts,
+  closed = true,
+  smooth,
+  halo,
+}: {
+  pts: Pt[];
+  closed?: boolean;
+  smooth?: boolean[];
+  halo: number;
+}) {
+  const d = pathOf(pts, closed, smooth);
   return (
     <g>
       {halo > 0 && <path d={d} fill="none" stroke={SHEET_PAPER} strokeOpacity={0.85 * halo} strokeWidth={5.5} />}
@@ -210,12 +248,35 @@ export function BoundaryArt({ pts, closed = true, halo }: { pts: Pt[]; closed?: 
 }
 
 /** A label chip the way the PDF sets one: small caps on a white chip. */
-function Chip({ x, y, text, color, size = 9 }: { x: number; y: number; text: string; color: string; size?: number }) {
-  const w = text.length * size * 0.66 + 8;
+function Chip({
+  x,
+  y,
+  text,
+  color,
+  size = 9,
+  locked = false,
+}: {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size?: number;
+  locked?: boolean;
+}) {
+  const lock = locked ? size : 0;
+  const w = text.length * size * 0.66 + 8 + lock;
+  const k = size / 9;
   return (
     <g transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`} pointerEvents="none">
       <rect x={-w / 2} y={-size * 0.8} width={w} height={size * 1.6} rx={2} fill="#fff" fillOpacity={0.92} />
+      {locked && (
+        <g transform={`translate(${(-w / 2 + 4).toFixed(1)} ${(-4.6 * k).toFixed(1)}) scale(${k.toFixed(2)})`}>
+          <rect x={0} y={3.8} width={6.4} height={4.8} rx={0.9} fill={color} />
+          <path d="M1.5 3.8V2.4a1.7 1.7 0 0 1 3.4 0v1.4" fill="none" stroke={color} strokeWidth={1.1} />
+        </g>
+      )}
       <text
+        x={lock / 2}
         textAnchor="middle"
         dominantBaseline="central"
         fontSize={size}
@@ -230,7 +291,19 @@ function Chip({ x, y, text, color, size = 9 }: { x: number; y: number; text: str
   );
 }
 
-function AreaLabel({ pts, radius, text, color }: { pts: Pt[]; radius: number; text: string; color: string }) {
+function AreaLabel({
+  pts,
+  radius,
+  text,
+  color,
+  locked,
+}: {
+  pts: Pt[];
+  radius: number;
+  text: string;
+  color: string;
+  locked: boolean;
+}) {
   let cx: number;
   let cy: number;
   let w: number;
@@ -247,10 +320,10 @@ function AreaLabel({ pts, radius, text, color }: { pts: Pt[]; radius: number; te
   }
   // Only where there's room for it.
   if (w < text.length * 6 + 12 || h < 18) return null;
-  return <Chip x={cx} y={cy} text={text} color={color} />;
+  return <Chip x={cx} y={cy} text={text} color={color} locked={locked} />;
 }
 
-function RunLabel({ pts, text }: { pts: Pt[]; text: string }) {
+function RunLabel({ pts, text, locked }: { pts: Pt[]; text: string; locked: boolean }) {
   // On the longest run, if it's long enough to carry it.
   let best = -1;
   let len = 0;
@@ -261,7 +334,7 @@ function RunLabel({ pts, text }: { pts: Pt[]; text: string }) {
   if (best < 0 || len < text.length * 6 + 30) return null;
   const [x0, y0] = pts[best];
   const [x1, y1] = pts[best + 1];
-  return <Chip x={(x0 + x1) / 2} y={(y0 + y1) / 2} text={text} color={INK} size={8} />;
+  return <Chip x={(x0 + x1) / 2} y={(y0 + y1) / 2} text={text} color={INK} size={8} locked={locked} />;
 }
 
 export function screenCentroid(pts: Pt[]): Pt {

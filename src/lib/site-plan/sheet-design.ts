@@ -1,7 +1,7 @@
 // The site plan on the blueprint PDF, before the corner walk.
 
 import type { LocalPoint, ProjectFileJSON } from "@/lib/viewer/types";
-import { outlineOf, type SitePlan, type XZ } from "./plan";
+import { boundaryOutline, outlineOf, type SitePlan, type XZ } from "./plan";
 
 /**
  * The design the blueprint sheet draws. A project traced at the desk has
@@ -28,7 +28,7 @@ export function sheetDesign(design: ProjectFileJSON | null, plan: SitePlan | nul
       vertices: outlineOf(f).map((p, i) => point(`${f.id}-${i}`, p)),
       ...(f.shape === "line" ? { isClosed: false } : {}),
     })),
-    boundaryPoints: plan.boundary.map((p, i) => point(`boundary-${i}`, p)),
+    boundaryPoints: boundaryOutline(plan).map((p, i) => point(`boundary-${i}`, p)),
     boundaryIsClosed: plan.boundary.length >= 3,
   };
 }
