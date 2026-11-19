@@ -75,8 +75,10 @@ export function buildScene(project: ProjectFileJSON): Scene {
     toPlan(b.positionX, b.positionZ)
   );
 
+  // An open fence or wall run (a site plan's) is left out until the viewer
+  // draws runs: closed up as an area it would read as a slab, not a fence.
   const features: Poly[] = (project.featurePolygons ?? [])
-    .filter((f) => f.vertices.length >= 3)
+    .filter((f) => f.isClosed !== false && f.vertices.length >= 3)
     .map((f) => ({
       pts: f.vertices.map((v) => toPlan(v.positionX, v.positionZ)),
       label: f.featureType === "Other" ? f.customLabel || "Other" : f.featureType,

@@ -355,6 +355,8 @@ function drawArea(doc: Doc, layout: SheetLayout, verts: LocalPoint[], hatch: Hat
   chipLabel(doc, label, px, py, F.featureLabel, hatch.label);
 }
 
+const RUN_INK = gray(0.1);
+
 /**
  * A run that isn't closed: a fence (a line with cross-ticks) or a retaining
  * wall (a heavy line with a grey core) — as the site plan builder draws
@@ -362,11 +364,28 @@ function drawArea(doc: Doc, layout: SheetLayout, verts: LocalPoint[], hatch: Hat
  */
 function drawRun(doc: Doc, layout: SheetLayout, verts: LocalPoint[], type: string, label: string) {
   const pts = verts.map((v) => layout.toPDF(...layout.rotate(v.positionX, v.positionZ)));
+  strokeRun(doc, pts, type);
+  let best = -1;
+  let longest = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    if (l > longest) [longest, best] = [l, i];
+  }
+  if (best >= 0 && longest > measure(doc, label, F.featureLabel).w + 24) {
+    const [x0, y0] = pts[best];
+    const [x1, y1] = pts[best + 1];
+    chipLabel(doc, label, (x0 + x1) / 2, (y0 + y1) / 2, F.featureLabel, RUN_INK);
+  }
+}
+
+/** A run's strokes, in sheet points. The headset draws the same
+ *  (FeaturePatterns.swift `strokeRun`) — keep the two in step. */
+function strokeRun(doc: Doc, pts: [number, number][], type: string) {
   const path = () => {
     doc.moveTo(pts[0][0], pts[0][1]);
     for (const [x, y] of pts.slice(1)) doc.lineTo(x, y);
   };
-  const ink = gray(0.1);
+  const ink = RUN_INK;
   doc.save();
   if (type === "Retaining Wall") {
     path();
@@ -392,17 +411,6 @@ function drawRun(doc: Doc, layout: SheetLayout, verts: LocalPoint[], type: strin
     doc.lineWidth(0.8).strokeColor(ink).stroke();
   }
   doc.restore();
-  let best = -1;
-  let longest = 0;
-  for (let i = 0; i + 1 < pts.length; i++) {
-    const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
-    if (l > longest) [longest, best] = [l, i];
-  }
-  if (best >= 0 && longest > measure(doc, label, F.featureLabel).w + 24) {
-    const [x0, y0] = pts[best];
-    const [x1, y1] = pts[best + 1];
-    chipLabel(doc, label, (x0 + x1) / 2, (y0 + y1) / 2, F.featureLabel, ink);
-  }
 }
 
 function swatch(doc: Doc, x: number, y: number, hatch: Hatch) {
@@ -714,14 +722,18 @@ export async function renderBlueprintPDF(project: ProjectFileJSON, meta: Bluepri
   }
 
   if (fit.legends) {
-    // Existing features: only the kinds this yard has.
+    // Existing features: only the kinds this yard has. A kind drawn as a run
+    // on this sheet is keyed by a stretch of that run, so the key matches
+    // the map.
     const usedFeatures = new Set(features.map((f) => f.featureType));
+    const runFeatures = new Set(features.filter((f) => f.isClosed === false).map((f) => f.featureType));
     if (usedFeatures.size) {
       colY += 14;
       section("EXISTING FEATURES");
       colY += 5;
       for (const type of FEATURE_ORDER.filter((t) => usedFeatures.has(t))) {
-        swatch(doc, colX + 6, colY, featureHatch(type));
+        if (runFeatures.has(type)) strokeRun(doc, [[colX + 4, colY + 5], [colX + 22, colY + 5]], type);
+        else swatch(doc, colX + 6, colY, featureHatch(type));
         text(doc, type, colX + 26, colY + 1, body, gray(0.15));
         colY += 14;
       }

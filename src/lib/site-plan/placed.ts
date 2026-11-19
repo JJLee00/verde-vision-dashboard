@@ -47,12 +47,14 @@ export function placedPlan(plan: SitePlan, project: ProjectFileJSON): SitePlan |
   const geo = (pts: { positionX: number; positionZ: number }[]) =>
     pts.map((p) => localToGeo(fit, [p.positionX, p.positionZ]));
   const features: PlanFeature[] = (project.featurePolygons ?? [])
-    .filter((f) => f.vertices.length >= 3)
+    .filter((f) => f.vertices.length >= (f.isClosed === false ? 2 : 3))
     .map((f) => {
       const type = FEATURE_TYPES.find((t) => t === f.featureType) ?? "Other";
       const label = type === "Other" ? f.customLabel || (f.featureType !== "Other" ? f.featureType : undefined) : undefined;
-      // The headset's shapes are always closed today, fences included.
-      return { id: f.id.toLowerCase(), type, ...(label ? { label } : {}), shape: "area", points: geo(f.vertices) };
+      // A fence or wall run the walk placed stays a run; everything the
+      // headset draws itself is closed, fences included.
+      const shape = f.isClosed === false ? "line" : "area";
+      return { id: f.id.toLowerCase(), type, ...(label ? { label } : {}), shape, points: geo(f.vertices) };
     });
   const boundary = (project.boundaryPoints ?? []).length >= 3 ? geo(project.boundaryPoints!) : [];
   const house = project.outlinePlacement?.houseFeatureID?.toLowerCase();
