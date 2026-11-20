@@ -1,7 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { readStored, type StoredBlueprint } from "@/lib/blueprint/stored";
-import { headsetFeatures, readPlan, type HeadsetFeature } from "@/lib/site-plan/plan";
+import {
+  headsetFeatures,
+  headsetPlants,
+  headsetSurfaces,
+  readPlan,
+  type HeadsetFeature,
+  type HeadsetPlant,
+  type HeadsetSurface,
+} from "@/lib/site-plan/plan";
 import { ANCHOR_STEPS } from "@/lib/markers";
 
 /**
@@ -145,6 +153,8 @@ export async function GET(request: NextRequest) {
     {
       stored: StoredBlueprint;
       features: HeadsetFeature[] | null;
+      plants: HeadsetPlant[] | null;
+      surfaces: HeadsetSurface[] | null;
       fetchedAt: string | null;
       orthoPath: string | null;
     }
@@ -163,6 +173,8 @@ export async function GET(request: NextRequest) {
     outlines.set(row.id, {
       stored,
       features: plan ? headsetFeatures(plan) : null,
+      plants: plan ? headsetPlants(plan) : null,
+      surfaces: plan ? headsetSurfaces(plan) : null,
       // Normalised to millisecond ISO-8601: the headset compares it with its
       // own copy's date, and Postgres's microsecond form is not one Foundation
       // parses reliably.
@@ -309,6 +321,8 @@ export async function GET(request: NextRequest) {
       // separate signed download, never base64 in a list the headset polls.
       // `features` is every shape on a site plan, main house first; headsets
       // that predate it ignore the key and walk `candidate` as before.
+      // `plants` and `surfaces` are the design drawn on the plan before the
+      // walk (Nov 2026), in the same frame; the walk places them too.
       blueprint: (() => {
         const outline = outlines.get(p.id);
         if (!outline) return null;
@@ -316,6 +330,8 @@ export async function GET(request: NextRequest) {
           provider: outline.stored.provider,
           candidate: outline.stored.candidate,
           features: outline.features,
+          plants: outline.plants,
+          surfaces: outline.surfaces,
           fetched_at: outline.fetchedAt,
           ortho_url: orthoUrls[p.id] ?? null,
         };

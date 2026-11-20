@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   createVersion,
   currentPublishedVersion,
-  diffPlants,
+  diffDesign,
   sameDesign,
   summarize,
 } from "@/lib/versions";
@@ -469,7 +469,7 @@ export async function POST(request: NextRequest) {
         // yard when they made the change; there is nothing to review.
         status: "published",
         summary: summarize(
-          diffPlants(previous?.project_json ?? null, projectJson as ProjectFileJSON)
+          diffDesign(previous?.project_json ?? null, projectJson as ProjectFileJSON)
         ),
       });
       if (version) {

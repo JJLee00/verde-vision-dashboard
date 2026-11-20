@@ -16,6 +16,8 @@
 import type { StoredBlueprint } from "@/lib/blueprint/stored";
 import type { BlueprintCandidate, LatLng } from "@/lib/blueprint/types";
 import type { MapOffset } from "@/lib/blueprint/trace";
+import { closestSize, plantForKey } from "@/lib/design-edit";
+import { STYLES } from "@/lib/surfaces";
 
 /** The headset's FeatureType raw values (Boundarypoint.swift), in its order. */
 export const FEATURE_TYPES = [
@@ -66,6 +68,41 @@ export interface PlanFeature {
   locked?: boolean;
 }
 
+/**
+ * A plant placed at the desk, before anyone has walked the yard. It lives
+ * in the plan's frame like the shapes, and the corner walk carries it into
+ * the yard the same way.
+ */
+export interface PlanPlant {
+  /** An UPPERCASE UUID — how Swift writes one. On the walk it becomes the
+   *  placement's id, and the estimate and the change sync key plants by the
+   *  exact string, so it has to be spelled the way the headset will send it
+   *  back. */
+  id: string;
+  /** The catalog plant (catalog.json `key`). */
+  key: string;
+  /** Its container size, a catalog size name ("15g", "24\" Box"). */
+  size: string;
+  x: number;
+  z: number;
+  /** Its turn about up, in radians — the sense of the PDF's quatYaw. */
+  rotation: number;
+}
+
+/** A new surface laid at the desk — pavers, turf — rather than one already
+ *  in the yard. On the walk it becomes a HardscapeArea. */
+export interface PlanSurface {
+  /** UPPERCASE, as for a plant: the estimate keys its line by it. */
+  id: string;
+  /** The HardscapeStyle raw value, e.g. "Paving Stones 081". */
+  style: string;
+  shape: "area" | "circle";
+  points: XZ[];
+  radius?: number;
+  smooth?: boolean[];
+  locked?: boolean;
+}
+
 /** The locked picture: the rectangle of photo the plan is traced on,
  *  centred at (cx, cz) in plan metres. */
 export interface PlanFrame {
@@ -77,6 +114,33 @@ export interface PlanFrame {
 
 export type UnderlayKind = "satellite" | "map" | "none";
 
+/**
+ * A plot plan or survey the designer uploaded, laid on the sheet under the
+ * tracing — for a new build the photo doesn't show yet, or a yard the photo
+ * is out of date on. Stored as a picture (a PDF's first page, drawn out) in
+ * project-media; placed by its middle, its size and its turn.
+ */
+export interface PlanImage {
+  /** In project-media: {user}/{project}/site-plan-….png */
+  path: string;
+  /** The file it came from. */
+  name: string;
+  /** Its size in pixels. */
+  w: number;
+  h: number;
+  /** Where its middle sits, in plan metres. */
+  x: number;
+  z: number;
+  /** Metres per pixel. */
+  scale: number;
+  /** How far it's turned, in radians, clockwise on the sheet. */
+  rotation: number;
+  opacity: number;
+  hidden?: boolean;
+  /** Its scale was set from a length on it, not guessed. */
+  scaled?: boolean;
+}
+
 export interface SitePlan {
   version: 2;
   /** "trace", or the v1 provider the plan was upgraded from. */
@@ -85,7 +149,11 @@ export interface SitePlan {
   lookupAddress: string;
   origin: LatLng;
   frame: PlanFrame;
-  underlay: { kind: UnderlayKind; opacity: number };
+  /** `opacity` is the photo's strength on the Blueprint tab; the Design
+   *  tab keeps its own, fainter one, so switching never needs the slider. */
+  underlay: { kind: UnderlayKind; opacity: number; designOpacity?: number };
+  /** An uploaded plot plan under the sheet. Dashboard-only. */
+  planImage?: PlanImage;
   /** How far the Map view is shifted to agree with the satellite here
    *  (trace.ts MapOffset). Dashboard-only. */
   mapOffset?: MapOffset;
@@ -98,6 +166,10 @@ export interface SitePlan {
   /** The House the headset walks, when there's more than one. Absent:
    *  the first House. */
   mainHouseId?: string;
+  /** The design drawn before the walk. Absent on plans saved before the
+   *  Design tab, which is the same as none. */
+  plants?: PlanPlant[];
+  surfaces?: PlanSurface[];
   /** Derived from the rest for headsets that predate `features`. */
   candidate: BlueprintCandidate;
 }
@@ -111,6 +183,8 @@ export type PlanDraft = Omit<SitePlan, "version" | "candidate">;
 export const MAX_REACH_M = 1000;
 const MAX_FEATURES = 300;
 const MAX_POINTS = 200;
+const MAX_PLANTS = 1500;
+const MAX_SURFACES = 300;
 /** Corners closer than this are a double click, not two corners. */
 const MIN_EDGE_M = 0.1;
 const MIN_RADIUS_M = 0.15;
@@ -373,6 +447,8 @@ export function parseDraft(raw: unknown): PlanDraft {
   }
   const kind: UnderlayKind = (["satellite", "map", "none"] as const).find((k) => k === d.underlay?.kind) ?? "satellite";
   const opacity = num(d.underlay?.opacity) ? Math.min(1, Math.max(0, d.underlay!.opacity)) : 1;
+  const designOpacity = num(d.underlay?.designOpacity) ? Math.min(1, Math.max(0, d.underlay!.designOpacity)) : undefined;
+  const planImage = parsePlanImage(d.planImage);
 
   let boundary = parsePoints(d.boundary ?? [], "Yard boundary");
   if (boundary.length > 0 && boundary.length < 3) boundary = [];
@@ -428,6 +504,9 @@ export function parseDraft(raw: unknown): PlanDraft {
     features.push(feature);
   }
 
+  const plants = parsePlants(d.plants);
+  const surfaces = parseSurfaces(d.surfaces);
+
   const mainHouseId =
     typeof d.mainHouseId === "string" && features.some((x) => x.id === d.mainHouseId && x.type === "House")
       ? d.mainHouseId
@@ -443,14 +522,109 @@ export function parseDraft(raw: unknown): PlanDraft {
     lookupAddress: typeof d.lookupAddress === "string" ? d.lookupAddress.trim().slice(0, 300) : "",
     origin: { lat: d.origin.lat, lng: d.origin.lng },
     frame: { cx: f.cx!, cz: f.cz!, halfWidth: f.halfWidth!, halfHeight: f.halfHeight! },
-    underlay: { kind, opacity },
+    underlay: { kind, opacity, ...(designOpacity != null ? { designOpacity } : {}) },
+    ...(planImage ? { planImage } : {}),
     ...(mapOffset ? { mapOffset } : {}),
     boundary,
     ...(boundarySmooth ? { boundarySmooth } : {}),
     ...(boundary.length >= 3 && d.boundaryLocked === true ? { boundaryLocked: true } : {}),
     features,
     ...(mainHouseId ? { mainHouseId } : {}),
+    ...(plants.length ? { plants } : {}),
+    ...(surfaces.length ? { surfaces } : {}),
   };
+}
+
+/** An uploaded plan, or none: a bad one is dropped rather than costing the
+ *  designer the plan traced over it. */
+function parsePlanImage(raw: unknown): PlanImage | undefined {
+  const m = raw as Partial<PlanImage> | null | undefined;
+  if (!m || typeof m !== "object") return undefined;
+  const { path, name, w, h, x, z, scale, rotation, opacity } = m;
+  if (typeof path !== "string" || path.length > 300 || !/^[\w\-./]+$/.test(path) || path.includes("..")) return undefined;
+  if (![w, h, x, z, scale, rotation].every(num)) return undefined;
+  if (w! < 1 || h! < 1 || w! > 20000 || h! > 20000) return undefined;
+  if (Math.abs(x!) > MAX_REACH_M || Math.abs(z!) > MAX_REACH_M || scale! <= 1e-5 || scale! > 10) return undefined;
+  return {
+    path,
+    name: typeof name === "string" ? name.slice(0, 120) : "Plan",
+    w: Math.round(w!),
+    h: Math.round(h!),
+    x: x!,
+    z: z!,
+    scale: scale!,
+    rotation: Math.atan2(Math.sin(rotation!), Math.cos(rotation!)),
+    opacity: num(opacity) ? Math.min(1, Math.max(0, opacity)) : 0.7,
+    ...(m.hidden === true ? { hidden: true } : {}),
+    ...(m.scaled === true ? { scaled: true } : {}),
+  };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The desk's plants. Lenient where the shapes are strict: a plant the
+ * catalog no longer sells, or a size it no longer comes in, must not cost
+ * the designer the whole plan the next time it's read — the plant is
+ * dropped, or lands on the nearest size, instead.
+ */
+function parsePlants(raw: unknown): PlanPlant[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_PLANTS) throw new PlanError("The plan has too many plants.");
+  const seen = new Set<string>();
+  const out: PlanPlant[] = [];
+  for (const p of raw as Partial<PlanPlant>[]) {
+    if (!p || typeof p.id !== "string" || !UUID.test(p.id)) continue;
+    const id = p.id.toUpperCase();
+    if (seen.has(id) || !num(p.x) || !num(p.z)) continue;
+    if (Math.hypot(p.x, p.z) > MAX_REACH_M) throw new PlanError("A plant landed far from the yard. Check for a stray click.");
+    const plant = typeof p.key === "string" ? plantForKey(p.key) : null;
+    const size = plant ? closestSize(plant, typeof p.size === "string" ? p.size : null) : null;
+    if (!plant || !size) continue;
+    seen.add(id);
+    const turn = num(p.rotation) ? p.rotation : 0;
+    out.push({ id, key: plant.key, size: size.size, x: p.x, z: p.z, rotation: Math.atan2(Math.sin(turn), Math.cos(turn)) });
+  }
+  return out;
+}
+
+const SURFACE_STYLES = new Set(STYLES.map((s) => s.style));
+
+/** The desk's new surfaces, checked like the shapes. */
+function parseSurfaces(raw: unknown): PlanSurface[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > MAX_SURFACES) throw new PlanError("The plan has too many surfaces.");
+  const seen = new Set<string>();
+  const out: PlanSurface[] = [];
+  for (const s of raw as Partial<PlanSurface>[]) {
+    if (!s || typeof s.id !== "string" || !UUID.test(s.id) || seen.has(s.id.toUpperCase())) {
+      throw new PlanError("A surface has a bad id.");
+    }
+    const id = s.id.toUpperCase();
+    seen.add(id);
+    if (typeof s.style !== "string" || !SURFACE_STYLES.has(s.style)) throw new PlanError("A surface has an unknown material.");
+    const name = s.style.toLowerCase();
+    const points = parsePoints(s.points, s.style);
+    const surface: PlanSurface = { id, style: s.style, shape: s.shape === "circle" ? "circle" : "area", points };
+    if (s.locked === true) surface.locked = true;
+    if (surface.shape === "circle") {
+      if (points.length !== 1 || !num(s.radius) || s.radius < MIN_RADIUS_M || s.radius > 100) {
+        throw new PlanError(`The ${name} needs a centre and a size.`);
+      }
+      surface.radius = s.radius;
+    } else {
+      if (points.length < 3) throw new PlanError(`The ${name} needs three corners or more.`);
+      if (points.length === (s.points as unknown[]).length) {
+        const smooth = parseSmooth(s.smooth, points, true, s.style);
+        if (smooth) surface.smooth = smooth;
+      }
+      if (crosses(outlineOf(surface), true)) {
+        throw new PlanError(`The ${name} crosses itself. Drag the corners so the edges don't cross.`);
+      }
+    }
+    out.push(surface);
+  }
+  return out;
 }
 
 /** The House of an upgraded version-1 outline. Fixed, so the plan reads
@@ -532,4 +706,48 @@ export function headsetFeatures(plan: SitePlan): HeadsetFeature[] {
     pointsXZ: outlineOf(f),
     isClosed: f.shape !== "line",
   }));
+}
+
+/** A desk plant as the headset takes it. Named the way PlacedPlant names
+ *  them, so it lands in the yard as an ordinary placement. */
+export interface HeadsetPlant {
+  id: string;
+  plantModelName: string;
+  containerType: string;
+  /** The entity's uniform scale: the size's heightMultiplier. */
+  scale: number;
+  /** Geo-frame metres. */
+  pointXZ: XZ;
+  rotation: number;
+}
+
+/** Every plant on the plan for `/api/vision-pro/projects`. A plant the
+ *  catalog can't size is left behind rather than sent as a guess. */
+export function headsetPlants(plan: Pick<SitePlan, "plants">): HeadsetPlant[] {
+  return (plan.plants ?? []).flatMap((p) => {
+    const plant = plantForKey(p.key);
+    const size = plant?.sizes.find((s) => s.size === p.size);
+    if (!size?.modelName) return [];
+    return [
+      {
+        id: p.id,
+        plantModelName: size.modelName,
+        containerType: size.size,
+        scale: size.heightMultiplier,
+        pointXZ: [p.x, p.z] as XZ,
+        rotation: p.rotation,
+      },
+    ];
+  });
+}
+
+/** A desk surface as the headset takes it: corners only, like a shape. */
+export interface HeadsetSurface {
+  id: string;
+  style: string;
+  pointsXZ: XZ[];
+}
+
+export function headsetSurfaces(plan: Pick<SitePlan, "surfaces">): HeadsetSurface[] {
+  return (plan.surfaces ?? []).map((s) => ({ id: s.id, style: s.style, pointsXZ: outlineOf(s) }));
 }

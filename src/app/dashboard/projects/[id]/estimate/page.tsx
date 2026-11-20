@@ -17,6 +17,8 @@ import {
   FIXTURE_SETTINGS,
 } from "@/lib/estimate-fixture";
 import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
+import { readPlan } from "@/lib/site-plan/plan";
+import { sheetDesign } from "@/lib/site-plan/sheet-design";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { EstimateBuilder, type SavedItem } from "./estimate-builder";
 
@@ -84,10 +86,13 @@ async function loadPageData(id: string): Promise<PageData | null> {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [baseRes, designRes, membership] = await Promise.all([
+  const [baseRes, designRes, planRes, membership] = await Promise.all([
     supabase.from("projects").select("id, name, client_id").eq("id", id).single(),
     // A migration-008 column, read on its own so the page opens without it.
     supabase.from("projects").select("project_json").eq("id", id).maybeSingle(),
+    // And migration-020's: the site plan, which holds a design drawn at the
+    // desk until the walk carries it into the yard.
+    supabase.from("projects").select("blueprint_payload").eq("id", id).maybeSingle(),
     getMembership(supabase, user.id),
   ]);
 
@@ -102,8 +107,11 @@ async function loadPageData(id: string): Promise<PageData | null> {
   // the dashboard already holds; anything typed over survives, exactly as on
   // every sync, and unchanged lines aren't rewritten. Only someone who may
   // edit the estimate triggers it, and a failure costs freshness, not the page.
-  const design = (designRes.data as { project_json?: ProjectFileJSON | null } | null)
-    ?.project_json;
+  const design = sheetDesign(
+    (designRes.data as { project_json?: ProjectFileJSON | null } | null)?.project_json ?? null,
+    readPlan((planRes.data as { blueprint_payload?: unknown } | null)?.blueprint_payload),
+    base.name
+  );
   if (mayEdit && design) {
     try {
       await rebuildPlantRows(supabase, id, design);

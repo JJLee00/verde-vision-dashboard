@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { currentPublishedVersion, diffPlants, summarize } from "@/lib/versions";
+import { currentPublishedVersion, diffDesign, summarize } from "@/lib/versions";
 import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 
@@ -35,7 +35,7 @@ export async function publishRevision(
   if (projectError || !project) return { ok: false, error: "Project not found" };
 
   const previous = await currentPublishedVersion(supabase, projectId);
-  const summary = summarize(diffPlants(previous?.project_json ?? null, design));
+  const summary = summarize(diffDesign(previous?.project_json ?? null, design));
 
   // The revision is assigned HERE, not when the draft was created. A headset
   // sync may have published while the draft sat open, and a revision that

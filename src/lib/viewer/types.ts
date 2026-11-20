@@ -22,6 +22,10 @@ export type PlacedPlantJSON = {
   // ContainerSize.SizeType raw value, e.g. "15g" or "36\" Box".
   containerType?: string | null;
   beamTiltDegrees?: number | null;
+  // True while the height is a guess — a plant placed at the desk, or moved
+  // there after the walk. The headset measures the ground under it once its
+  // scan reaches the spot, and clears this.
+  heightPending?: boolean | null;
 };
 
 export type LocalPoint = {
@@ -29,6 +33,8 @@ export type LocalPoint = {
   positionX: number;
   positionY: number;
   positionZ: number;
+  // As on a plant: the height is a guess the headset will measure.
+  heightPending?: boolean | null;
 };
 
 export type FeaturePolygonJSON = {
@@ -53,6 +59,8 @@ export type HardscapeAreaJSON = {
   style: string;
   vertices: LocalPoint[];
   gradeHeight?: number | null;
+  // HardscapeLeveling in the app, carried through untouched.
+  leveling?: unknown;
 };
 
 export type RemovalMarkerJSON = {

@@ -8,7 +8,8 @@
 // at any zoom, the way a hatch does on paper.
 
 import { cssColor, featureStyle, type FeatureFill } from "@/lib/blueprint/feature-style";
-import { edgeCurves, withCurves, type FeatureType, type PlanFeature } from "@/lib/site-plan/plan";
+import { edgeCurves, withCurves, type FeatureType, type PlanFeature, type PlanSurface } from "@/lib/site-plan/plan";
+import { surfaceStyle } from "@/lib/surfaces";
 
 export type Pt = [number, number];
 
@@ -390,6 +391,172 @@ export function TypeSwatch({ type, size = 18 }: { type: FeatureType; size?: numb
           />
         </>
       )}
+    </svg>
+  );
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────── */
+
+// The new surfaces a design lays — pavers, turf — in the blueprint's own
+// hatches (blueprint-pdf.ts surfaceHatch, FeaturePatterns.swift), each
+// pattern's repeat drawn into one SVG tile at the printed size.
+
+const rgb = (r: number, g: number, b: number) => `rgb(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)})`;
+const grey = (v: number) => rgb(v, v, v);
+
+/** Each style's outline, label and pattern colours, as the PDF prints them. */
+const SURFACE_INK: Record<string, { stroke: string; label: string; line: string }> = {
+  paver: { stroke: rgb(0.36, 0.37, 0.36), label: grey(0.28), line: rgb(0.46, 0.47, 0.46) },
+  sierra: { stroke: rgb(0.34, 0.28, 0.22), label: grey(0.28), line: rgb(0.44, 0.37, 0.29) },
+  travertine: { stroke: rgb(0.46, 0.45, 0.42), label: grey(0.3), line: rgb(0.56, 0.55, 0.51) },
+  flagstone: { stroke: grey(0.35), label: grey(0.25), line: grey(0.45) },
+  decomposedGranite: { stroke: rgb(0.6, 0.48, 0.34), label: rgb(0.48, 0.38, 0.26), line: rgb(0.66, 0.54, 0.39) },
+  turf: { stroke: rgb(0.24, 0.45, 0.22), label: rgb(0.18, 0.36, 0.17), line: rgb(0.32, 0.55, 0.28) },
+  concrete: { stroke: grey(0.45), label: grey(0.3), line: grey(0.55) },
+};
+
+/** A style's case name ("paver"), concrete for anything unknown. */
+export const surfaceCase = (style: string) => surfaceStyle(style)?.case ?? "concrete";
+const surfaceInk = (style: string) => SURFACE_INK[surfaceCase(style)] ?? SURFACE_INK.concrete;
+const surfacePatternId = (kase: string) => `vv-surface-${kase}`;
+
+/** One tile of each surface's pattern. Render once per <svg>. */
+export function SurfacePatterns() {
+  const tile = (kase: string, w: number, h: number, body: string, fill = false, opacity = 0.8, width = 0.35) => {
+    const ink = SURFACE_INK[kase];
+    return (
+      <pattern key={kase} id={surfacePatternId(kase)} width={w * K} height={h * K} patternUnits="userSpaceOnUse">
+        <g transform={`scale(${K})`}>
+          {fill ? (
+            <path d={body} fill={ink.line} fillOpacity={opacity} />
+          ) : (
+            <path d={body} fill="none" stroke={ink.line} strokeOpacity={opacity} strokeWidth={width} />
+          )}
+        </g>
+      </pattern>
+    );
+  };
+  const rect = (x: number, y: number, w: number, h: number) => `M${x} ${y}h${w}v${h}h${-w}Z`;
+  const dot = (x: number, y: number, r: number) => `M${x - r} ${y}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
+
+  // Herringbone: u x 2u stones on a 4u repeat, drawn past the tile's edges
+  // so the stones it cuts are completed by its neighbours.
+  let paver = "";
+  const u = 4;
+  for (let b = -3; b < 5; b++) {
+    for (let a = -3; a < 5; a++) {
+      if ((((a - b) % 4) + 4) % 4 !== 1) continue;
+      paver += rect(a * u, b * u, u, u * 2) + rect(a * u + u, b * u, u * 2, u);
+    }
+  }
+  // Three-piece modular, quarter-turned by the PDF's rule: a 4 x 4 module repeat.
+  let sierra = "";
+  const m = 17;
+  const big = (m * 9) / 15;
+  const small = (m * 6) / 15;
+  for (let b = 0; b < 4; b++) {
+    for (let a = 0; a < 4; a++) {
+      const turn = (((a * 3 + b * 7) % 4) + 4) % 4;
+      let pieces = [
+        [0, 0, big, big],
+        [big, 0, small, big],
+        [0, big, big, small],
+        [big, big, small, small],
+      ];
+      for (let t = 0; t < turn; t++) pieces = pieces.map(([x, y, w, h]) => [m - y - h, x, h, w]);
+      for (const [x, y, w, h] of pieces) sierra += rect(a * m + x, b * m + y, w, h);
+    }
+  }
+  // Running bond.
+  const travertine = "M0 0H8M0 4H8M0 0V4M4 4V8M8 0V4";
+  // Short scattered strokes, seeded the PDF's way, on a 7 x 7 repeat.
+  let flag = "";
+  for (let row = 0; row < 7; row++) {
+    for (let col = 0; col < 7; col++) {
+      const seed = (row * 31 + col * 17) % 7;
+      const angle = (seed * Math.PI) / 7;
+      const len = 3 + (seed % 3);
+      const dx = (Math.cos(angle) * len) / 2;
+      const dy = (Math.sin(angle) * len) / 2;
+      const x = 3 + col * 7;
+      const y = 3 + row * 7;
+      flag += `M${(x - dx).toFixed(2)} ${(y - dy).toFixed(2)}L${(x + dx).toFixed(2)} ${(y + dy).toFixed(2)}`;
+    }
+  }
+  const turf = "M2 3l-0.6 -2.4M6 3l0 -2.4M4 7l0.6 -2.4M8 7l-0.6 -2.4M10 3l0.6 -2.4";
+  const dg = dot(2, 2, 0.4) + dot(6, 2.4, 0.4) + dot(4, 6, 0.4) + dot(0.4, 6.4, 0.4) + dot(8, 6, 0.4);
+  const concrete = dot(4, 4, 0.5) + dot(8.5, 13, 0.5) + dot(-0.5, 13, 0.5);
+  return (
+    <defs>
+      {tile("paver", 4 * u, 4 * u, paver)}
+      {tile("sierra", 4 * m, 4 * m, sierra)}
+      {tile("travertine", 8, 8, travertine)}
+      {tile("flagstone", 49, 49, flag)}
+      {tile("turf", 12, 8, turf, false, 0.85, 0.4)}
+      {tile("decomposedGranite", 8, 8, dg, true, 0.9)}
+      {tile("concrete", 9, 18, concrete, true, 0.9)}
+    </defs>
+  );
+}
+
+/** One surface, the way the blueprint prints it: its material's pattern,
+ *  its outline, and a label with its area. */
+export function SurfaceArt({
+  surface,
+  pts,
+  radius = 0,
+  smooth,
+  halo,
+  wash,
+  sqft,
+  label = true,
+  dim = false,
+  locked = false,
+}: {
+  surface: Pick<PlanSurface, "style" | "shape">;
+  pts: Pt[];
+  radius?: number;
+  smooth?: boolean[];
+  halo: number;
+  wash: number;
+  /** The area, for the label. */
+  sqft?: number;
+  label?: boolean;
+  dim?: boolean;
+  locked?: boolean;
+}) {
+  const ink = surfaceInk(surface.style);
+  const d = pathOf(pts, true, smooth);
+  const el = (props: { fill: string; fillOpacity?: number; stroke?: string; strokeOpacity?: number; strokeWidth?: number }) =>
+    surface.shape === "circle" ? <circle cx={pts[0][0]} cy={pts[0][1]} r={radius} {...props} /> : <path d={d} strokeLinejoin="miter" {...props} />;
+  const name = surfaceStyle(surface.style)?.style ?? surface.style;
+  return (
+    <g opacity={dim ? 0.45 : 1}>
+      {el({ fill: SHEET_PAPER, fillOpacity: Math.max(wash, 0.55) })}
+      {el({ fill: `url(#${surfacePatternId(surfaceCase(surface.style))})` })}
+      {halo > 0 && el({ fill: "none", stroke: SHEET_PAPER, strokeOpacity: 0.85 * halo, strokeWidth: 4.5 })}
+      {el({ fill: "none", stroke: ink.stroke, strokeWidth: K })}
+      {label && (
+        <AreaLabel
+          pts={radius > 0 ? pts : along(pts, true, smooth)}
+          radius={radius}
+          text={sqft != null ? `${name} · ${Math.round(sqft).toLocaleString("en-US")} sq ft` : name}
+          color={ink.label}
+          locked={locked}
+        />
+      )}
+    </g>
+  );
+}
+
+/** A swatch of a surface's pattern, for the catalog and the list. */
+export function SurfaceSwatch({ style, size = 18 }: { style: string; size?: number }) {
+  const ink = surfaceInk(style);
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" aria-hidden className="shrink-0">
+      <rect x={2} y={2} width={14} height={14} fill={SHEET_PAPER} />
+      <rect x={2} y={2} width={14} height={14} fill={`url(#${surfacePatternId(surfaceCase(style))})`} />
+      <rect x={2} y={2} width={14} height={14} fill="none" stroke={ink.stroke} strokeWidth={1.4} />
     </svg>
   );
 }

@@ -21,10 +21,27 @@ import {
   type FeatureType,
   type PlanFeature,
   type PlanFrame,
+  type PlanImage,
+  type PlanPlant,
+  type PlanSurface,
   type UnderlayKind,
   type XZ,
 } from "@/lib/site-plan/plan";
-import { BoundaryArt, byLayer, FeatureArt, INK, pathOf, PlanPatterns, SHEET_PAPER, type Pt } from "./drawing";
+import { catalogOf, newId, surfaceSqFtOf } from "@/lib/site-plan/design";
+import { plantForKey } from "@/lib/design-edit";
+import {
+  BoundaryArt,
+  byLayer,
+  FeatureArt,
+  INK,
+  pathOf,
+  PlanPatterns,
+  SHEET_PAPER,
+  SurfaceArt,
+  SurfacePatterns,
+  type Pt,
+} from "./drawing";
+import { plantAt, PlantLayer, plantRadiusM, type SheetPlant } from "./plants";
 import {
   addCorner,
   dist,
@@ -68,17 +85,33 @@ import { CopyIcon, CurveIcon, LockIcon, RedoIcon, TrashIcon, UndoIcon } from "./
 
 export const BOUNDARY_ID = "boundary";
 
-/** What one undo step covers: the shapes, not the view or the photo. */
+/** What one undo step covers: the shapes and the design, not the view or
+ *  the photo. */
 export type Doc = {
   boundary: XZ[];
   boundarySmooth?: boolean[];
   boundaryLocked?: boolean;
   features: PlanFeature[];
   mainHouseId?: string;
+  plants: PlanPlant[];
+  surfaces: PlanSurface[];
 };
-export type Tool = "select" | "area" | "rect" | "line" | "circle" | "measure";
-/** What the drawing tools make: a feature type, or the yard boundary. */
-export type DrawTarget = FeatureType | "Boundary";
+/** `place` plants whatever the catalog has picked, a click at a time. */
+export type Tool = "select" | "area" | "rect" | "line" | "circle" | "measure" | "place";
+/** A new surface of a material, drawn with the shape tools. */
+export type SurfaceTarget = `surface:${string}`;
+/** What the drawing tools make: a feature type, the yard boundary, or a
+ *  surface. */
+export type DrawTarget = FeatureType | "Boundary" | SurfaceTarget;
+export const surfaceTarget = (style: string): SurfaceTarget => `surface:${style}`;
+export const styleOf = (t: DrawTarget): string | null => (t.startsWith("surface:") ? t.slice(8) : null);
+/** Which tab the sheet is working for: the yard as it is, or the design. */
+export type Layer = "site" | "design";
+/** A plant to place: the catalog plant and the size picked for it. */
+export type Placing = { key: string; size: string };
+/** What clicks do to an uploaded plan: drag it into line, measure a length
+ *  on it to set its scale, or follow its north arrow. */
+export type ImageTool = "align" | "scale" | "north";
 
 export interface SheetHandle {
   /** The part of the plan on screen now, inset a little: what Lock view keeps. */
@@ -98,7 +131,15 @@ export const LOCK_INSET = 28;
 const CLICK_SLOP = 4;
 const MIN_EDGE_M = 0.1;
 
-type Shape = { pts: XZ[]; closed: boolean; radius?: number; smooth?: boolean[]; locked: boolean; feature?: PlanFeature };
+type Shape = {
+  pts: XZ[];
+  closed: boolean;
+  radius?: number;
+  smooth?: boolean[];
+  locked: boolean;
+  feature?: PlanFeature;
+  surface?: PlanSurface;
+};
 
 export function shapeOf(doc: Doc, id: string): Shape | null {
   if (id === BOUNDARY_ID) {
@@ -107,8 +148,29 @@ export function shapeOf(doc: Doc, id: string): Shape | null {
       : null;
   }
   const f = doc.features.find((x) => x.id === id);
-  if (!f) return null;
-  return { pts: f.points, closed: f.shape !== "line", radius: f.radius, smooth: f.smooth, locked: !!f.locked, feature: f };
+  if (f) return { pts: f.points, closed: f.shape !== "line", radius: f.radius, smooth: f.smooth, locked: !!f.locked, feature: f };
+  const s = doc.surfaces.find((x) => x.id === id);
+  if (s) return { pts: s.points, closed: true, radius: s.radius, smooth: s.smooth, locked: !!s.locked, surface: s };
+  return null;
+}
+
+/** A placed plant by id. */
+export const plantOf = (doc: Doc, id: string | null) => (id ? (doc.plants.find((p) => p.id === id) ?? null) : null);
+
+/** A plan plant as the sheet draws it. */
+export function sheetPlant(p: PlanPlant): SheetPlant | null {
+  const c = catalogOf(p);
+  return c ? { id: p.id, model: c.size.modelName, scale: c.size.heightMultiplier, x: p.x, z: p.z, rotation: p.rotation } : null;
+}
+
+type Editable = { points: XZ[]; smooth?: boolean[]; locked?: boolean; radius?: number };
+
+/** Changes one shape, a feature or a surface, by id. */
+function editShape(doc: Doc, id: string, change: <T extends Editable>(x: T) => T): Doc {
+  if (doc.features.some((f) => f.id === id)) {
+    return { ...doc, features: doc.features.map((f) => (f.id === id ? change(f) : f)) };
+  }
+  return { ...doc, surfaces: doc.surfaces.map((s) => (s.id === id ? change(s) : s)) };
 }
 
 /** A shape's outline with its curves filled in. */
@@ -117,7 +179,7 @@ const outline = (s: Pick<Shape, "pts" | "smooth" | "closed">) => withCurves(s.pt
 /** Moves a shape's corners; its curves ride along. */
 function withPoints(doc: Doc, id: string, pts: XZ[]): Doc {
   if (id === BOUNDARY_ID) return { ...doc, boundary: pts };
-  return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, points: pts } : f)) };
+  return editShape(doc, id, (f) => ({ ...f, points: pts }));
 }
 
 /** Sets a shape's corners and which are smooth together, for when the
@@ -125,7 +187,7 @@ function withPoints(doc: Doc, id: string, pts: XZ[]): Doc {
 export function withEdges(doc: Doc, id: string, pts: XZ[], smooth: boolean[] | undefined): Doc {
   const sm = smooth?.some(Boolean) ? smooth : undefined;
   if (id === BOUNDARY_ID) return { ...doc, boundary: pts, boundarySmooth: sm };
-  return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, points: pts, smooth: sm } : f)) };
+  return editShape(doc, id, (f) => ({ ...f, points: pts, smooth: sm }));
 }
 
 /** Smooths a shape's gentle corners — or, when it has any smooth corners,
@@ -138,7 +200,7 @@ export function toggleSmooth(doc: Doc, id: string): Doc {
 
 export function setLocked(doc: Doc, id: string, locked: boolean): Doc {
   if (id === BOUNDARY_ID) return { ...doc, boundaryLocked: locked || undefined };
-  return { ...doc, features: doc.features.map((f) => (f.id === id ? { ...f, locked: locked || undefined } : f)) };
+  return editShape(doc, id, (f) => ({ ...f, locked: locked || undefined }));
 }
 
 export function removeShape(doc: Doc, id: string): Doc {
@@ -147,27 +209,45 @@ export function removeShape(doc: Doc, id: string): Doc {
     ...doc,
     features: doc.features.filter((f) => f.id !== id),
     mainHouseId: doc.mainHouseId === id ? undefined : doc.mainHouseId,
+    plants: doc.plants.filter((p) => p.id !== id),
+    surfaces: doc.surfaces.filter((s) => s.id !== id),
   };
 }
 
-/** A copy of a shape a metre down and right, as a new, unlocked shape. */
+/** A copy of a shape a metre down and right — or of a plant, beside it —
+ *  as a new, unlocked one. */
 export function duplicate(doc: Doc, id: string): { doc: Doc; id: string } | null {
+  const shift = (pts: XZ[]) => pts.map(([x, z]) => [x + 1, z + 1] as XZ);
   const f = doc.features.find((x) => x.id === id);
-  if (!f) return null;
-  const copy: PlanFeature = {
-    ...f,
-    id: crypto.randomUUID(),
-    points: f.points.map(([x, z]) => [x + 1, z + 1] as XZ),
-    locked: undefined,
-  };
-  return { doc: { ...doc, features: [...doc.features, copy] }, id: copy.id };
+  if (f) {
+    const copy: PlanFeature = { ...f, id: crypto.randomUUID(), points: shift(f.points), locked: undefined };
+    return { doc: { ...doc, features: [...doc.features, copy] }, id: copy.id };
+  }
+  const s = doc.surfaces.find((x) => x.id === id);
+  if (s) {
+    const copy: PlanSurface = { ...s, id: newId(), points: shift(s.points), locked: undefined };
+    return { doc: { ...doc, surfaces: [...doc.surfaces, copy] }, id: copy.id };
+  }
+  const p = doc.plants.find((x) => x.id === id);
+  if (p) {
+    const drawn = sheetPlant(p);
+    const step = drawn ? Math.max(0.6, plantRadiusM(drawn) * 2) : 1;
+    const copy: PlanPlant = { ...p, id: newId(), x: p.x + step };
+    return { doc: { ...doc, plants: [...doc.plants, copy] }, id: copy.id };
+  }
+  return null;
 }
 
 /** What a shape is called in a sentence. */
 export function nameOf(doc: Doc, id: string): string {
   if (id === BOUNDARY_ID) return "yard boundary";
   const f = doc.features.find((x) => x.id === id);
-  return f ? (f.type === "Other" ? f.label?.trim() || "shape" : f.type.toLowerCase()) : "shape";
+  if (f) return f.type === "Other" ? f.label?.trim() || "shape" : f.type.toLowerCase();
+  const s = doc.surfaces.find((x) => x.id === id);
+  if (s) return s.style.toLowerCase();
+  const p = doc.plants.find((x) => x.id === id);
+  if (p) return plantForKey(p.key)?.name ?? "plant";
+  return "shape";
 }
 
 /* ── The photo ───────────────────────────────────────────────────── */
@@ -259,7 +339,13 @@ type Gesture =
   | { kind: "move"; id: string; base: Doc; start: Pt; from: XZ; moved: boolean }
   | { kind: "rotate"; id: string; base: Doc; centre: XZ; a0: number }
   | { kind: "radius"; id: string; base: Doc }
-  | { kind: "frame"; sides: FrameSides; base: PlanFrame; start: Pt; moved: boolean };
+  | { kind: "frame"; sides: FrameSides; base: PlanFrame; start: Pt; moved: boolean }
+  | { kind: "plantMove"; id: string; base: Doc; start: Pt; from: XZ; moved: boolean }
+  | { kind: "plantTurn"; id: string; base: Doc; centre: XZ; a0: number; r0: number }
+  // `id`: the plant pressed on — a click without a drag picks it alone.
+  | { kind: "groupMove"; id: string; ids: string[]; base: Doc; start: Pt; moved: boolean }
+  | { kind: "box"; start: Pt; now: Pt }
+  | { kind: "image"; how: "move" | "turn" | "size"; base: PlanImage; from: XZ };
 
 /** Which of the frame's edges a handle moves: −1 the west or north
  *  edge, 1 the east or south, 0 neither. */
@@ -296,6 +382,18 @@ export function Sheet({
   onFrame,
   grid,
   gridSnap,
+  layer,
+  placing,
+  others = [],
+  chrome = "full",
+  group = [],
+  onToggle,
+  onBox,
+  actions = null,
+  image = null,
+  imageTool = null,
+  onImage,
+  onImageTool,
 }: {
   handle: RefObject<SheetHandle | null>;
   doc: Doc;
@@ -327,6 +425,31 @@ export function Sheet({
   onFrame: (frame: PlanFrame) => void;
   grid: boolean;
   gridSnap: boolean;
+  /** What clicks pick and change: the yard's shapes, or the design. */
+  layer: Layer;
+  /** What the place tool plants. */
+  placing: Placing | null;
+  /** Plants already in the yard the catalog can't name: drawn, never
+   *  picked. */
+  others?: SheetPlant[];
+  /** "design": the inventory bar sits along the bottom and carries undo,
+   *  so the sheet leaves both to it. */
+  chrome?: "full" | "design";
+  /** Plants picked together on the Design tab, two or more; else empty. */
+  group?: string[];
+  /** Shift-click on a plant: into the group, or out of it. */
+  onToggle?: (id: string) => void;
+  /** Shift-drag a box round plants: these join the picked ones. */
+  onBox?: (ids: string[]) => void;
+  /** The buttons by the picked plant or group; the sheet places them. */
+  actions?: React.ReactNode;
+  /** An uploaded plot plan under the sheet, and a link to its picture. */
+  image?: { plan: PlanImage; url: string } | null;
+  /** What clicks do to the uploaded plan while it's lined up; null for
+   *  the usual tools. */
+  imageTool?: ImageTool | null;
+  onImage?: (next: PlanImage) => void;
+  onImageTool?: (t: ImageTool | null) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
@@ -344,11 +467,28 @@ export function Sheet({
   const [panning, setPanning] = useState(false);
   const [liveFrame, setLiveFrame] = useState<PlanFrame | null>(null);
   const [frameCursor, setFrameCursor] = useState<string | null>(null);
+  // What a click would pick, under the pointer: the cursor says so.
+  const [over, setOver] = useState<string | null>(null);
+  const [box, setBox] = useState<[Pt, Pt] | null>(null);
+  // The uploaded plan while it's dragged, and the clicks a scale or north
+  // is being taken from (with the tool they were made for).
+  const [liveImage, setLiveImage] = useState<PlanImage | null>(null);
+  const [imgClicks, setImgClicks] = useState<{ tool: ImageTool; pts: XZ[] }>({ tool: "scale", pts: [] });
+  const [imgHover, setImgHover] = useState<XZ | null>(null);
+  const [lengthText, setLengthText] = useState("");
+  // The inventory bar's height, kept clear along the bottom.
+  const inset = chrome === "design" ? 108 : 0;
 
   const tool: Tool = editable ? toolProp : toolProp === "measure" ? "measure" : "select";
   const shown = live ?? doc;
+  const shownPlants = useMemo(
+    () => shown.plants.map(sheetPlant).filter((p): p is SheetPlant => p != null),
+    [shown.plants]
+  );
   // A half-drawn shape belongs to the tool and target it was started with.
   const active = draft && draft.tool === tool && draft.target === target ? draft : null;
+  const imgPts = imageTool && imgClicks.tool === imageTool ? imgClicks.pts : [];
+  const shownImage = liveImage ?? image?.plan ?? null;
   const drawing = tool !== "select";
 
   // The view starts once the sheet has a size to fit into.
@@ -447,6 +587,10 @@ export function Sheet({
       if (f.shape === "circle") corners.push(f.points[0]);
       else add(f.id, f.points, f.smooth, f.shape === "area", f === house);
     }
+    for (const s of base.surfaces) {
+      if (s.shape === "circle") corners.push(s.points[0]);
+      else add(s.id, s.points, s.smooth, true, false);
+    }
     const g = grid && gridSnap ? gridAt(v.ppm).minor : null;
     return { corners, edges, angles: referenceAngles(square), ppm: v.ppm, grid: g };
   }
@@ -455,6 +599,9 @@ export function Sheet({
     if (!view) return null;
     const p = toPlan(view, size, screen);
     if (free) return { p, kind: null };
+    // A plant goes where it's put: onto the grid when that's on, never
+    // onto a corner of the house.
+    if (tool === "place") return grid && gridSnap ? onGrid(p, view) : { p, kind: null };
     const pts = active?.points ?? [];
     // The rectangle's depth and the circle's edge aren't corners: only
     // snap them onto other shapes' corners.
@@ -482,14 +629,25 @@ export function Sheet({
     return [last[0] + u[0] * reach, last[1] + u[1] * reach];
   }
 
+  function onGrid(p: XZ, v: View): Snapped {
+    const g = gridAt(v.ppm).minor;
+    return { p: [Math.round(p[0] / g) * g, Math.round(p[1] / g) * g], kind: "grid" };
+  }
+
   /* ── Drawing ── */
 
   function finishShape(shape: PlanFeature["shape"], points: XZ[], radius?: number) {
-    if (target === "Boundary") {
+    const style = styleOf(target);
+    if (style) {
+      const s: PlanSurface = { id: newId(), style, shape: shape === "circle" ? "circle" : "area", points };
+      if (radius != null) s.radius = radius;
+      apply((d) => ({ ...d, surfaces: [...d.surfaces, s] }));
+      onDrawn(s.id);
+    } else if (target === "Boundary") {
       apply((d) => ({ ...d, boundary: points, boundarySmooth: undefined }));
       onDrawn(BOUNDARY_ID);
     } else {
-      const f: PlanFeature = { id: crypto.randomUUID(), type: target, shape, points };
+      const f: PlanFeature = { id: crypto.randomUUID(), type: target as FeatureType, shape, points };
       if (radius != null) f.radius = radius;
       apply((d) => ({ ...d, features: [...d.features, f] }));
       onDrawn(f.id);
@@ -522,6 +680,14 @@ export function Sheet({
       return say("The yard boundary is locked. Unlock it to draw it again.");
     }
     switch (tool) {
+      case "place": {
+        if (!placing || !catalogOf(placing)) return;
+        // Turned a little at random, so a bed of one plant reads as
+        // individuals rather than a stamp.
+        const plant: PlanPlant = { id: newId(), key: placing.key, size: placing.size, x: p[0], z: p[1], rotation: Math.random() * Math.PI * 2 - Math.PI };
+        apply((d) => ({ ...d, plants: [...d.plants, plant] }));
+        return;
+      }
       case "area":
         if (pts.length === 0) return start(p);
         if (pts.length >= 3 && px(p, pts[0]) < 10) return finishRun(pts, true);
@@ -565,6 +731,24 @@ export function Sheet({
       // Ties go to the later shape: it's drawn on top.
       if (s <= score) [best, score] = [id, s];
     };
+    if (layer === "design") {
+      // Plants lie on top of the surfaces they're planted beside.
+      const plant = plantAt(shownPlants, p, v.ppm);
+      if (plant) return plant;
+      for (const s of shown.surfaces) {
+        if (s.shape === "circle") {
+          const d = dist(p, s.points[0]);
+          const r = s.radius ?? 0;
+          if (Math.abs(d - r) < tol) consider(s.id, 0);
+          else if (d < r) consider(s.id, Math.PI * r * r);
+          continue;
+        }
+        const ring = outlineOf(s);
+        if (ring.some((q, i) => nearestOnSegment(p, q, ring[(i + 1) % ring.length]).d < tol)) consider(s.id, 0);
+        else if (pointInPolygon(p, ring)) consider(s.id, polygonArea(ring));
+      }
+      return best;
+    }
     const nearRun = (pts: XZ[], closed: boolean) => {
       const n = closed ? pts.length : pts.length - 1;
       for (let i = 0; i < n; i++) if (nearestOnSegment(p, pts[i], pts[(i + 1) % pts.length]).d < tol) return true;
@@ -593,6 +777,12 @@ export function Sheet({
    *  none: it can be looked at, not changed. */
   function handlesOf(id: string | null, v: View) {
     if (!id || !editable || tool !== "select") return null;
+    const plant = shownPlants.find((x) => x.id === id);
+    if (plant) {
+      const [cx, cy] = toScreen(v, size, [plant.x, plant.z]);
+      const top: Pt = [cx, cy - Math.max(plantRadiusM(plant) * v.ppm, 8)];
+      return { vertices: [], smooth: [], mids: [], rotate: { stem: top, at: [top[0], top[1] - 22] as Pt }, radius: null };
+    }
     const s = shapeOf(shown, id);
     if (!s || s.locked) return null;
     const scr = s.pts.map((p) => toScreen(v, size, p));
@@ -622,7 +812,7 @@ export function Sheet({
   /** The frame's handles: its corners and the middles of its sides. */
   function frameHandles(v: View): { at: Pt; sides: FrameSides }[] {
     const f = liveFrame ?? frame;
-    if (!f || !editable || tool !== "select") return [];
+    if (!f || !editable || tool !== "select" || layer !== "site" || imageTool) return [];
     const out: { at: Pt; sides: FrameSides }[] = [];
     for (const z of [-1, 0, 1] as const) {
       for (const x of [-1, 0, 1] as const) {
@@ -650,6 +840,45 @@ export function Sheet({
     return null;
   }
 
+  /* ── The uploaded plan ── */
+
+  /** The handles of the plan being lined up: its corners, which size it,
+   *  and the round one over its top edge, which turns it. */
+  function imageHandles(m: PlanImage, v: View) {
+    const corners = imageCorners(m).map((p) => toScreen(v, size, p));
+    const mid = toScreen(v, size, imageToPlan(m, [m.w / 2, 0]));
+    const centre = toScreen(v, size, [m.x, m.z]);
+    const len = Math.hypot(mid[0] - centre[0], mid[1] - centre[1]) || 1;
+    const turn: Pt = [mid[0] + ((mid[0] - centre[0]) / len) * 28, mid[1] + ((mid[1] - centre[1]) / len) * 28];
+    return { corners, mid, turn };
+  }
+
+  /** A click while taking the scale or the north from the plan. */
+  function addImagePoint(p: XZ) {
+    if (!image || !imageTool || imageTool === "align") return;
+    if (imgPts.length >= 2) return;
+    const pts = [...imgPts, p];
+    if (pts.length === 2 && dist(pts[0], pts[1]) * (view?.ppm ?? 1) < CLICK_SLOP) return;
+    if (pts.length === 2 && imageTool === "north") {
+      onImage?.(turnedNorth(image.plan, pts[0], pts[1]));
+      setImgClicks({ tool: "north", pts: [] });
+      onImageTool?.(null);
+      return;
+    }
+    setImgClicks({ tool: imageTool, pts });
+    setLengthText("");
+  }
+
+  /** The length typed for the line measured on the plan: scale it to that. */
+  function setScaleTo(text: string) {
+    if (!image || imgPts.length !== 2) return;
+    const len = parseLength(text);
+    if (len == null) return say(`“${text}” isn't a length. Try 85, 85.5 or 85'6.`);
+    onImage?.(rescaled(image.plan, imgPts[0], imgPts[1], len));
+    setImgClicks({ tool: "scale", pts: [] });
+    onImageTool?.(null);
+  }
+
   /* ── Pointer ── */
 
   function local(e: { clientX: number; clientY: number }): Pt {
@@ -666,6 +895,18 @@ export function Sheet({
     };
     if (e.button === 1 || spaceHeld) return pan(null);
 
+    // Lining up an uploaded plan: clicks are for it alone.
+    if (imageTool && image && shownImage) {
+      const p = toPlan(view, size, at);
+      if (imageTool !== "align") return pan(() => addImagePoint(p));
+      const ih = imageHandles(shownImage, view);
+      const near = (q: Pt, r: number) => Math.hypot(q[0] - at[0], q[1] - at[1]) < r;
+      const how = near(ih.turn, 11) ? "turn" : ih.corners.some((c) => near(c, 10)) ? "size" : inImage(shownImage, p) ? "move" : null;
+      if (!how) return pan(null);
+      gesture.current = { kind: "image", how, base: shownImage, from: p };
+      return;
+    }
+
     if (drawing) {
       // A click places a point; a drag pans the sheet instead.
       const snapped = snapAt(at, e.altKey);
@@ -675,7 +916,15 @@ export function Sheet({
     }
 
     const h = handlesOf(selected, view);
-    if (h && selected) {
+    const selPlant = plantOf(shown, selected);
+    if (h && selected && selPlant) {
+      if (h.rotate && Math.hypot(h.rotate.at[0] - at[0], h.rotate.at[1] - at[1]) < 10) {
+        const c: XZ = [selPlant.x, selPlant.z];
+        const p = toPlan(view, size, at);
+        gesture.current = { kind: "plantTurn", id: selected, base: shown, centre: c, a0: Math.atan2(p[1] - c[1], p[0] - c[0]), r0: selPlant.rotation };
+        return;
+      }
+    } else if (h && selected) {
       const near = (p: Pt, r: number) => Math.hypot(p[0] - at[0], p[1] - at[1]) < r;
       if (h.rotate && near(h.rotate.at, 10)) {
         const s = shapeOf(shown, selected)!;
@@ -716,9 +965,28 @@ export function Sheet({
     const p = toPlan(view, size, at);
     const hit = hitShape(p, view);
     if (hit) {
+      const pressed = plantOf(shown, hit);
+      // Shift-click picks plants together; pressing one already picked
+      // with others takes hold of them all.
+      if (pressed && e.shiftKey && onToggle) {
+        onToggle(hit);
+        setVertexSel(null);
+        return pan(null);
+      }
+      if (pressed && group.includes(hit)) {
+        if (editable) gesture.current = { kind: "groupMove", id: hit, ids: group, base: shown, start: at, moved: false };
+        else pan(() => onSelect(hit));
+        return;
+      }
       if (hit !== selected) {
         onSelect(hit);
         setVertexSel(null);
+      }
+      const plant = plantOf(shown, hit);
+      if (plant) {
+        if (editable) gesture.current = { kind: "plantMove", id: hit, base: shown, start: at, from: [plant.x, plant.z], moved: false };
+        else pan(null);
+        return;
       }
       // A locked shape stays put: dragging it pans instead.
       if (editable && !shapeOf(shown, hit)?.locked) {
@@ -728,6 +996,11 @@ export function Sheet({
     }
     const side = frameHit(at, view, true);
     if (side) return startFrame(side);
+    // Shift-drag on the Design tab draws a box round the plants to pick.
+    if (layer === "design" && e.shiftKey && onBox) {
+      gesture.current = { kind: "box", start: at, now: at };
+      return;
+    }
     pan(() => {
       onSelect(null);
       setVertexSel(null);
@@ -769,10 +1042,30 @@ export function Sheet({
     const at = local(e);
     const g = gesture.current;
     if (!g) {
+      if (imageTool) {
+        setImgHover(toPlan(view, size, at));
+        const m = shownImage;
+        const ih = m && imageTool === "align" ? imageHandles(m, view) : null;
+        const near = (q: Pt, r: number) => Math.hypot(q[0] - at[0], q[1] - at[1]) < r;
+        setFrameCursor(
+          imageTool !== "align"
+            ? "crosshair"
+            : ih && near(ih.turn, 11)
+              ? "grab"
+              : ih && ih.corners.some((c) => near(c, 10))
+                ? "nwse-resize"
+                : m && inImage(m, toPlan(view, size, at))
+                  ? "move"
+                  : null
+        );
+        return;
+      }
       if (drawing) {
         const snapped = snapAt(at, e.altKey);
         if (snapped) setHover({ screen: at, snapped });
       } else if (hover) setHover(null);
+      const hit = !drawing && layer === "design" ? hitShape(toPlan(view, size, at), view) : null;
+      if (hit !== over) setOver(hit);
       const sides = drawing ? null : frameHit(at, view, true);
       setFrameCursor(sides ? frameCursorFor(sides) : null);
       return;
@@ -834,10 +1127,67 @@ export function Sheet({
       case "radius": {
         const s = shapeOf(g.base, g.id)!;
         const r = Math.max(0.15, dist(s.pts[0], toPlan(view, size, at)));
-        setLive({ ...g.base, features: g.base.features.map((f) => (f.id === g.id ? { ...f, radius: r } : f)) });
+        setLive(editShape(g.base, g.id, (f) => ({ ...f, radius: r })));
+        return;
+      }
+      case "plantMove": {
+        if (!g.moved && !far(g.start)) return;
+        g.moved = true;
+        const p = toPlan(view, size, at);
+        const s = shapeOfStart(g);
+        let to: XZ = [g.from[0] + p[0] - s[0], g.from[1] + p[1] - s[1]];
+        if (grid && gridSnap && !e.altKey) to = onGrid(to, view).p;
+        setLive({ ...g.base, plants: g.base.plants.map((x) => (x.id === g.id ? { ...x, x: to[0], z: to[1] } : x)) });
+        return;
+      }
+      case "groupMove": {
+        if (!g.moved && !far(g.start)) return;
+        g.moved = true;
+        const [x0, z0] = toPlan(view, size, g.start);
+        const [x1, z1] = toPlan(view, size, at);
+        const moved = new Set(g.ids);
+        setLive({
+          ...g.base,
+          plants: g.base.plants.map((x) => (moved.has(x.id) ? { ...x, x: x.x + x1 - x0, z: x.z + z1 - z0 } : x)),
+        });
+        return;
+      }
+      case "box": {
+        g.now = at;
+        setBox([g.start, at]);
+        return;
+      }
+      case "image": {
+        const p = toPlan(view, size, at);
+        const m = g.base;
+        const c: XZ = [m.x, m.z];
+        if (g.how === "move") setLiveImage({ ...m, x: m.x + p[0] - g.from[0], z: m.z + p[1] - g.from[1] });
+        else if (g.how === "turn") {
+          let turn = Math.atan2(p[1] - c[1], p[0] - c[0]) - Math.atan2(g.from[1] - c[1], g.from[0] - c[0]);
+          if (e.shiftKey) turn = Math.round(turn / (Math.PI / 12)) * (Math.PI / 12);
+          setLiveImage({ ...m, rotation: Math.atan2(Math.sin(m.rotation + turn), Math.cos(m.rotation + turn)) });
+        } else {
+          // Sized by hand, it's a guess again until a length is set on it.
+          const k = dist(p, c) / Math.max(1e-6, dist(g.from, c));
+          setLiveImage({ ...m, scale: Math.min(10, Math.max(1e-5, m.scale * k)), scaled: undefined });
+        }
+        return;
+      }
+      case "plantTurn": {
+        const p = toPlan(view, size, at);
+        let turn = Math.atan2(p[1] - g.centre[1], p[0] - g.centre[0]) - g.a0;
+        if (e.shiftKey) turn = Math.round(turn / (Math.PI / 12)) * (Math.PI / 12);
+        // Clockwise on screen is a negative yaw: see PlantLayer's `rot`.
+        const r = g.r0 - turn;
+        setLive({ ...g.base, plants: g.base.plants.map((x) => (x.id === g.id ? { ...x, rotation: Math.atan2(Math.sin(r), Math.cos(r)) } : x)) });
         return;
       }
     }
+  }
+
+  /** Where a plant drag started, in plan metres. */
+  function shapeOfStart(g: { start: Pt }): XZ {
+    return toPlan(view!, size, g.start);
   }
 
   function onPointerUp() {
@@ -853,6 +1203,26 @@ export function Sheet({
       const f = liveFrame;
       setLiveFrame(null);
       if (f && g.moved) onFrame(f);
+      return;
+    }
+    if (g.kind === "image") {
+      const m = liveImage;
+      setLiveImage(null);
+      if (m) onImage?.(m);
+      return;
+    }
+    if (g.kind === "box") {
+      setBox(null);
+      if (!view || Math.hypot(g.now[0] - g.start[0], g.now[1] - g.start[1]) < CLICK_SLOP) return;
+      const [x0, z0] = toPlan(view, size, [Math.min(g.start[0], g.now[0]), Math.min(g.start[1], g.now[1])]);
+      const [x1, z1] = toPlan(view, size, [Math.max(g.start[0], g.now[0]), Math.max(g.start[1], g.now[1])]);
+      const inside = shownPlants.filter((q) => q.x >= x0 && q.x <= x1 && q.z >= z0 && q.z <= z1).map((q) => q.id);
+      if (inside.length) onBox?.(inside);
+      return;
+    }
+    if (g.kind === "groupMove" && !g.moved) {
+      setLive(null);
+      onSelect(g.id);
       return;
     }
     const next = live;
@@ -878,6 +1248,11 @@ export function Sheet({
 
   function removeSelected() {
     if (!editable || !selected) return;
+    if (plantOf(doc, selected)) {
+      apply((d) => removeShape(d, selected));
+      onSelect(null);
+      return;
+    }
     const s = shapeOf(doc, selected);
     if (!s) return;
     if (s.locked) return say(`The ${nameOf(doc, selected)} is locked. Unlock it to delete it.`);
@@ -967,6 +1342,7 @@ export function Sheet({
             return;
           }
           if (!editable || !selected) return;
+          if (plantOf(doc, selected)) return removeSelected();
           const s = shapeOf(doc, selected);
           if (!s) return;
           if (vertexSel?.id === selected && !s.locked && s.radius == null && s.pts.length > (s.closed ? 3 : 2)) {
@@ -982,11 +1358,15 @@ export function Sheet({
           return;
         }
         case "Escape":
-          if (typed) setTyped("");
+          if (imageTool) {
+            if (imgPts.length) setImgClicks({ tool: imageTool, pts: [] });
+            else onImageTool?.(null);
+          } else if (tool === "place") onTool("select");
+          else if (typed) setTyped("");
           else if (active) resetDraft();
           else if (measured) setMeasured(null);
           else if (vertexSel) setVertexSel(null);
-          else if (selected) onSelect(null);
+          else if (selected || group.length) onSelect(null);
           else if (tool !== "select") onTool("select");
           return;
         case "v":
@@ -1038,12 +1418,43 @@ export function Sheet({
 
   const features = byLayer(shown.features);
   const sel = selected ? shapeOf(shown, selected) : null;
+  const selPlant = selected ? (shownPlants.find((p) => p.id === selected) ?? null) : null;
+  const ghost: SheetPlant | null =
+    tool === "place" && hover && placing
+      ? (() => {
+          const c = catalogOf(placing);
+          return c
+            ? { id: "ghost", model: c.size.modelName, scale: c.size.heightMultiplier, x: hover.snapped.p[0], z: hover.snapped.p[1], rotation: 0 }
+            : null;
+        })()
+      : null;
   const h = handlesOf(selected, view);
   const fh = frameHandles(view);
 
   const pts = active?.points ?? [];
   const next = hover && drawing ? nextPoint() : null;
   const preview = pts.length > 0 && next ? previewOf(tool, target, pts, next) : null;
+
+  // The picked plants: one, or a group.
+  const picked = group.length ? shownPlants.filter((p) => group.includes(p.id)) : selPlant ? [selPlant] : [];
+  // Their buttons, under them — or over them, near the bottom.
+  const plantBar = (() => {
+    if (!picked.length || !actions || !editable || tool !== "select" || live || imageTool) return null;
+    let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const q of picked) {
+      const [x, y] = S([q.x, q.z]);
+      const r = Math.max(plantRadiusM(q) * view.ppm, 8);
+      [x0, y0, x1, y1] = [Math.min(x0, x - r), Math.min(y0, y - r), Math.max(x1, x + r), Math.max(y1, y + r)];
+    }
+    const floor = size.h - inset;
+    let top = y1 + 12;
+    // Over them, clear of a lone plant's turning handle.
+    if (top + ACTIONS_H > floor - 8) top = y0 - (group.length ? 12 : 40) - ACTIONS_H;
+    return {
+      x: Math.min(size.w - 56 - 150, Math.max(12 + 150, (x0 + x1) / 2)),
+      y: Math.max(56, Math.min(floor - ACTIONS_H - 8, top)),
+    };
+  })();
 
   // The selected shape's toolbar, under it — or over it, near the bottom.
   const bar = (() => {
@@ -1052,14 +1463,24 @@ export function Sheet({
     const scr = ring.map(S);
     const ys = scr.map((p) => p[1]);
     const xs = scr.map((p) => p[0]);
-    const w = (sel.feature ? 150 : 116) + (sel.radius == null ? 80 : 0);
+    const w = (sel.feature || sel.surface ? 150 : 116) + (sel.radius == null ? 80 : 0);
     const x = Math.min(size.w - 56 - w / 2, Math.max(12 + w / 2, (Math.min(...xs) + Math.max(...xs)) / 2));
+    const floor = size.h - inset;
     let y = Math.max(...ys) + 30;
-    if (y + 40 > size.h - 64) y = Math.min(...ys) - (h?.rotate ? 44 : 18) - 40;
-    return { x, y: Math.max(64, Math.min(size.h - 104, y)) };
+    if (y + 40 > floor - 64) y = Math.min(...ys) - (h?.rotate ? 44 : 18) - 40;
+    return { x, y: Math.max(64, Math.min(floor - 104, y)) };
   })();
 
-  const cursor = panning ? "grabbing" : spaceHeld ? "grab" : drawing ? "crosshair" : (frameCursor ?? "default");
+  const overNow = !drawing && !panning && !gesture.current ? over : null;
+  const cursor = panning
+    ? "grabbing"
+    : spaceHeld
+      ? "grab"
+      : imageTool
+        ? (frameCursor ?? "default")
+        : drawing
+          ? "crosshair"
+          : (frameCursor ?? (overNow ? (editable ? "move" : "pointer") : "default"));
   // Clicks on the floating controls stay off the sheet underneath.
   const shield = {
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
@@ -1088,7 +1509,12 @@ export function Sheet({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      onPointerLeave={() => !gesture.current && setHover(null)}
+      onPointerLeave={() => {
+        if (gesture.current) return;
+        setHover(null);
+        setOver(null);
+        setImgHover(null);
+      }}
       onDoubleClick={onDoubleClick}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -1099,11 +1525,27 @@ export function Sheet({
         </div>
       )}
 
-      {/* The sheet of paper, and the photo cut to it. */}
+      {/* While the uploaded plan is lined up, all of it, faintly. */}
+      {imageTool === "align" && image && shownImage && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image.url} alt="" draggable={false} className="pointer-events-none" style={imageStyle(shownImage, view, size, 0, 0, 0.3)} />
+      )}
+
+      {/* The sheet of paper, and the photo (and any uploaded plan) cut to it. */}
       <div className="absolute overflow-hidden" style={{ ...frameRect, background: SHEET_PAPER }}>
         <div className="absolute inset-0" style={{ opacity: photo }}>
           {tiles.map((t) => tileImg(t, frameRect.left, frameRect.top))}
         </div>
+        {image && shownImage && (!shownImage.hidden || imageTool) && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image.url}
+            alt=""
+            draggable={false}
+            className="pointer-events-none"
+            style={imageStyle(shownImage, view, size, frameRect.left, frameRect.top, imageOpacity(shownImage, layer))}
+          />
+        )}
         {lotTiles.length > 0 && (
           <div className="absolute inset-0" style={{ filter: LOT_LINE_FILTER[underlay.kind] }}>
             {lotTiles.map((t) => tileImg(t, frameRect.left, frameRect.top))}
@@ -1113,7 +1555,8 @@ export function Sheet({
 
       <svg className="absolute inset-0" width={size.w} height={size.h}>
         <PlanPatterns />
-        {grid && <Grid view={view} size={size} rect={frameRect} />}
+        <SurfacePatterns />
+        {grid && <Grid view={view} size={size} rect={frameRect} ink={layer === "site" ? BLUEPRINT_GRID : INK} />}
         {shownFrame && (
           <rect
             x={frameRect.left}
@@ -1139,22 +1582,45 @@ export function Sheet({
           />
         )}
 
-        {shown.boundary.length >= 3 && (
-          <BoundaryArt pts={shown.boundary.map(S)} smooth={shown.boundarySmooth} halo={photo} />
-        )}
-        {features.map((f) => (
-          <FeatureArt
-            key={f.id}
-            feature={f}
-            pts={f.points.map(S)}
-            radius={(f.radius ?? 0) * view.ppm}
-            smooth={f.smooth}
+        {/* The yard as it is: in full while it's traced, quieter under the design. */}
+        <g opacity={layer === "design" ? 0.6 : 1}>
+          {shown.boundary.length >= 3 && (
+            <BoundaryArt pts={shown.boundary.map(S)} smooth={shown.boundarySmooth} halo={photo} />
+          )}
+          {features.map((f) => (
+            <FeatureArt
+              key={f.id}
+              feature={f}
+              pts={f.points.map(S)}
+              radius={(f.radius ?? 0) * view.ppm}
+              smooth={f.smooth}
+              halo={photo}
+              wash={wash}
+              locked={f.locked}
+            />
+          ))}
+        </g>
+
+        {/* The design's new surfaces, over the yard as it is. */}
+        {shown.surfaces.map((x) => (
+          <SurfaceArt
+            key={x.id}
+            surface={x}
+            pts={x.points.map(S)}
+            radius={(x.radius ?? 0) * view.ppm}
+            smooth={x.smooth}
             halo={photo}
             wash={wash}
-            locked={f.locked}
+            sqft={surfaceSqFtOf(x)}
+            dim={layer === "site"}
+            locked={x.locked}
           />
         ))}
+      </svg>
 
+      <PlantLayer plants={[...others, ...shownPlants]} view={view} size={size} faded={layer === "site"} ghost={ghost} halo={photo} />
+
+      <svg className="absolute inset-0" width={size.w} height={size.h}>
         {/* The frame's handles: drag them to take in more photo, or less. */}
         {fh.map(({ at: [x, y], sides }) => (
           <rect
@@ -1177,6 +1643,42 @@ export function Sheet({
             <Outline shape={sel} S={S} ppm={view.ppm} dashed={sel.locked} />
             <Dims shape={sel} S={S} ppm={view.ppm} />
           </g>
+        )}
+        {picked.map((q) => (
+          <circle
+            key={q.id}
+            cx={S([q.x, q.z])[0]}
+            cy={S([q.x, q.z])[1]}
+            r={Math.max(plantRadiusM(q) * view.ppm, 6) + 4}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth={2}
+            pointerEvents="none"
+          />
+        ))}
+        {box && (
+          <rect
+            x={Math.min(box[0][0], box[1][0])}
+            y={Math.min(box[0][1], box[1][1])}
+            width={Math.abs(box[1][0] - box[0][0])}
+            height={Math.abs(box[1][1] - box[0][1])}
+            fill="rgba(46,93,67,0.06)"
+            stroke="var(--accent)"
+            strokeWidth={1.2}
+            strokeDasharray="5 4"
+            pointerEvents="none"
+          />
+        )}
+        {imageTool === "align" && shownImage && (
+          <ImageHandles {...imageHandles(shownImage, view)} />
+        )}
+        {(imageTool === "scale" || imageTool === "north") && imgPts.length > 0 && (
+          <ImageLine
+            a={imgPts[0]}
+            b={imgPts[1] ?? imgHover ?? imgPts[0]}
+            S={S}
+            arrow={imageTool === "north"}
+          />
         )}
         {h && (
           <g pointerEvents="none">
@@ -1222,6 +1724,17 @@ export function Sheet({
         {/* The shape being drawn. */}
         {preview && (
           <g pointerEvents="none">
+            {preview.surface && (
+              <SurfaceArt
+                surface={preview.surface}
+                pts={preview.surface.points.map(S)}
+                radius={(preview.surface.radius ?? 0) * view.ppm}
+                halo={photo}
+                wash={wash}
+                label={false}
+                dim
+              />
+            )}
             {preview.art && (
               <FeatureArt
                 feature={preview.art}
@@ -1280,7 +1793,7 @@ export function Sheet({
       )}
 
       {/* Undo and redo, big, where the work is. */}
-      {editable && (
+      {editable && chrome === "full" && (
         <div className="absolute left-3 top-3 flex gap-1 rounded-xl border border-rule-strong bg-card p-1 shadow-md" {...shield}>
           <BigButton title="Undo (⌘Z)" disabled={!canUndo && !active} onClick={undoStep}>
             <UndoIcon />
@@ -1289,6 +1802,52 @@ export function Sheet({
             <RedoIcon />
           </BigButton>
         </div>
+      )}
+
+      {plantBar && (
+        <div className="absolute z-10 -translate-x-1/2" style={{ left: plantBar.x, top: plantBar.y }} {...shield}>
+          {actions}
+        </div>
+      )}
+
+      {/* The length of the line just measured on the uploaded plan. */}
+      {imageTool === "scale" && imgPts.length === 2 && (
+        <form
+          className="absolute z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-rule-strong bg-card p-2 shadow-lg"
+          style={{
+            left: (S(imgPts[0])[0] + S(imgPts[1])[0]) / 2,
+            top: Math.min(size.h - inset - 60, Math.max(S(imgPts[0])[1], S(imgPts[1])[1]) + 18),
+          }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            setScaleTo(lengthText);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setImgClicks({ tool: "scale", pts: [] });
+          }}
+          {...shield}
+        >
+          <label className="text-xs font-semibold text-body">
+            How long is this line?
+            <input
+              autoFocus
+              value={lengthText}
+              onChange={(e) => setLengthText(e.target.value)}
+              placeholder="85'6"
+              className="ml-2 w-20 rounded-md border border-rule-strong bg-card-hover px-2 py-1 text-sm font-normal text-ink placeholder:text-faint"
+            />
+          </label>
+          <button type="submit" className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90">
+            Set scale
+          </button>
+          <button
+            type="button"
+            onClick={() => setImgClicks({ tool: "scale", pts: [] })}
+            className="text-xs font-semibold text-muted hover:text-ink"
+          >
+            Again
+          </button>
+        </form>
       )}
 
       {bar && sel && selected && (
@@ -1325,7 +1884,7 @@ export function Sheet({
               Smooth
             </button>
           )}
-          {sel.feature && (
+          {(sel.feature || sel.surface) && (
             <BarButton title="Duplicate (⌘D)" onClick={duplicateSelected}>
               <CopyIcon />
             </BarButton>
@@ -1366,11 +1925,25 @@ export function Sheet({
         )}
       </div>
 
-      <div className="pointer-events-none absolute bottom-2 left-3 right-3 flex items-end justify-between gap-4">
+      <div
+        className="pointer-events-none absolute bottom-2 left-3 right-3 flex items-end justify-between gap-4"
+        style={{ bottom: 8 + inset }}
+      >
         <div className="flex flex-col items-start gap-1.5">
           <ScaleBar ppm={view.ppm} grid={grid ? gridAt(view.ppm).minorFt : null} />
           <p className={`rounded-md px-2 py-1 text-xs shadow-sm ${notice ? "bg-clay text-white" : "bg-card/90 text-body"}`}>
-            {notice ?? hint(tool, target, pts.length, editable, frame != null, sel ? (sel.locked ? "locked" : "open") : null)}
+            {notice ??
+              (imageTool
+                ? imageHint(imageTool, imgPts.length)
+                : hint(
+                    tool,
+                    target,
+                    pts.length,
+                    editable,
+                    frame != null,
+                    group.length ? "group" : sel ? (sel.locked ? "locked" : "open") : selPlant ? "plant" : null,
+                    layer
+                  ))}
           </p>
         </div>
         {underlay.kind !== "none" && (
@@ -1420,23 +1993,28 @@ function rectCorners(a: XZ, b: XZ, c: XZ): XZ[] {
  * then.
  */
 function previewOf(tool: Tool, target: DrawTarget, pts: XZ[], next: XZ) {
-  if (tool === "measure") return null;
+  if (tool === "measure" || tool === "place") return null;
   const lot = target === "Boundary";
-  const asFeature = (shape: PlanFeature["shape"], points: XZ[], radius?: number): PlanFeature | null =>
-    lot ? null : { id: "draft", type: target as FeatureType, shape, points, radius };
-  const none = { art: null, boundary: null, band: null, radius: undefined };
+  const style = styleOf(target);
+  const none = { art: null, surface: null, boundary: null, band: null, radius: undefined };
+  const asFeature = (shape: PlanFeature["shape"], points: XZ[], radius?: number) =>
+    lot
+      ? {}
+      : style
+        ? { surface: { id: "draft", style, shape: shape === "circle" ? "circle" : "area", points, radius } as PlanSurface }
+        : { art: { id: "draft", type: target as FeatureType, shape, points, radius } as PlanFeature };
   if (tool === "circle") {
     const radius = dist(pts[0], next);
-    return { ...none, art: asFeature("circle", [pts[0]], radius), run: [pts[0]], closed: true, radius };
+    return { ...none, ...asFeature("circle", [pts[0]], radius), run: [pts[0]], closed: true, radius };
   }
   if (tool === "line") {
     const run = [...pts, next];
-    return { ...none, art: asFeature("line", run), run, closed: false };
+    return { ...none, ...asFeature("line", run), run, closed: false };
   }
   const run = tool === "rect" ? (pts.length === 1 ? [pts[0], next] : rectCorners(pts[0], pts[1], next)) : [...pts, next];
   const closed = tool === "rect" ? pts.length === 2 : run.length >= 3;
   if (!closed) return { ...none, ...(lot ? { boundary: run } : { band: run }), run, closed };
-  return { ...none, ...(lot ? { boundary: run } : { art: asFeature("area", run) }), run, closed };
+  return { ...none, ...(lot ? { boundary: run } : asFeature("area", run)), run, closed };
 }
 
 /** A run still being drawn: a dashed ink line on a paper halo. */
@@ -1597,7 +2175,20 @@ function ScaleBar({ ppm, grid }: { ppm: number; grid: number | null }) {
  * heavier one every fifth or tenth, square to north from the plan's origin,
  * on the paper only.
  */
-function Grid({ view, size, rect }: { view: View; size: Size; rect: { left: number; top: number; width: number; height: number } }) {
+/** The Blueprint tab's grid: drafting blue, so the two tabs read apart at a glance. */
+const BLUEPRINT_GRID = "#2d5a80";
+
+function Grid({
+  view,
+  size,
+  rect,
+  ink,
+}: {
+  view: View;
+  size: Size;
+  rect: { left: number; top: number; width: number; height: number };
+  ink: string;
+}) {
   const g = gridAt(view.ppm);
   const ratio = Math.round(g.major / g.minor);
   const left = Math.max(0, rect.left);
@@ -1624,8 +2215,8 @@ function Grid({ view, size, rect }: { view: View; size: Size; rect: { left: numb
   }
   return (
     <g pointerEvents="none">
-      <path d={minor} stroke={INK} strokeOpacity={0.085 * g.strength} strokeWidth={1} />
-      <path d={major} stroke={INK} strokeOpacity={0.17} strokeWidth={1} />
+      <path d={minor} stroke={ink} strokeOpacity={0.085 * g.strength} strokeWidth={1} />
+      <path d={major} stroke={ink} strokeOpacity={0.17} strokeWidth={1} />
     </g>
   );
 }
@@ -1687,12 +2278,23 @@ function hint(
   points: number,
   editable: boolean,
   locked: boolean,
-  selection: "open" | "locked" | null
+  selection: "open" | "locked" | "plant" | "group" | null,
+  layer: Layer
 ): string {
   if (!locked) return "Frame the yard inside the dashed line, then Lock view.";
-  const name = target === "Boundary" ? "yard boundary" : target.toLowerCase();
+  const name = target === "Boundary" ? "yard boundary" : (styleOf(target) ?? target).toLowerCase();
   switch (tool) {
+    case "place":
+      return "Click to plant it — and again for each one. Esc when you're done.";
     case "select":
+      if (layer === "design") {
+        if (!editable) return "Click a plant or surface to see it. Drag to pan, scroll to zoom.";
+        if (selection === "plant") return "Drag it to move it; the round handle turns it, and so does R. Shift-click another to pick it too.";
+        if (selection === "group") return "Drag any of them to move them all. Shift-click to add one or take one out.";
+        if (selection === "locked") return "Locked: it can't be moved or changed. Unlock it to work on it.";
+        if (selection === "open") return "Drag a corner to move it, or a dot mid-edge to add one. Change its material on the right.";
+        return "Pick a slot on the bar (or 1–7), then click the plan. In Edit, click a plant to change it — shift-drag to pick several.";
+      }
       if (!editable) return "Click a shape to see its sizes. Drag to pan, scroll to zoom.";
       if (selection === "locked") return "Locked: it can't be moved or changed. Unlock it to work on it.";
       if (selection === "open") {
@@ -1721,3 +2323,131 @@ function hint(
           : "Click the first corner (or press Enter) to finish.";
   }
 }
+
+/* ── The uploaded plan ───────────────────────────────────────────── */
+
+/** The buttons by a plant: name chip and a row of round buttons. */
+const ACTIONS_H = 104;
+
+/** A pixel of the uploaded plan, in plan metres. */
+function imageToPlan(m: PlanImage, [u, v]: Pt): XZ {
+  const c = Math.cos(m.rotation);
+  const s = Math.sin(m.rotation);
+  const du = (u - m.w / 2) * m.scale;
+  const dv = (v - m.h / 2) * m.scale;
+  return [m.x + c * du - s * dv, m.z + s * du + c * dv];
+}
+
+/** A plan point, in pixels of the uploaded plan. */
+function planToImage(m: PlanImage, [x, z]: XZ): Pt {
+  const c = Math.cos(m.rotation);
+  const s = Math.sin(m.rotation);
+  const dx = x - m.x;
+  const dz = z - m.z;
+  return [(c * dx + s * dz) / m.scale + m.w / 2, (-s * dx + c * dz) / m.scale + m.h / 2];
+}
+
+const imageCorners = (m: PlanImage): XZ[] =>
+  ([[0, 0], [m.w, 0], [m.w, m.h], [0, m.h]] as Pt[]).map((p) => imageToPlan(m, p));
+
+function inImage(m: PlanImage, p: XZ): boolean {
+  const [u, v] = planToImage(m, p);
+  return u >= 0 && v >= 0 && u <= m.w && v <= m.h;
+}
+
+/** Scaled about `a`, so the line a–b on it measures `len` metres. */
+function rescaled(m: PlanImage, a: XZ, b: XZ, len: number): PlanImage {
+  const k = len / dist(a, b);
+  return { ...m, scale: Math.min(10, Math.max(1e-5, m.scale * k)), x: a[0] + (m.x - a[0]) * k, z: a[1] + (m.z - a[1]) * k, scaled: true };
+}
+
+/** Turned about `a`, so its north arrow a→b points up the sheet. */
+function turnedNorth(m: PlanImage, a: XZ, b: XZ): PlanImage {
+  // Turned about its own middle, so the plan stays where it was lined up.
+  const by = -Math.PI / 2 - Math.atan2(b[1] - a[1], b[0] - a[0]);
+  return { ...m, rotation: Math.atan2(Math.sin(m.rotation + by), Math.cos(m.rotation + by)) };
+}
+
+/** How strongly the uploaded plan shows: its own strength while tracing,
+ *  faint under the design. */
+const imageOpacity = (m: PlanImage, layer: Layer) => (layer === "design" ? m.opacity * 0.45 : m.opacity);
+
+/** The <img> for the uploaded plan, laid in the plan's frame. `ox`/`oy`:
+ *  where its container sits on the screen. */
+function imageStyle(m: PlanImage, v: View, s: Size, ox: number, oy: number, opacity: number): React.CSSProperties {
+  const k = m.scale * v.ppm;
+  const c = Math.cos(m.rotation);
+  const sn = Math.sin(m.rotation);
+  const [sx, sy] = toScreen(v, s, [m.x, m.z]);
+  const e = sx - (c * m.w - sn * m.h) * (k / 2) - ox;
+  const f = sy - (sn * m.w + c * m.h) * (k / 2) - oy;
+  return {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: m.w,
+    height: m.h,
+    maxWidth: "none",
+    transformOrigin: "0 0",
+    transform: `matrix(${k * c},${k * sn},${-k * sn},${k * c},${e},${f})`,
+    opacity,
+  };
+}
+
+function ImageHandles({ corners, mid, turn }: { corners: Pt[]; mid: Pt; turn: Pt }) {
+  return (
+    <g pointerEvents="none">
+      <polygon
+        points={corners.map(([x, y]) => `${x},${y}`).join(" ")}
+        fill="none"
+        stroke="var(--accent)"
+        strokeWidth={1.5}
+        strokeDasharray="6 4"
+      />
+      <line x1={mid[0]} y1={mid[1]} x2={turn[0]} y2={turn[1]} stroke="var(--accent)" />
+      <circle cx={turn[0]} cy={turn[1]} r={6} fill="#fff" stroke="var(--accent)" strokeWidth={1.5} />
+      {corners.map(([x, y], i) => (
+        <rect key={i} x={x - 5} y={y - 5} width={10} height={10} fill="#fff" stroke="var(--accent)" strokeWidth={1.5} />
+      ))}
+    </g>
+  );
+}
+
+/** The line being measured on the uploaded plan, or its north arrow. */
+function ImageLine({ a, b, S, arrow }: { a: XZ; b: XZ; S: (p: XZ) => Pt; arrow: boolean }) {
+  const [ax, ay] = S(a);
+  const [bx, by] = S(b);
+  const len = Math.hypot(bx - ax, by - ay) || 1;
+  const [ux, uy] = [(bx - ax) / len, (by - ay) / len];
+  return (
+    <g pointerEvents="none">
+      <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#fff" strokeWidth={4} strokeOpacity={0.85} />
+      <line x1={ax} y1={ay} x2={bx} y2={by} stroke="var(--clay)" strokeWidth={2} strokeDasharray={arrow ? undefined : "6 4"} />
+      <circle cx={ax} cy={ay} r={4} fill="var(--clay)" />
+      {arrow ? (
+        <path
+          d={`M${bx} ${by}L${bx - ux * 12 - uy * 6} ${by - uy * 12 + ux * 6}L${bx - ux * 12 + uy * 6} ${by - uy * 12 - ux * 6}Z`}
+          fill="var(--clay)"
+        />
+      ) : (
+        <circle cx={bx} cy={by} r={4} fill="var(--clay)" />
+      )}
+    </g>
+  );
+}
+
+function imageHint(tool: ImageTool, clicks: number): string {
+  switch (tool) {
+    case "align":
+      return "Drag the plan to move it, a corner to size it, the round handle to turn it (Shift: 15° steps). Esc when it lines up.";
+    case "scale":
+      return clicks === 0
+        ? "Click one end of a length you know on the plan — a dimensioned lot line is best."
+        : clicks === 1
+          ? "Click the other end."
+          : "Type how long that line really is, then Set scale.";
+    case "north":
+      return clicks === 0 ? "Click the tail of the plan's north arrow." : "Click its tip. The plan turns so north is up.";
+  }
+}
+

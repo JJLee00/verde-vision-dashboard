@@ -70,3 +70,93 @@ export function TrashIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+export function TurnIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+      <path d="M20 4v7h-7" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <circle cx={11} cy={11} r={6.5} />
+      <path d="M20 20l-4.2-4.2" />
+    </svg>
+  );
+}
+
+export function CursorIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M6 3.5l12 7.2-5.3 1.3-2.6 5.5z" />
+      <path d="M12.7 12l4.3 5" />
+    </svg>
+  );
+}
+
+export function PlusIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <circle cx={12} cy={12} r={8.5} />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+
+export function RulerIcon({ size = 22 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M3.5 15.5l12-12 5 5-12 12z" />
+      <path d="M7.5 11.5l2 2M10.5 8.5l1.5 1.5M13.5 5.5l2 2" />
+    </svg>
+  );
+}
+
+export function SizeIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M8 7l4-4 4 4" />
+      <path d="M8 17l4 4 4-4" />
+      <path d="M12 3v18" />
+    </svg>
+  );
+}
+
+export function SwapIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M4 8h13l-3-3" />
+      <path d="M20 16H7l3 3" />
+    </svg>
+  );
+}
+
+export function BackIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  );
+}
+
+export function UploadIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <path d="M12 15V4" />
+      <path d="M7.5 8.5L12 4l4.5 4.5" />
+      <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+    </svg>
+  );
+}

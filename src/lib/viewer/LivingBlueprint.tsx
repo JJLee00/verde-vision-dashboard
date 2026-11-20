@@ -18,8 +18,8 @@ import {
 } from "react";
 import Link from "next/link";
 import type { ProjectFileJSON } from "./types";
-import { buildScene, buildRail, type Instance } from "./scene";
-import { sizeFactor } from "./catalog";
+import { buildScene, buildRail, sceneToLocal, type Instance } from "./scene";
+import { sizeFactor, speciesMeta } from "./catalog";
 import {
   symbolFor,
   drawPlanSymbol,
@@ -81,6 +81,9 @@ export type LivingBlueprintProps = {
   // Canvas-only preview: no header, rail, or interaction — a slow orbit
   // instead. Used as the clickable 3D card on the project page.
   embed?: boolean;
+  /** With embed: the canvas still orbits, pans, zooms and picks under the
+   *  pointer, and holds still on its own — the site plan's 3D view. */
+  interactive?: boolean;
 
   // ── Editing ──
   // Supplied by the design editor that wraps this component. The viewer
@@ -88,12 +91,35 @@ export type LivingBlueprintProps = {
   // selection and the ghosts, but owns none of the edit state.
   editing?: boolean;
   selectedId?: string | null;
-  onSelectInstance?: (id: string | null) => void;
+  /** Several picked at once (the site plan's designer); drawn like the one. */
+  selectedIds?: string[];
+  /** `add`: a shift-click, which picks another as well. */
+  onSelectInstance?: (id: string | null, add?: boolean) => void;
   /** Absent means the Edit control isn't offered at all. */
   onToggleEditing?: () => void;
   /** Replaces the plant-material rail while editing. The rail groups by
    *  species, so it can't address the single plant an editor works on. */
   editorPanel?: React.ReactNode;
+  /** The site plan's 3D designer (with `embed interactive editing`). */
+  designer?: Designer3D | null;
+};
+
+/**
+ * Designing in 3D. A click on the ground plants `placing` there, ghosted
+ * under the cursor until then; with nothing to plant, a plant dragged
+ * moves along the ground. Positions come back in the project's own
+ * metres, the frame its placements are in. The viewer still owns none of
+ * the design: it reports, and the new project comes back down.
+ */
+export type Designer3D = {
+  placing: { model: string; scale: number } | null;
+  onPlace: (x: number, z: number) => void;
+  /** Every plant the drag carried: the one held, or all the picked ones. */
+  onMove: (moves: { id: string; x: number; z: number }[]) => void;
+  /** Where the picked plants are on screen, as the view moves — null when
+   *  nothing is picked, or while it's being dragged — for the buttons that
+   *  float beside them. */
+  onAnchor?: (at: { x0: number; y0: number; x1: number; y1: number } | null) => void;
 };
 
 
@@ -748,11 +774,14 @@ export function LivingBlueprint({
   onBeforeLeave,
   documents,
   embed = false,
+  interactive = false,
   editing = false,
   selectedId = null,
+  selectedIds,
   onSelectInstance,
   onToggleEditing,
   editorPanel,
+  designer = null,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -787,6 +816,8 @@ export function LivingBlueprint({
     cur: View;
     tgt: View;
     saved3d: Cam;
+    // The scene's middle when the camera last looked at it.
+    center?: [number, number];
   } | null>(null);
 
   const hoverRef = useRef<string | null>(null);
@@ -796,16 +827,39 @@ export function LivingBlueprint({
     onSelectRef.current = onSelectInstance;
   }, [onSelectInstance]);
 
+  const designerRef = useRef(designer);
+  useEffect(() => {
+    designerRef.current = designer;
+  }, [designer]);
+  // In the designer, in scene feet: the plants being dragged (held where
+  // they were let go until the moved design comes back) — where each
+  // started, and how far the one held has gone — and where the plant about
+  // to be planted is under the cursor.
+  const dragRef = useRef<{
+    from: Map<string, [number, number]>;
+    /** The one pressed on. */
+    held: string;
+    dx: number;
+    dz: number;
+    ox: number;
+    oz: number;
+    moved: boolean;
+    done: boolean;
+  } | null>(null);
+  const ghostRef = useRef<[number, number] | null>(null);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
   // Mirror interactive state into refs so the rAF loop never restarts.
+  const picks = selectedIds?.join() ?? "";
   const stateRef = useRef({
     mode,
     selected,
     editing,
     selectedId,
+    picks,
   });
   useEffect(() => {
     stateRef.current = {
@@ -813,8 +867,9 @@ export function LivingBlueprint({
       selected,
       editing,
       selectedId,
+      picks,
     };
-  }, [mode, selected, editing, selectedId]);
+  }, [mode, selected, editing, selectedId, picks]);
 
   const selectSpecies = useCallback((model: string | null) => {
     setSelected((prev) => (prev === model ? null : model));
@@ -868,6 +923,17 @@ export function LivingBlueprint({
       if (!Number.isFinite(v.panX)) v.panX = 0;
       if (!Number.isFinite(v.panZ)) v.panZ = 0;
     }
+    // A design being worked on moves its own middle as it grows: hold the
+    // view over the same ground rather than sliding it along.
+    if (cam.center) {
+      for (const v of [cam.cur, cam.tgt]) {
+        v.panX += cam.center[0] - cx;
+        v.panZ += cam.center[1] - cz;
+      }
+    }
+    cam.center = [cx, cz];
+    // The design came back with the dragged plant where it was let go.
+    dragRef.current = null;
     const cur = cam.cur;
     const tgt = cam.tgt;
     let lastMode: "3d" | "plan" = "3d";
@@ -1044,6 +1110,10 @@ export function LivingBlueprint({
 
     /* per-frame screen cache for hit testing */
     const hits: { model: string; id: string; sx: number; sy: number; r: number }[] = [];
+    // Below 1 while the designer's ghost is drawn.
+    let fade = 1;
+    // The designer's plants picked together, this frame.
+    let picked = new Set<string>();
 
     function drawExtruded(pts: [number, number][], hFt: number, label: string | null, t: number) {
       const quads = pts
@@ -10133,9 +10203,9 @@ export function LivingBlueprint({
         line("ridge");
         ctx!.lineWidth = Math.max(0.6, rw * 0.03 * footPx);
         ctx!.strokeStyle = pal.ridge;
-        ctx!.globalAlpha = (1 - near) * 0.55;
+        ctx!.globalAlpha = (1 - near) * 0.55 * fade;
         ctx!.stroke();
-        ctx!.globalAlpha = 1;
+        ctx!.globalAlpha = fade;
       }
 
       // The crown: a ragged cushion of cream wool, paler where it is newest,
@@ -11323,11 +11393,12 @@ export function LivingBlueprint({
       // Editing addresses ONE plant; browsing still highlights the species,
       // which is how a designer finds where they put the hopseeds.
       const sel = st.editing
-        ? st.selectedId === inst.id
+        ? st.selectedId === inst.id || picked.has(inst.id)
         : st.selected === inst.model;
       // Nothing else says a plant is clickable, or WHICH one a click would
-      // land on — the hit radius is generous and the symbols crowd.
-      const hover = st.editing && !sel && hoverRef.current === inst.id;
+      // land on — the hit radius is generous and the symbols crowd. The
+      // site plan's designer picks on the click alone, as the headset does.
+      const hover = st.editing && !sel && !designerRef.current && hoverRef.current === inst.id;
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
       const stroke = sel || hover ? GOLD : verde(0.85);
@@ -11352,7 +11423,7 @@ export function LivingBlueprint({
       const bodyA = meta.kind === "poolPrefab" ? 1 : 1 - t;
       const markA = meta.kind === "light" ? 1 : t;
 
-      ctx!.globalAlpha = bodyA;
+      ctx!.globalAlpha = bodyA * fade;
       if (inst.model === "WhiteDawnLantana") {
         drawWhiteDawnBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
       } else if (inst.model === "PurpleLantana") {
@@ -11570,14 +11641,14 @@ export function LivingBlueprint({
         ctx!.stroke();
       }
 
-      ctx!.globalAlpha = 1;
+      ctx!.globalAlpha = fade;
 
       /* ground symbol + label + hit target */
       const symR = Math.max(rw, meta.kind === "poolPrefab" ? 5 * inst.scale : 1);
       const c0 = P(x, 0.02, z);
       // The plan symbol: the mark the blueprint prints, drawn flat on the
       // ground — so plan mode here and the printed sheet are one drawing.
-      ctx!.globalAlpha = markA;
+      ctx!.globalAlpha = markA * fade;
       if (planSym && markA > 0.004) {
         drawPlanSymbol(ctx!, P, x, z, symR, planSym, {
           rot: symRot,
@@ -11588,8 +11659,9 @@ export function LivingBlueprint({
           seed: inst.model,
         });
       }
-      ctx!.globalAlpha = 1;
-      const labelA = Math.max(t, sel ? 1 : 0);
+      ctx!.globalAlpha = fade;
+      // The designer names the picked plant in the buttons beside it.
+      const labelA = designerRef.current ? t : Math.max(t, sel ? 1 : 0);
       if (labelA > 0.45) {
         ctx!.font = "600 10px ui-monospace, Menlo, monospace";
         ctx!.fillStyle = sel ? GOLD : ink(0.6 * labelA);
@@ -11607,10 +11679,17 @@ export function LivingBlueprint({
         sy: c0[1],
         r: Math.max(ftPx(x, z, symR), 16),
       });
+      // And by its body: in 3D a tree is reached for by its crown, well
+      // above the mark on the ground.
+      if (bodyA > 0.3 && h > 1.5) {
+        const b = P(x, h * 0.55, z);
+        hits.push({ model: inst.model, id: inst.id, sx: b[0], sy: b[1], r: Math.max(ftPx(x, z, rw) * 0.8, 16) });
+      }
     }
 
     function render() {
       updateCam();
+      picked = new Set(stateRef.current.picks ? stateRef.current.picks.split(",") : []);
       const t = cur.planT;
       const g = cur.growth;
       ctx!.clearRect(0, 0, W, H);
@@ -11758,12 +11837,60 @@ export function LivingBlueprint({
       }
 
       /* extruded structures + instances, painter-sorted */
-      const items: { d: number; draw: () => void }[] = scene.instances.map(
-        (inst) => ({
-          d: P(inst.x, 0, inst.z)[2],
-          draw: () => drawInstance(inst, g, t),
-        })
-      );
+      const drag = dragRef.current;
+      const lifted = drag?.moved ? drag : null;
+      const placed = scene.instances.map((at) => {
+        const from = drag?.from.get(at.id);
+        return from ? { ...at, x: from[0] + drag!.dx, z: from[1] + drag!.dz } : at;
+      });
+      // What's being carried: a soft shadow on the ground under each, and
+      // the ring it grows to — drawn first, so everything stands on them.
+      if (lifted) {
+        for (const inst of placed) if (lifted.from.has(inst.id)) groundMarks(inst, g, true);
+      }
+      const items: { d: number; draw: () => void }[] = placed.map((inst) => ({
+        d: P(inst.x, 0, inst.z)[2],
+        draw: () => {
+          if (!lifted?.from.has(inst.id)) return drawInstance(inst, g, t);
+          // Held up off the ground: the same drawing, raised on screen by
+          // what a little height measures there.
+          const lift = Math.min(3, Math.max(1.2, matureOf(inst, g).h * 0.2));
+          const a = P(inst.x, 0, inst.z);
+          const b = P(inst.x, lift, inst.z);
+          ctx!.save();
+          ctx!.translate(b[0] - a[0], b[1] - a[1]);
+          drawInstance(inst, g, t);
+          ctx!.restore();
+        },
+      }));
+      // The plant about to be planted, faint, where a click would put it,
+      // over the ring it will grow to.
+      const planting = designerRef.current?.placing;
+      const ghostAt = ghostRef.current;
+      if (planting && ghostAt) {
+        const ghost: Instance = {
+          id: "",
+          model: planting.model,
+          meta: speciesMeta(planting.model),
+          x: ghostAt[0],
+          z: ghostAt[1],
+          yawDeg: 0,
+          scale: planting.scale,
+          containerType: null,
+        };
+        groundMarks(ghost, g, false);
+        items.push({
+          d: P(ghost.x, 0, ghost.z)[2],
+          draw: () => {
+            const n = hits.length;
+            fade = 0.5;
+            drawInstance(ghost, g, t);
+            fade = 1;
+            ctx!.globalAlpha = 1;
+            hits.length = n;
+          },
+        });
+      }
       for (const f of scene.features) {
         if (!["House", "Garage", "Shed"].includes(f.kind)) continue;
         const [fx, fz] = centroid(f.pts);
@@ -11775,6 +11902,65 @@ export function LivingBlueprint({
       }
       items.sort((a, b) => b.d - a.d);
       for (const it of items) it.draw();
+      anchor(placed);
+    }
+
+    /** How tall and how wide a plant is drawn, in feet. */
+    function matureOf(inst: Instance, g: number) {
+      const grows = !["boulder", "poolPrefab", "light"].includes(inst.meta.kind);
+      const sf = sizeFactor(inst.model, inst.meta.kind, inst.scale);
+      return { h: inst.meta.renderHeightFt * (grows ? g : 1) * sf, rw: (inst.meta.matureWidthFt / 2) * (grows ? g : 1) * sf };
+    }
+
+    /** Under a plant being placed or carried: the ring it grows to, and,
+     *  carried, the shadow of it held up off the ground. */
+    function groundMarks(inst: Instance, g: number, shadow: boolean) {
+      const { rw } = matureOf(inst, g);
+      const r = Math.max(rw, 0.5);
+      ctx!.save();
+      if (shadow) {
+        // Three soft rings of shade, darker to the middle: a blur that
+        // costs nothing and looks the same in every browser.
+        for (const [k, a] of [[0.95, 0.08], [0.72, 0.1], [0.48, 0.13]] as const) {
+          circle3D(inst.x, 0.01, inst.z, r * k, 28);
+          ctx!.fillStyle = `rgba(28, 42, 33, ${a})`;
+          ctx!.fill();
+        }
+      }
+      circle3D(inst.x, 0.02, inst.z, r, 36);
+      ctx!.setLineDash([5, 4]);
+      ctx!.strokeStyle = verde(0.55);
+      ctx!.lineWidth = 1.2;
+      ctx!.stroke();
+      ctx!.restore();
+    }
+
+    // The picked plants' place on screen, told to the designer when it
+    // changes, so the buttons beside them can follow.
+    let anchored = "";
+    function anchor(placed: Instance[]) {
+      const d = designerRef.current;
+      if (!d?.onAnchor) return;
+      const st = stateRef.current;
+      const ids = new Set(st.picks ? st.picks.split(",") : st.selectedId ? [st.selectedId] : []);
+      let at: { x0: number; y0: number; x1: number; y1: number } | null = null;
+      if (ids.size && !dragRef.current?.moved && !d.placing) {
+        let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+        for (const inst of placed) {
+          if (!ids.has(inst.id)) continue;
+          const { h, rw } = matureOf(inst, cur.growth);
+          const r = ftPx(inst.x, inst.z, Math.max(rw, 0.5));
+          const foot = P(inst.x, 0, inst.z);
+          const top = P(inst.x, h, inst.z);
+          [x0, y0] = [Math.min(x0, foot[0] - r), Math.min(y0, top[1], foot[1] - r * 0.5)];
+          [x1, y1] = [Math.max(x1, foot[0] + r), Math.max(y1, foot[1] + r * 0.5)];
+        }
+        if (x0 < x1) at = { x0, y0, x1, y1 };
+      }
+      const key = at ? [at.x0, at.y0, at.x1, at.y1].map((v) => Math.round(v)).join() : "";
+      if (key === anchored) return;
+      anchored = key;
+      d.onAnchor(at);
     }
 
     /* ── interaction ── */
@@ -11802,10 +11988,15 @@ export function LivingBlueprint({
     function nearestAt(mx: number, my: number) {
       let best: { model: string; id: string } | null = null;
       let bd = 1e9;
+      let br = 1e9;
       for (const h of hits) {
         const d = Math.hypot(h.sx - mx, h.sy - my);
-        if (d < h.r && d < bd) {
+        if (d >= h.r) continue;
+        // The smallest plant under the pointer wins — a shrub under a
+        // tree's canopy is the one being reached for — then the nearest.
+        if (h.r < br - 0.5 || (h.r < br + 0.5 && d < bd)) {
           bd = d;
+          br = h.r;
           best = { model: h.model, id: h.id };
         }
       }
@@ -11821,19 +12012,59 @@ export function LivingBlueprint({
       pointers.set(e.pointerId, [e.clientX, e.clientY]);
       dragDist = 0;
       cv!.style.cursor = "grabbing";
+      // In the designer, pressing on a plant takes hold of the plant, not
+      // the view. Shift and the other buttons still pan.
+      const d = designerRef.current;
+      if (!d || d.placing || !stateRef.current.editing || e.button !== 0 || e.shiftKey || pointers.size > 1) return;
+      const hit = nearest(e);
+      const inst = hit ? scene.instances.find((i) => i.id === hit.id) : null;
+      const g = inst ? groundAt(...canvasXY(e)) : null;
+      if (!inst || !g) return;
+      // Pressing one of several picked takes hold of them all.
+      const st = stateRef.current;
+      const group = st.picks ? st.picks.split(",") : [];
+      const ids = group.includes(inst.id) ? group : [inst.id];
+      if (!group.includes(inst.id)) onSelectRef.current?.(inst.id);
+      const from = new Map<string, [number, number]>();
+      for (const id of ids) {
+        const at = scene.instances.find((i) => i.id === id);
+        if (at) from.set(id, [at.x, at.z]);
+      }
+      dragRef.current = { from, held: inst.id, dx: 0, dz: 0, ox: inst.x - g[0], oz: inst.z - g[1], moved: false, done: false };
+      cv!.style.cursor = "move";
     };
     const onLeave = () => {
       hoverRef.current = null;
+      ghostRef.current = null;
     };
     const onMove = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) {
         const over = nearest(e);
-        cv!.style.cursor = over ? "pointer" : "grab";
+        const d = designerRef.current;
+        if (d?.placing) {
+          ghostRef.current = groundAt(...canvasXY(e));
+          hoverRef.current = null;
+          cv!.style.cursor = "crosshair";
+          return;
+        }
+        cv!.style.cursor = over ? (d ? "move" : "pointer") : "grab";
         hoverRef.current = over?.id ?? null;
         return;
       }
       const prev = pointers.get(e.pointerId)!;
       pointers.set(e.pointerId, [e.clientX, e.clientY]);
+      const drag = dragRef.current;
+      if (drag && !drag.done && pointers.size === 1) {
+        dragDist += Math.abs(e.clientX - prev[0]) + Math.abs(e.clientY - prev[1]);
+        const g = groundAt(...canvasXY(e));
+        const held = drag.from.get(drag.held);
+        if (g && held && dragDist >= 4) {
+          drag.dx = g[0] + drag.ox - held[0];
+          drag.dz = g[1] + drag.oz - held[1];
+          drag.moved = true;
+        }
+        return;
+      }
       if (pointers.size === 2) {
         const pts = [...pointers.values()];
         const d = Math.hypot(pts[0][0] - pts[1][0], pts[0][1] - pts[1][1]);
@@ -11881,10 +12112,38 @@ export function LivingBlueprint({
       lastPinch = 0;
       lastMid = null;
       cv!.style.cursor = "grab";
+      const drag = dragRef.current;
+      if (drag && !drag.done) {
+        drag.done = true;
+        if (!drag.moved) {
+          dragRef.current = null;
+          // A click on one of a group picks it alone.
+          if (drag.from.size > 1) onSelectRef.current?.(drag.held);
+          return;
+        }
+        designerRef.current?.onMove(
+          [...drag.from].map(([id, [x, z]]) => {
+            const [lx, lz] = sceneToLocal(scene, x + drag.dx, z + drag.dz);
+            return { id, x: lx, z: lz };
+          }),
+        );
+        // The moved design rebuilds the scene, which lets go of it; if
+        // nothing came back, put the plant back where it was.
+        requestAnimationFrame(() => {
+          if (dragRef.current === drag) dragRef.current = null;
+        });
+        return;
+      }
+      const planting = designerRef.current;
+      if (dragDist < 6 && planting?.placing) {
+        const g = groundAt(...canvasXY(e));
+        if (g) planting.onPlace(...sceneToLocal(scene, g[0], g[1]));
+        return;
+      }
       if (dragDist < 6) {
         const hit = nearest(e);
         if (stateRef.current.editing) {
-          onSelectRef.current?.(hit?.id ?? null);
+          onSelectRef.current?.(hit?.id ?? null, e.shiftKey);
         } else if (hit) {
           selectSpecies(hit.model);
         } else {
@@ -11897,6 +12156,7 @@ export function LivingBlueprint({
       lastPinch = 0;
       lastMid = null;
       cv!.style.cursor = "grab";
+      if (dragRef.current && !dragRef.current.done) dragRef.current = null;
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -11926,7 +12186,7 @@ export function LivingBlueprint({
     };
     // Right-drag is a pan, so it must not also raise the browser menu.
     const onContextMenu = (e: MouseEvent) => e.preventDefault();
-    if (!embed) {
+    if (!embed || interactive) {
       cv.addEventListener("pointerdown", onDown);
       cv.addEventListener("pointermove", onMove);
       cv.addEventListener("pointerleave", onLeave);
@@ -11939,8 +12199,11 @@ export function LivingBlueprint({
 
     /* ── loop ── */
     let raf = 0;
+    // What the last drawing showed. A still view isn't drawn again: a big
+    // yard costs a whole frame to draw, sixty times a second, for nothing.
+    let drawn = "";
     const frame = () => {
-      if (embed && !reducedMotion) {
+      if (embed && !interactive && !reducedMotion) {
         cur.az += 0.05; // slow ambient orbit for the preview card
         tgt.az = cur.az;
       }
@@ -11957,7 +12220,18 @@ export function LivingBlueprint({
         cur[k] += (tgt[k] - cur[k]) * K;
         if (Math.abs(tgt[k] - cur[k]) < 0.0005) cur[k] = tgt[k];
       }
-      if (W > 0 && H > 0) render();
+      const st = stateRef.current;
+      const dr = dragRef.current;
+      const gh = ghostRef.current;
+      const showing = [
+        cur.az, cur.el, cur.dist, cur.fov, cur.zoom, cur.planT, cur.growth, cur.panX, cur.panZ,
+        cv.width, cv.height, st.mode, st.selected, st.editing, st.selectedId, st.picks, hoverRef.current,
+        dr?.dx, dr?.dz, dr?.moved, gh?.[0], gh?.[1], designerRef.current?.placing?.model,
+      ].join();
+      if (W > 0 && H > 0 && showing !== drawn) {
+        render();
+        drawn = showing;
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -11975,7 +12249,7 @@ export function LivingBlueprint({
       cv.removeEventListener("contextmenu", onContextMenu);
     };
     // scene is the only real dependency; selectSpecies is stable.
-  }, [scene, selectSpecies, embed]);
+  }, [scene, selectSpecies, embed, interactive]);
 
   /* ── UI ───────────────────────────────────────────────────────── */
 
@@ -11994,7 +12268,7 @@ export function LivingBlueprint({
       <canvas
         ref={canvasRef}
         className={`absolute inset-0 h-full w-full touch-none ${
-          embed ? "" : "cursor-grab"
+          embed && !interactive ? "" : "cursor-grab"
         }`}
         role="img"
         aria-label={`Interactive plan of ${projectName}. Drag to orbit, tap a plant to highlight that species.`}

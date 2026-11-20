@@ -64,6 +64,7 @@ export function placedPlan(plan: SitePlan, project: ProjectFileJSON): SitePlan |
     origin: plan.origin,
     frame: plan.frame,
     underlay: plan.underlay,
+    ...(plan.planImage ? { planImage: plan.planImage } : {}),
     ...(plan.mapOffset ? { mapOffset: plan.mapOffset } : {}),
     boundary,
     features,

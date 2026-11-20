@@ -33,7 +33,18 @@ export type Scene = {
   removals: { x: number; z: number; r: number }[];
   center: [number, number];
   radius: number; // content radius in feet
+  // The turn that puts north up, radians: the scene's (x, z) is the
+  // project's metres in feet, turned by it. See sceneToLocal.
+  phi: number;
 };
+
+/** A point in the scene back in the project's own metres, the frame its
+ *  placements are saved in. */
+export function sceneToLocal(scene: Pick<Scene, "phi">, x: number, z: number): [number, number] {
+  const c = Math.cos(scene.phi);
+  const s = Math.sin(scene.phi);
+  return [(x * c + z * s) / METERS_TO_FEET, (z * c - x * s) / METERS_TO_FEET];
+}
 
 function quatYawDeg(x: number, y: number, z: number, w: number) {
   return (Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z)) * 180) / Math.PI;
@@ -140,7 +151,7 @@ export function buildScene(project: ProjectFileJSON): Scene {
     20
   );
 
-  return { instances, boundary, features, hardscape, removals, center, radius };
+  return { instances, boundary, features, hardscape, removals, center, radius, phi };
 }
 
 export type RailRow = {

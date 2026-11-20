@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
+import type { HardscapeAreaJSON, PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 
 // Project versions: the design stops being a column that gets overwritten.
 //
@@ -38,6 +38,19 @@ export type PlantPatch = {
   scaleY?: number;
   scaleZ?: number;
   beamTiltDegrees?: number | null;
+  /** True when the office moved the plant and its height is a guess. */
+  heightPending?: boolean | null;
+};
+
+/**
+ * Surfaces change whole: an area is a list of corners, and patching corner
+ * by corner would be the diff the app then has to get exactly right. Ids are
+ * the HardscapeArea's own.
+ */
+export type SurfaceChanges = {
+  removed: string[];
+  updated: HardscapeAreaJSON[];
+  added: HardscapeAreaJSON[];
 };
 
 export type ChangeSet = {
@@ -47,12 +60,19 @@ export type ChangeSet = {
   updated: PlantPatch[];
   /** Whole plants that weren't there before. */
   added: PlacedPlantJSON[];
+  /** The surfaces (Nov 2026). Headsets from before then ignore the key —
+   *  and never see an office surface edit, which is the price of keeping
+   *  the plant fields where they always were. */
+  surfaces?: SurfaceChanges;
 };
+
+export const EMPTY_SURFACES: SurfaceChanges = { removed: [], updated: [], added: [] };
 
 export const EMPTY_CHANGES: ChangeSet = {
   removed: [],
   updated: [],
   added: [],
+  surfaces: EMPTY_SURFACES,
 };
 
 // Positions are metres and scales are unit multipliers, so a micrometre of
@@ -125,6 +145,11 @@ export function diffPlants(
       patch.beamTiltDegrees = plant.beamTiltDegrees ?? null;
       changed = true;
     }
+    // Absent and false both mean "measured"; only a guess is sent.
+    if (!!plant.heightPending !== !!before.heightPending) {
+      patch.heightPending = plant.heightPending ? true : null;
+      changed = true;
+    }
     for (const field of NUMERIC_FIELDS) {
       if (!sameNumber(plant[field], before[field])) {
         patch[field] = plant[field];
@@ -136,6 +161,26 @@ export function diffPlants(
   }
 
   return { removed, updated, added };
+}
+
+/** What changed in the surfaces between two versions, by area id. */
+export function diffSurfaces(base: ProjectFileJSON | null, next: ProjectFileJSON | null): SurfaceChanges {
+  const before = new Map((base?.hardscapeAreas ?? []).map((a) => [a.id, a]));
+  const after = new Map((next?.hardscapeAreas ?? []).map((a) => [a.id, a]));
+  const removed = [...before.keys()].filter((id) => !after.has(id));
+  const updated: HardscapeAreaJSON[] = [];
+  const added: HardscapeAreaJSON[] = [];
+  for (const [id, area] of after) {
+    const was = before.get(id);
+    if (!was) added.push(area);
+    else if (canonical(was) !== canonical(area)) updated.push(area);
+  }
+  return { removed, updated, added };
+}
+
+/** Plants and surfaces together: what the headset is sent. */
+export function diffDesign(base: ProjectFileJSON | null, next: ProjectFileJSON | null): ChangeSet {
+  return { ...diffPlants(base, next), surfaces: diffSurfaces(base, next) };
 }
 
 /**
@@ -173,10 +218,14 @@ function canonical(value: unknown): string {
 }
 
 export function isEmptyChangeSet(changes: ChangeSet): boolean {
+  const s = changes.surfaces ?? EMPTY_SURFACES;
   return (
     changes.removed.length === 0 &&
     changes.updated.length === 0 &&
-    changes.added.length === 0
+    changes.added.length === 0 &&
+    s.removed.length === 0 &&
+    s.updated.length === 0 &&
+    s.added.length === 0
   );
 }
 
@@ -200,6 +249,11 @@ export function summarize(changes: ChangeSet): string {
   if (replaced) parts.push(`${plural(replaced, "plant")} replaced`);
   if (adjusted) parts.push(`${plural(adjusted, "plant")} adjusted`);
   if (changes.removed.length) parts.push(`${plural(changes.removed.length, "plant")} removed`);
+
+  const s = changes.surfaces ?? EMPTY_SURFACES;
+  if (s.added.length) parts.push(`${plural(s.added.length, "surface")} added`);
+  if (s.updated.length) parts.push(`${plural(s.updated.length, "surface")} changed`);
+  if (s.removed.length) parts.push(`${plural(s.removed.length, "surface")} removed`);
 
   return parts.length ? parts.join(", ") : "No changes";
 }

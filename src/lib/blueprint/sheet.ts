@@ -159,6 +159,14 @@ export type PlantMark = {
   symbol: PlanSymbol | null;
 };
 
+/** How far a plant's mark reaches, in feet: half its mature spread, never
+ *  under a foot. The site plan's sheet draws with the same rule. */
+export function markRadiusFt(modelName: string, scale: number): number {
+  const meta = speciesMeta(modelName);
+  const half = (meta.matureWidthFt / 2) * sizeFactor(modelName, meta.kind, scale || 1);
+  return meta.kind === "poolPrefab" ? Math.max(half, 5 * (scale || 1)) : Math.max(half, 1);
+}
+
 /**
  * Every plant's mark: the viewer's symbol at half the catalog's mature
  * spread, never under a foot (a pool prefab is its own 10 x 6 ft footprint;
@@ -171,8 +179,7 @@ export function plantMarks(project: ProjectFileJSON, layout: SheetLayout): Plant
   return (project.placements ?? []).map((p) => {
     const meta = speciesMeta(p.plantModelName);
     const scale = p.scaleX || 1;
-    const half = (meta.matureWidthFt / 2) * sizeFactor(p.plantModelName, meta.kind, scale);
-    const radiusFt = meta.kind === "poolPrefab" ? Math.max(half, 5 * scale) : Math.max(half, 1);
+    const radiusFt = markRadiusFt(p.plantModelName, scale);
     const [rx, rz] = layout.rotate(p.positionX, p.positionZ);
     const [x, y] = layout.toPDF(rx, rz);
     return {

@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   EMPTY_CHANGES,
+  EMPTY_SURFACES,
   currentPublishedVersion,
-  diffPlants,
+  diffDesign,
   isEmptyChangeSet,
   summarize,
   versionAt,
@@ -30,8 +31,14 @@ import {
  *     "summary": "1 plant replaced, 1 plant removed",
  *     "upToDate": false,
  *     "full": false,            // true => `changes.added` is the WHOLE design
- *     "changes": { "removed": [...], "updated": [...], "added": [...] }
+ *     "changes": {
+ *       "removed": [...], "updated": [...], "added": [...],
+ *       "surfaces": { "removed": [...], "updated": [...], "added": [...] }
+ *     }
  *   }
+ *
+ * `surfaces` arrived in Nov 2026, with the Design tab; a headset from before
+ * ignores it. With `full: true`, `surfaces.added` is every surface.
  *
  * `full: true` is the recovery path: the caller's base revision is gone (or
  * it never had one), so rather than guess, the whole current design comes
@@ -101,11 +108,12 @@ export async function GET(request: NextRequest) {
       changes: {
         ...EMPTY_CHANGES,
         added: current.project_json?.placements ?? [],
+        surfaces: { ...EMPTY_SURFACES, added: current.project_json?.hardscapeAreas ?? [] },
       },
     });
   }
 
-  const changes = diffPlants(base.project_json, current.project_json);
+  const changes = diffDesign(base.project_json, current.project_json);
   return NextResponse.json({
     revision: current.revision,
     since,

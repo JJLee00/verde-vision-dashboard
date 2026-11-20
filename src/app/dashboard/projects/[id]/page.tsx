@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership, getOrgMembers } from "@/lib/org";
 import { DeleteProject } from "./delete-project";
-import { LivingBlueprint } from "@/lib/viewer/LivingBlueprint";
 import { buildScene, buildRail, type RailRow } from "@/lib/viewer/scene";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { pricesFromRows } from "@/lib/price-book";
@@ -21,10 +20,11 @@ import { EditProjectButton } from "@/app/dashboard/project-details-dialog";
 import { ShareLinkButtons } from "../../share-buttons";
 import { ModeDonut } from "./mode-donut";
 import { VideoManager, type VideoItem } from "./video-manager";
-import { SitePlanCard } from "./site-plan/card";
+import { DesignCard } from "./site-plan/card";
 import { readPlan, type SitePlan } from "@/lib/site-plan/plan";
-import { placedAt, placedPlan } from "@/lib/site-plan/placed";
-import { FIXTURE_PLAN } from "@/lib/site-plan/fixture";
+import { placedAt, placedPlan, walkFit } from "@/lib/site-plan/placed";
+import { FIXTURE_DESIGNED, FIXTURE_PLAN } from "@/lib/site-plan/fixture";
+import { sheetDesign } from "@/lib/site-plan/sheet-design";
 
 // The project page: everything the dashboard knows about one project.
 // The card on /dashboard stays a glance; this is the record — cover,
@@ -61,6 +61,14 @@ type PageData = {
   blueprintUrl: string | null;
   estimateUrl: string | null;
   projectJson: ProjectFileJSON | null;
+  // What the top card draws in 3D: the headset's design, or — before the
+  // headset has drawn anything — the site plan's.
+  design: ProjectFileJSON | null;
+  // Whether that design sits in the yard's own frame yet.
+  aligned: boolean;
+  // Whether the designer changes it (false: made on the headset without a
+  // site plan, so it changes in the 3D viewer).
+  designEditsHere: boolean;
   jsonUpdatedAt: string | null;
   // Public share-link tokens (migration 008; null until it has run).
   shareToken: string | null;
@@ -92,7 +100,10 @@ type PageData = {
 
 // Mode-time buckets in display order. "clientView" is the presenting
 // overlay; the rest are base modes. Night is folded in only if used.
-function buildFixtureData(): PageData {
+function buildFixtureData(desk: boolean): PageData {
+  // ?desk=1: a project designed at the desk, before any headset sync.
+  const projectJson = desk ? null : FIXTURE_PROJECT;
+  const sitePlan = desk ? FIXTURE_DESIGNED : FIXTURE_PLAN;
   return {
     id: "fixture",
     name: FIXTURE_PROJECT.projectName,
@@ -102,8 +113,9 @@ function buildFixtureData(): PageData {
     estimateAmount: 8460,
     blueprintUrl: null,
     estimateUrl: null,
-    projectJson: FIXTURE_PROJECT,
-    jsonUpdatedAt: new Date().toISOString(),
+    projectJson,
+    ...designOf(projectJson, sitePlan, FIXTURE_PROJECT.projectName),
+    jsonUpdatedAt: desk ? null : new Date().toISOString(),
     shareToken: "00000000-0000-0000-0000-000000000000",
     crewToken: "00000000-0000-0000-0000-000000000001",
     customerName: "Dani Hartley",
@@ -114,7 +126,7 @@ function buildFixtureData(): PageData {
     markers: buildSiteMarkers([], {}, {
       origin: { text: "Garage frame, 4 ft up", updated_at: "2026-10-02T18:00:00Z" },
     }),
-    sitePlan: FIXTURE_PLAN,
+    sitePlan,
     sitePlanSavedAt: "2026-07-12T16:00:00Z",
     sitePlanPlacedAt: null,
     sitePlanReady: true,
@@ -126,6 +138,19 @@ function buildFixtureData(): PageData {
     readOnly: true,
     deleted: false,
     rail: buildRail(buildScene(FIXTURE_PROJECT), {}),
+  };
+}
+
+/** The top card's design, and whether it is lined up with the yard. */
+function designOf(projectJson: ProjectFileJSON | null, plan: SitePlan | null, name: string) {
+  const design = sheetDesign(projectJson, plan, name);
+  // sheetDesign hands back the headset's own design once it has drawn
+  // anything (or the walk has placed the plan); otherwise the plan's.
+  const aligned = projectJson != null && design === projectJson;
+  return {
+    design,
+    aligned,
+    designEditsHere: !aligned || (projectJson?.outlinePlacement != null && walkFit(projectJson) != null),
   };
 }
 
@@ -347,6 +372,7 @@ async function loadPageData(id: string): Promise<PageData | null> {
       ? (docUrls.get(base.estimate_path) ?? null)
       : null,
     projectJson,
+    ...designOf(projectJson, plan, base.name),
     jsonUpdatedAt,
     shareToken,
     crewToken,
@@ -408,16 +434,17 @@ export default async function ProjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ published?: string }>;
+  searchParams?: Promise<{ published?: string; desk?: string }>;
 }) {
   const { id } = await params;
   // Publishing a revision lands here rather than leaving the designer in
   // the editor wondering whether it took.
-  const published = (await searchParams)?.published ?? null;
+  const query = await searchParams;
+  const published = query?.published ?? null;
 
   const data =
     id === "fixture" && process.env.NODE_ENV === "development"
-      ? buildFixtureData()
+      ? buildFixtureData(Boolean(query?.desk))
       : await loadPageData(id);
   if (!data) notFound();
 
@@ -523,35 +550,18 @@ export default async function ProjectPage({
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
         {/* ── left: plan + documents + material ── */}
         <div className="flex flex-col gap-6 lg:col-span-2">
-          <div className="overflow-hidden rounded-[14px] border border-edge shadow-[0_18px_40px_-24px_rgba(28,42,33,0.35)]">
-            {data.projectJson ? (
-              <Link
-                href={`/viewer/${data.id}`}
-                className="group relative block h-[340px] bg-[#ebe0cb]"
-                aria-label="Open the full 3D viewer"
-              >
-                <LivingBlueprint
-                  project={data.projectJson}
-                  projectName={data.name}
-                  showPrices={false}
-                  embed
-                />
-                <span className="absolute right-3.5 top-3 rounded-lg border border-rule-strong bg-card/80 px-3 py-1.5 text-[13px] font-semibold text-ink backdrop-blur transition group-hover:bg-card">
-                  Open 3D viewer ⤢
-                </span>
-              </Link>
-            ) : (
-              <div className="flex h-[220px] flex-col items-center justify-center gap-2 bg-[#ebe0cb] px-6 text-center">
-                <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-faint">
-                  No 3D plan yet
-                </p>
-                <p className="max-w-sm text-sm text-muted">
-                  Export a blueprint or estimate from the headset and the
-                  living blueprint will appear here.
-                </p>
-              </div>
-            )}
-          </div>
+          <DesignCard
+            projectId={data.id}
+            projectName={data.name}
+            design={data.design}
+            aligned={data.aligned}
+            plan={data.sitePlan}
+            placed={data.sitePlanPlacedAt}
+            savedAt={data.sitePlanSavedAt}
+            ready={data.sitePlanReady}
+            editsHere={data.designEditsHere}
+            disabled={disabled}
+          />
 
           <div className="grid gap-6 sm:grid-cols-2">
             <SectionCard title="Blueprint">
@@ -605,29 +615,6 @@ export default async function ProjectPage({
               )}
             </SectionCard>
           </div>
-
-          <SectionCard
-            title="Site plan"
-            action={
-              data.sitePlan ? (
-                <Link
-                  href={`/dashboard/projects/${data.id}/site-plan`}
-                  className="text-xs font-semibold text-accent transition hover:text-accent-bright"
-                >
-                  Open builder →
-                </Link>
-              ) : undefined
-            }
-          >
-            <SitePlanCard
-              projectId={data.id}
-              plan={data.sitePlan}
-              placed={data.sitePlanPlacedAt}
-              savedAt={data.sitePlanSavedAt}
-              ready={data.sitePlanReady}
-              disabled={disabled}
-            />
-          </SectionCard>
 
           <SectionCard title="Site markers">
             <SiteMarkers

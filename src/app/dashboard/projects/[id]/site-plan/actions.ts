@@ -3,7 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getMembership } from "@/lib/org";
-import { finishPlan, headsetFeatures, parseDraft, PlanError, readPlan } from "@/lib/site-plan/plan";
+import { rebuildPlantRows } from "@/lib/estimate-ar-rows";
+import {
+  finishPlan,
+  headsetFeatures,
+  headsetPlants,
+  headsetSurfaces,
+  parseDraft,
+  PlanError,
+  readPlan,
+  type SitePlan,
+} from "@/lib/site-plan/plan";
+import { sheetDesign } from "@/lib/site-plan/sheet-design";
 import type { ProjectFileJSON } from "@/lib/viewer/types";
 
 // The site plan builder's server side: save the plan, or clear it. Server
@@ -48,7 +59,7 @@ async function editableProject(projectId: string) {
   if ((json?.project_json as ProjectFileJSON | null)?.outlinePlacement) {
     return { error: PLACED } as const;
   }
-  return { supabase } as const;
+  return { supabase, design: (json?.project_json as ProjectFileJSON | null) ?? null } as const;
 }
 
 /**
@@ -62,7 +73,7 @@ export async function saveSitePlan(
 ): Promise<{ ok: true } | Failure> {
   const access = await editableProject(projectId);
   if ("error" in access) return { ok: false, error: access.error! };
-  const { supabase } = access;
+  const { supabase, design } = access;
 
   let plan;
   try {
@@ -70,6 +81,10 @@ export async function saveSitePlan(
   } catch (err) {
     if (err instanceof PlanError) return { ok: false, error: err.message };
     throw err;
+  }
+  // The uploaded plan lives in this project's own folder, nowhere else.
+  if (plan.planImage && !plan.planImage.path.includes(`/${projectId}/`)) {
+    return { ok: false, error: "The uploaded plan isn't this project's. Upload it again." };
   }
 
   const { data: before } = await supabase
@@ -79,8 +94,9 @@ export async function saveSitePlan(
     .single();
   const old = readPlan(before?.blueprint_payload);
   const headsetSees = (p: typeof plan | null) =>
-    p ? JSON.stringify([p.candidate, headsetFeatures(p)]) : null;
+    p ? JSON.stringify([p.candidate, headsetFeatures(p), headsetPlants(p), headsetSurfaces(p)]) : null;
   const changed = headsetSees(old) !== headsetSees(plan);
+  const designed = (p: SitePlan | null) => JSON.stringify([p?.plants ?? [], p?.surfaces ?? []]);
 
   const { error } = await supabase
     .from("projects")
@@ -97,6 +113,23 @@ export async function saveSitePlan(
   }
 
   await removeTile(supabase, before?.blueprint_ortho_path ?? null);
+  // A plan replaced by another, or taken off, leaves its picture behind.
+  if (old?.planImage && old.planImage.path !== plan.planImage?.path) await removeTile(supabase, old.planImage.path);
+
+  // The estimate follows the design drawn here, as it follows one published
+  // from the viewer or synced from the yard — the same rows, by the same
+  // rules, so the plants keep their lines (and prices) through the walk.
+  if (designed(old) !== designed(plan)) {
+    const drawn = sheetDesign(design, plan, "");
+    if (drawn && drawn !== design) {
+      try {
+        await rebuildPlantRows(supabase, projectId, drawn);
+      } catch (err) {
+        console.error("[site-plan] refreshing the estimate failed", err);
+      }
+    }
+  }
+
   revalidatePath(`/dashboard/projects/${projectId}`);
   return { ok: true };
 }
@@ -112,7 +145,7 @@ export async function clearSitePlan(projectId: string): Promise<{ ok: true } | F
 
   const { data: before } = await supabase
     .from("projects")
-    .select("blueprint_ortho_path")
+    .select("blueprint_ortho_path, blueprint_payload")
     .eq("id", projectId)
     .single();
   const { error } = await supabase
@@ -124,14 +157,15 @@ export async function clearSitePlan(projectId: string): Promise<{ ok: true } | F
   }
 
   await removeTile(supabase, before?.blueprint_ortho_path ?? null);
+  await removeTile(supabase, readPlan(before?.blueprint_payload)?.planImage?.path ?? null);
   revalidatePath(`/dashboard/projects/${projectId}`);
   return { ok: true };
 }
 
 /**
  * Best effort: the aerial tile an outline from the old county lookup left in
- * project-media costs half a megabyte, and failing to remove it should not
- * undo the change the designer asked for.
+ * project-media costs half a megabyte (an uploaded plan more), and failing
+ * to remove it should not undo the change the designer asked for.
  */
 async function removeTile(supabase: Supabase, path: string | null) {
   if (path) await supabase.storage.from("project-media").remove([path]);
