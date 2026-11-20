@@ -16,8 +16,9 @@ export type Pt = [number, number];
 /** Sheet points to screen pixels for patterns and line weights. */
 const K = 1.5;
 
-/** The drawing sheet: warm white, like the printed page. */
-export const SHEET_PAPER = "#f8f4ea";
+/** The drawing sheet: the 3D view's sand, so the plan and the 3D view are
+ *  one ground and the switch between them doesn't flash. */
+export const SHEET_PAPER = "#ebe0cb";
 export const INK = "#1c2a21";
 
 const FILL_IDS: Record<FeatureFill["kind"] | "light", string> = {

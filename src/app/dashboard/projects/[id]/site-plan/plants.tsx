@@ -127,7 +127,7 @@ export function PlantLayer({
         else ctx.moveTo(X, Y);
       }
       ctx.closePath();
-      ctx.fillStyle = tree ? "rgba(225,228,222,0.75)" : SHEET_PAPER;
+      ctx.fillStyle = tree ? "rgba(150,165,130,0.3)" : SHEET_PAPER;
       ctx.globalAlpha *= tree ? 1 : 0.55 * halo;
       ctx.fill();
       ctx.restore();

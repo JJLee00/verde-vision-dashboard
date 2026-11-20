@@ -392,7 +392,7 @@ function BarButton({
       disabled={disabled}
       onClick={onClick}
       className={`flex w-[60px] flex-col items-center justify-center gap-1 rounded-xl border text-[11px] font-semibold transition disabled:opacity-40 ${
-        on ? "border-ink/20 bg-ink/[0.07] text-ink" : "border-transparent text-body hover:bg-card-hover hover:text-ink"
+        on ? "border-accent/30 bg-accent/10 text-accent" : "border-transparent text-body hover:bg-card-hover hover:text-ink"
       }`}
     >
       {children}

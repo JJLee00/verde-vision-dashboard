@@ -12,13 +12,14 @@
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
 import Link from "next/link";
-import type { ProjectFileJSON } from "./types";
-import { buildScene, buildRail, sceneToLocal, type Instance } from "./scene";
+import { METERS_TO_FEET, type ProjectFileJSON } from "./types";
+import { buildScene, buildRail, localToScene, sceneToLocal, type Instance } from "./scene";
 import { sizeFactor, speciesMeta } from "./catalog";
 import {
   symbolFor,
@@ -35,6 +36,8 @@ import {
 const SAND = "#ebe0cb";
 const GROUND = "#e4d8bc";
 const VERDE = "#2e5d43";
+/** What a move between a flat plan and 3D carries; the zoom follows. */
+const TWEENED = ["az", "el", "dist", "fov", "planT", "panX", "panZ"] as const;
 const INK = "#1c2a21";
 const GOLD = "#a87b2f";
 const WATER_FILL = "rgba(122,163,178,0.55)";
@@ -102,6 +105,24 @@ export type LivingBlueprintProps = {
   editorPanel?: React.ReactNode;
   /** The site plan's 3D designer (with `embed interactive editing`). */
   designer?: Designer3D | null;
+  /** Opens over this spot instead of at the usual angle: straight down, as
+   *  the site plan's 2D sheet showed it, then down into 3D over the same
+   *  ground. Read once, when the view opens. */
+  openFrom?: CameraSpot | null;
+  /** The way back to 2D (`CameraHandle.flatten`). */
+  cameraRef?: React.Ref<CameraHandle>;
+};
+
+/** A spot on the ground as a flat plan shows it: the point in the middle
+ *  (the project's own metres), how many screen pixels a metre takes there,
+ *  and which way along the ground is up the screen. */
+export type CameraSpot = { at: [number, number]; pxPerM: number; north: [number, number] };
+
+export type CameraHandle = {
+  /** Tilts up to straight down with `north` up the screen, the ground in
+   *  the middle holding its size, and says which spot that ends on — for
+   *  the 2D sheet to take up. Null before the view has a size. */
+  flatten(north: [number, number]): Omit<CameraSpot, "north"> | null;
 };
 
 /**
@@ -782,6 +803,8 @@ export function LivingBlueprint({
   onToggleEditing,
   editorPanel,
   designer = null,
+  openFrom = null,
+  cameraRef,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -812,12 +835,18 @@ export function LivingBlueprint({
     panX: number;
     panZ: number;
   };
+  type Tweened = Pick<View, "az" | "el" | "dist" | "fov" | "planT" | "panX" | "panZ">;
   const camRef = useRef<{
     cur: View;
     tgt: View;
     saved3d: Cam;
+    // A timed move between a flat plan and 3D, eased in and out, the
+    // ground in the middle held at `hold` pixels a foot all the way.
+    tween?: { from: Tweened; to: Tweened; start: number; dur: number; hold: number };
     // The scene's middle when the camera last looked at it.
     center?: [number, number];
+    // It has opened from `openFrom` already.
+    opened?: boolean;
   } | null>(null);
 
   const hoverRef = useRef<string | null>(null);
@@ -828,6 +857,10 @@ export function LivingBlueprint({
   }, [onSelectInstance]);
 
   const designerRef = useRef(designer);
+  // Only the first counts: the camera is made once.
+  const openFromRef = useRef(openFrom);
+  const flattenRef = useRef<CameraHandle["flatten"] | null>(null);
+  useImperativeHandle(cameraRef, () => ({ flatten: (north) => flattenRef.current?.(north) ?? null }), []);
   useEffect(() => {
     designerRef.current = designer;
   }, [designer]);
@@ -918,6 +951,38 @@ export function LivingBlueprint({
       };
     }
     const cam = camRef.current;
+    /** The camera's turn that puts this way along the ground (local) up
+     *  the screen. */
+    const facing = ([x, z]: [number, number]) => {
+      const [nx, nz] = localToScene(scene, x, z);
+      return (Math.atan2(-nx, -nz) * 180) / Math.PI;
+    };
+    // Opened from the 2D sheet: straight down over the spot it showed, the
+    // way it faced, at its scale; then down into 3D over the same ground.
+    const from = openFromRef.current;
+    if (from && !cam.tween && cam.cur.planT === 0 && !cam.opened) {
+      cam.opened = true;
+      const [sx, sz] = localToScene(scene, from.at[0], from.at[1]);
+      const az = facing(from.north);
+      const flat: Tweened = {
+        ...VPLAN,
+        az,
+        planT: 1,
+        panX: Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, sx - cx)),
+        panZ: Math.max(-PAN_LIMIT, Math.min(PAN_LIMIT, sz - cz)),
+      };
+      Object.assign(cam.cur, flat);
+      Object.assign(cam.tgt, flat);
+      cam.saved3d = { az, el: V3D.el, dist: V3D.dist, fov: V3D.fov };
+      cam.tween = {
+        from: flat,
+        to: { ...flat, el: V3D.el, dist: V3D.dist, fov: V3D.fov, planT: 0 },
+        // A beat to fade in over the sheet first.
+        start: performance.now() + 180,
+        dur: 750,
+        hold: from.pxPerM / METERS_TO_FEET,
+      };
+    }
     // A camera carried over from before panning existed has no offset.
     for (const v of [cam.cur, cam.tgt]) {
       if (!Number.isFinite(v.panX)) v.panX = 0;
@@ -12008,6 +12073,8 @@ export function LivingBlueprint({
     };
 
     const onDown = (e: PointerEvent) => {
+      // A hand on the view takes over from the move into it.
+      cam.tween = undefined;
       cv!.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, [e.clientX, e.clientY]);
       dragDist = 0;
@@ -12160,6 +12227,7 @@ export function LivingBlueprint({
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      cam.tween = undefined;
       const before = tgt.zoom;
       const next = clamp(before * Math.exp(-e.deltaY * 0.0015), ZOOM_MIN, ZOOM_MAX);
       if (next === before) return;
@@ -12197,6 +12265,24 @@ export function LivingBlueprint({
       cv.addEventListener("contextmenu", onContextMenu);
     }
 
+    // Back to 2D: up to straight down, facing `north`, over the ground in
+    // the middle now, which keeps its size.
+    flattenRef.current = (north) => {
+      if (H === 0) return null;
+      const hold = ((H / 2) * cur.zoom) / (Math.tan((cur.fov * Math.PI) / 360) * cur.dist);
+      const now: Tweened = { az: cur.az, el: cur.el, dist: cur.dist, fov: cur.fov, planT: cur.planT, panX: cur.panX, panZ: cur.panZ };
+      const turn = (((facing(north) - cur.az) % 360) + 540) % 360 - 180;
+      cam.tween = {
+        from: now,
+        to: { ...now, az: cur.az + turn, el: VPLAN.el, dist: VPLAN.dist, fov: VPLAN.fov, planT: 1 },
+        start: performance.now(),
+        dur: 650,
+        hold,
+      };
+      const at = sceneToLocal(scene, cx + cur.panX, cz + cur.panZ);
+      return { at, pxPerM: hold * METERS_TO_FEET };
+    };
+
     /* ── loop ── */
     let raf = 0;
     // What the last drawing showed. A still view isn't drawn again: a big
@@ -12216,6 +12302,15 @@ export function LivingBlueprint({
         lastMode = m;
       }
       tgt.growth = 1;
+      const tw = cam.tween;
+      if (tw && H > 0) {
+        const u = reducedMotion ? 1 : Math.min(1, Math.max(0, (performance.now() - tw.start) / tw.dur));
+        const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(2 - 2 * u, 3) / 2;
+        for (const k of TWEENED) cur[k] = tgt[k] = tw.from[k] + (tw.to[k] - tw.from[k]) * e;
+        // The ground in the middle keeps its size as the angle changes.
+        cur.zoom = tgt.zoom = (tw.hold * cur.dist * Math.tan((cur.fov * Math.PI) / 360)) / (H / 2);
+        if (u >= 1) cam.tween = undefined;
+      }
       for (const k of ["az", "el", "dist", "fov", "zoom", "planT", "growth", "panX", "panZ"] as const) {
         cur[k] += (tgt[k] - cur[k]) * K;
         if (Math.abs(tgt[k] - cur[k]) < 0.0005) cur[k] = tgt[k];
@@ -12238,6 +12333,7 @@ export function LivingBlueprint({
 
     return () => {
       cancelAnimationFrame(raf);
+      flattenRef.current = null;
       ro.disconnect();
       cv.removeEventListener("pointerdown", onDown);
       cv.removeEventListener("pointermove", onMove);

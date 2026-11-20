@@ -46,6 +46,14 @@ export function sceneToLocal(scene: Pick<Scene, "phi">, x: number, z: number): [
   return [(x * c + z * s) / METERS_TO_FEET, (z * c - x * s) / METERS_TO_FEET];
 }
 
+/** The other way: the project's own metres to the scene's feet. */
+export function localToScene(scene: Pick<Scene, "phi">, x: number, z: number): [number, number] {
+  const c = Math.cos(scene.phi);
+  const s = Math.sin(scene.phi);
+  const [fx, fz] = [x * METERS_TO_FEET, z * METERS_TO_FEET];
+  return [fx * c - fz * s, fx * s + fz * c];
+}
+
 function quatYawDeg(x: number, y: number, z: number, w: number) {
   return (Math.atan2(2 * (w * y + x * z), 1 - 2 * (y * y + z * z)) * 180) / Math.PI;
 }

@@ -120,10 +120,17 @@ export interface SheetHandle {
   /** Moves the view by (dx, dz) metres, for when the origin under it moved
    *  by the opposite: nothing on screen moves. */
   shift(dx: number, dz: number): void;
+  /** What's on screen: the middle, and pixels a metre. Null before it has a size. */
+  view(): View | null;
+  /** Puts the sheet over that spot, at that scale. */
+  show(v: View): void;
 }
 
 /** The desk the sheet of paper lies on, round the photo frame. */
 const DESK = "#e4dccb";
+/** The desk round the photo, washed with the tab's colour: blue on the
+ *  Blueprint tab, green on the Design tab. */
+const DESK_TINTED = `color-mix(in srgb, var(--accent) 12%, ${DESK})`;
 
 /** Room left around the locked frame, in screen pixels. */
 export const LOCK_INSET = 28;
@@ -520,6 +527,12 @@ export function Sheet({
       },
       shift(dx, dz) {
         setView((v) => (v ? { ...v, cx: v.cx + dx, cz: v.cz + dz } : v));
+      },
+      view() {
+        return view;
+      },
+      show(v) {
+        setView({ ...v, ppm: Math.min(MAX_PPM, Math.max(MIN_PPM, v.ppm)) });
       },
     }),
     [view, size]
@@ -1504,7 +1517,7 @@ export function Sheet({
     <div
       ref={boxRef}
       className="relative h-full w-full touch-none select-none overflow-hidden"
-      style={{ background: shownFrame ? DESK : SHEET_PAPER, cursor }}
+      style={{ background: shownFrame ? DESK_TINTED : SHEET_PAPER, cursor }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -1556,7 +1569,7 @@ export function Sheet({
       <svg className="absolute inset-0" width={size.w} height={size.h}>
         <PlanPatterns />
         <SurfacePatterns />
-        {grid && <Grid view={view} size={size} rect={frameRect} ink={layer === "site" ? BLUEPRINT_GRID : INK} />}
+        {grid && <Grid view={view} size={size} rect={frameRect} ink={layer === "site" ? BLUEPRINT_GRID : DESIGN_GRID} />}
         {shownFrame && (
           <rect
             x={frameRect.left}
@@ -1564,8 +1577,9 @@ export function Sheet({
             width={frameRect.width}
             height={frameRect.height}
             fill="none"
-            stroke={INK}
-            strokeOpacity={liveFrame ? 0.7 : 0.35}
+            stroke="var(--accent)"
+            strokeWidth={1.5}
+            strokeOpacity={liveFrame ? 0.9 : 0.6}
           />
         )}
         {framing && (
@@ -2177,6 +2191,8 @@ function ScaleBar({ ppm, grid }: { ppm: number; grid: number | null }) {
  */
 /** The Blueprint tab's grid: drafting blue, so the two tabs read apart at a glance. */
 const BLUEPRINT_GRID = "#2d5a80";
+/** …and the Design tab's, its green. */
+const DESIGN_GRID = "#2e5d43";
 
 function Grid({
   view,

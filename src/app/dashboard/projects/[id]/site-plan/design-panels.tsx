@@ -281,7 +281,7 @@ export function Schedule({
   return (
     <div className="pb-3">
       <div className="px-4 pb-2 pt-4">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">In this design</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">In this design</p>
       </div>
       {rows.length === 0 && surfaces.length === 0 ? (
         <p className="px-4 text-sm text-muted">

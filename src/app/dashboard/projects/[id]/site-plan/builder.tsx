@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -18,6 +18,7 @@ import {
   surfacePrice,
   surfaceRate,
 } from "@/lib/site-plan/design";
+import { geoToLocal } from "@/lib/site-plan/design";
 import { localToGeo, type WalkFit } from "@/lib/site-plan/placed";
 import { sheetDesign } from "@/lib/site-plan/sheet-design";
 import { diffDesign, summarize } from "@/lib/versions";
@@ -41,14 +42,13 @@ import {
   type PlanPlant,
   type PlanSurface,
   type SitePlan,
-  type UnderlayKind,
 } from "@/lib/site-plan/plan";
 import { clearSitePlan, saveSitePlan } from "./actions";
 import { AddressSearch, addressFor, HouseCheckLine, useHouseAddress } from "./address-search";
 import { money, PlantActions, Schedule, SURFACE_TOOLS } from "./design-panels";
 import { InventoryBar, keepSlots, savedSlots, seedSlots, SLOT_COUNT, type Slot } from "./inventory-bar";
 import { displayName, PlanPatterns, SurfacePatterns, SurfaceSwatch, TypeSwatch } from "./drawing";
-import { feetInches, squareUp, sqFt } from "./geometry";
+import { feetInches, squareUp, sqFt, type View } from "./geometry";
 import { LockIcon, UploadIcon } from "./icons";
 import { readPlanFile } from "./plan-image";
 import { plantRadiusM, type SheetPlant } from "./plants";
@@ -76,6 +76,8 @@ import {
 } from "./sheet";
 
 // The 3D view is the viewer's renderer — big, and only wanted once asked for.
+import type { CameraHandle, CameraSpot } from "@/lib/viewer/LivingBlueprint";
+
 const Blueprint3D = dynamic(() => import("@/lib/viewer/LivingBlueprint").then((m) => m.LivingBlueprint), {
   ssr: false,
   loading: () => <p className="p-6 text-sm text-muted">Loading the 3D view…</p>,
@@ -249,10 +251,12 @@ export function SitePlanBuilder({
   const [frame, setFrame] = useState<PlanFrame | null>(initial?.frame ?? null);
   const [framing, setFraming] = useState(!initial && !readOnly);
   const [address, setAddress] = useState(initial?.lookupAddress ?? "");
-  const [kind, setKind] = useState<UnderlayKind>(initial?.underlay.kind ?? "satellite");
-  // The photo's strength on each tab: full for tracing, faint under the design.
-  const [siteOpacity, setSiteOpacity] = useState(initial?.underlay.opacity ?? 1);
-  const [designOpacity, setDesignOpacity] = useState(initial?.underlay.designOpacity ?? 0.35);
+  // The photo's strength on each tab: full for tracing, faint under the
+  // design. Always the satellite now; a plan saved with "None" (or the old
+  // Map) opens with the photo off.
+  const photoOff = initial != null && initial.underlay.kind !== "satellite";
+  const [siteOpacity, setSiteOpacity] = useState(photoOff ? 0 : (initial?.underlay.opacity ?? 1));
+  const [designOpacity, setDesignOpacity] = useState(photoOff ? 0 : (initial?.underlay.designOpacity ?? 0.35));
   const [planImage, setPlanImage] = useState<PlanImage | null>(initial?.planImage ?? null);
   const [imageUrl, setImageUrl] = useState<string | null>(planImageUrl);
   const [imageTool, setImageTool] = useState<ImageTool | null>(null);
@@ -278,6 +282,13 @@ export function SitePlanBuilder({
     walked || initial?.plants?.length || initial?.surfaces?.length ? "design" : "site"
   );
   const [view, setView] = useState<"plan" | "3d">("plan");
+  // 2D and 3D hand over the same ground: 3D opens straight down over what
+  // the sheet showed and tilts down; back in 2D, it tilts up and fades,
+  // and the sheet is under it on the same spot.
+  const cam3d = useRef<CameraHandle>(null);
+  const [openFrom, setOpenFrom] = useState<CameraSpot | null>(null);
+  const [opened3d, setOpened3d] = useState(0);
+  const [leaving3d, setLeaving3d] = useState(false);
   const opacity = layer === "design" ? designOpacity : siteOpacity;
   const setOpacity = layer === "design" ? setDesignOpacity : setSiteOpacity;
   const [placing, setPlacing] = useState<Placing | null>(null);
@@ -305,7 +316,7 @@ export function SitePlanBuilder({
           lookupAddress: address,
           origin,
           frame,
-          underlay: { kind, opacity: siteOpacity, designOpacity },
+          underlay: { kind: "satellite", opacity: siteOpacity, designOpacity },
           ...(planImage ? { planImage } : {}),
           ...(initial?.mapOffset ? { mapOffset: initial.mapOffset } : {}),
           boundary: doc.boundary,
@@ -464,11 +475,56 @@ export function SitePlanBuilder({
     if (nextActive != null) setActive(nextActive);
   }
 
-  function changeView(v: "plan" | "3d") {
-    setView(v);
-    // The 3D view plants and picks; shapes and lengths are the plan's.
-    if (v === "3d" && tool !== "select" && tool !== "place") onTool("select");
+  // The 3D view hands back the project's own metres: the plan's before the
+  // walk, the yard's after it — which the walk's fit lays back on the plan.
+  const fromLocal = (x: number, z: number): XZ => (fit ? localToGeo(fit, [x, z]) : [x, z]);
+  const toLocal = (x: number, z: number): XZ => (fit ? geoToLocal(fit, [x, z]) : [x, z]);
+  /** Plan metres to the project's metre: 1, unless the walk's fit scales. */
+  const localScale = () => {
+    const [a, b] = [fromLocal(0, 0), fromLocal(1, 0)];
+    return Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  };
+  /** Up the sheet — north — in the project's own metres. */
+  const localNorth = (): [number, number] => {
+    const [a, b] = [toLocal(0, 0), toLocal(0, -1)];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+  };
+  const spotOf = (v: View): CameraSpot => {
+    const [x, z] = toLocal(v.cx, v.cz);
+    return { at: [x, z], pxPerM: v.ppm * localScale(), north: localNorth() };
+  };
+  /** Where the 2D sheet is looking, for the 3D view to open over. */
+  function sheetSpot(): CameraSpot | null {
+    const shown = sheet.current?.view();
+    return shown ? spotOf(shown) : null;
   }
+
+  function changeView(v: "plan" | "3d") {
+    if (v === view) return;
+    if (v === "3d") {
+      // The 3D view plants and picks; shapes and lengths are the plan's.
+      if (tool !== "select" && tool !== "place") onTool("select");
+      setOpenFrom(sheetSpot());
+      setOpened3d((n) => n + 1);
+      setLeaving3d(false);
+    } else {
+      const spot = cam3d.current?.flatten(localNorth());
+      if (spot) {
+        const [cx, cz] = fromLocal(spot.at[0], spot.at[1]);
+        sheet.current?.show({ cx, cz, ppm: spot.pxPerM / localScale() });
+        setLeaving3d(true);
+      }
+    }
+    setView(v);
+  }
+
+  // The 3D view gone back to 2D stays long enough to tilt up and fade.
+  useEffect(() => {
+    if (!leaving3d) return;
+    const t = setTimeout(() => setLeaving3d(false), 900);
+    return () => clearTimeout(t);
+  }, [leaving3d]);
 
   function onTool(t: Tool) {
     setTool(t);
@@ -479,6 +535,11 @@ export function SitePlanBuilder({
   function switchLayer(l: Layer) {
     if (l === layer) return;
     setLayer(l);
+    // The blueprint is flat: 3D is the design's.
+    if (l === "site") {
+      setView("plan");
+      setLeaving3d(false);
+    }
     setImageTool(null);
     setTool("select");
     setPlacing(null);
@@ -597,7 +658,7 @@ export function SitePlanBuilder({
     try {
       const read = await readPlanFile(file);
       const ext = read.blob.type === "image/png" ? "png" : read.blob.type === "image/webp" ? "webp" : "jpg";
-      const path = `${fixture ? "fixture" : userId}/${projectId}/site-plan-${Date.now()}.${ext}`;
+      const path = planImagePath(fixture ? "fixture" : userId, projectId, ext);
       const url = URL.createObjectURL(read.blob);
       if (!fixture) {
         const supabase = createClient();
@@ -612,8 +673,8 @@ export function SitePlanBuilder({
       setPlanImage({ path, name: read.name, w: read.w, h: read.h, x: f.cx, z: f.cz, scale, rotation: 0, opacity: 0.85 });
       if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
       setImageUrl(url);
-      // Traced instead of the photo; Satellite brings it back to line up against.
-      setKind("none");
+      // Traced instead of the photo; the slider brings it back to line up against.
+      setSiteOpacity(0);
       setTool("select");
       setPlacing(null);
       setSelected(null);
@@ -628,7 +689,7 @@ export function SitePlanBuilder({
   function removeImage() {
     setPlanImage(null);
     setImageTool(null);
-    if (kind === "none") setKind("satellite");
+    if (siteOpacity === 0) setSiteOpacity(1);
     if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
     setImageUrl(null);
   }
@@ -655,8 +716,8 @@ export function SitePlanBuilder({
   /* ── The 3D view: the design as the headset will build it ── */
 
   const project3d = useMemo(
-    () => (view !== "3d" ? null : (staged ?? sheetDesign(null, doc, projectName))),
-    [view, staged, doc, projectName]
+    () => (view !== "3d" && !leaving3d ? null : (staged ?? sheetDesign(null, doc, projectName))),
+    [view, leaving3d, staged, doc, projectName]
   );
 
   const status = walked
@@ -725,36 +786,33 @@ export function SitePlanBuilder({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // The 3D view hands back the project's own metres: the plan's before the
-  // walk, the yard's after it — which the walk's fit lays back on the plan.
-  const fromLocal = (x: number, z: number): XZ => (fit ? localToGeo(fit, [x, z]) : [x, z]);
   const planting = tool === "place" && placing ? catalogOf(placing) : null;
-  const designer3d =
-    layer === "design" && designEditable
-      ? {
-          placing: planting ? { model: planting.size.modelName, scale: planting.size.heightMultiplier } : null,
-          onPlace: (x: number, z: number) => {
-            if (!placing) return;
-            const [px, pz] = fromLocal(x, z);
-            const plant = { id: newId(), key: placing.key, size: placing.size, x: px, z: pz, rotation: Math.random() * Math.PI * 2 - Math.PI };
-            apply((d) => ({ ...d, plants: [...d.plants, plant] }));
-          },
-          onMove: (moves: { id: string; x: number; z: number }[]) => {
-            // A plant already in the yard isn't the design's to move: the
-            // view puts it back.
-            const to = new Map(moves.filter((m) => doc.plants.some((q) => q.id === m.id)).map((m) => [m.id, fromLocal(m.x, m.z)]));
-            if (!to.size) return;
-            apply((d) => ({
-              ...d,
-              plants: d.plants.map((q) => {
-                const at = to.get(q.id);
-                return at ? { ...q, x: at[0], z: at[1] } : q;
-              }),
-            }));
-          },
-          onAnchor: placeActions,
-        }
-      : null;
+  const designing3d = layer === "design" && designEditable;
+  const designer3d = designing3d
+    ? {
+        placing: planting ? { model: planting.size.modelName, scale: planting.size.heightMultiplier } : null,
+        onPlace: (x: number, z: number) => {
+          if (!placing) return;
+          const [px, pz] = fromLocal(x, z);
+          const plant = { id: newId(), key: placing.key, size: placing.size, x: px, z: pz, rotation: Math.random() * Math.PI * 2 - Math.PI };
+          apply((d) => ({ ...d, plants: [...d.plants, plant] }));
+        },
+        onMove: (moves: { id: string; x: number; z: number }[]) => {
+          // A plant already in the yard isn't the design's to move: the
+          // view puts it back.
+          const to = new Map(moves.filter((m) => doc.plants.some((q) => q.id === m.id)).map((m) => [m.id, fromLocal(m.x, m.z)]));
+          if (!to.size) return;
+          apply((d) => ({
+            ...d,
+            plants: d.plants.map((q) => {
+              const at = to.get(q.id);
+              return at ? { ...q, x: at[0], z: at[1] } : q;
+            }),
+          }));
+        },
+        onAnchor: placeActions,
+      }
+    : null;
 
   // The picked plants' buttons, by them in 3D. The view says where they are
   // on screen as it moves, and the row follows without a re-render.
@@ -792,7 +850,7 @@ export function SitePlanBuilder({
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-paper text-ink" style={layer === "site" ? BLUEPRINT_INK : undefined}>
       {/* ── Top bar, underlined in the tab's colour ── */}
-      <header className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-card px-4 py-2 shadow-[inset_0_-2px_0_var(--accent)]">
+      <header className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule bg-[color-mix(in_srgb,var(--accent)_9%,var(--card))] px-4 py-2 shadow-[inset_0_-3px_0_var(--accent)]">
         <button
           type="button"
           onClick={() => void leave()}
@@ -832,23 +890,13 @@ export function SitePlanBuilder({
           {/* Hidden, not removed, in 3D: the bar keeps its height, so the
               2D/3D switch below it never jumps. */}
           <div className={`contents ${view === "3d" ? "invisible" : ""}`} inert={view === "3d"}>
-            <Segmented
-              value={kind}
-              options={[
-                { value: "satellite", label: "Satellite" },
-                { value: "map", label: "Map" },
-                { value: "none", label: "None" },
-              ]}
-              onChange={setKind}
-            />
-            <label className={`flex items-center gap-2 text-xs text-muted ${kind === "none" ? "opacity-40" : ""}`}>
+            <label className="flex items-center gap-2 text-xs text-muted">
               Photo
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={Math.round(opacity * 100)}
-                disabled={kind === "none"}
                 onChange={(e) => setOpacity(Number(e.target.value) / 100)}
                 className="w-24 accent-[var(--accent)]"
                 aria-label="Photo opacity"
@@ -916,9 +964,9 @@ export function SitePlanBuilder({
           <SurfacePatterns />
         </svg>
 
-        {/* 2D or 3D: one spot on both tabs — centred on the window left of the
-          list, not on the sheet, which the Blueprint panel narrows. */}
-        {!framing && frame != null && (
+        {/* 2D or 3D, on the Design tab: one spot, centred on the window left
+            of the list. */}
+        {layer === "design" && !framing && frame != null && (
           <div className="absolute left-[calc((100%-18rem)/2)] top-3 z-20 -translate-x-1/2">
             <div role="tablist" aria-label="View" className="flex rounded-full border border-rule-strong bg-card/95 p-1 shadow-md">
               {(["plan", "3d"] as const).map((v) => (
@@ -929,7 +977,7 @@ export function SitePlanBuilder({
                   aria-selected={view === v}
                   onClick={() => changeView(v)}
                   className={`min-w-16 rounded-full px-5 py-1.5 text-sm font-semibold transition ${
-                    view === v ? "bg-ink text-paper" : "text-body hover:text-ink"
+                    view === v ? "bg-accent text-white" : "text-body hover:text-ink"
                   }`}
                 >
                   {v === "plan" ? "2D" : "3D"}
@@ -941,10 +989,10 @@ export function SitePlanBuilder({
 
         {/* ── Left: what to draw. The design plants from the bar instead. ── */}
         {layer === "site" && (
-          <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-rule bg-card">
+          <aside className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-rule bg-[color-mix(in_srgb,var(--accent)_4%,var(--card))]">
             {(planImage || (siteEditable && !walked)) && (
               <div className="border-b border-rule px-3 pb-3 pt-2.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">Plot plan</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Plot plan</p>
                 {planImage && imageUrl ? (
                   <>
                     <div className="mt-1.5 flex items-center gap-2">
@@ -1035,7 +1083,7 @@ export function SitePlanBuilder({
                 Measure
               </ToolButton>
             </div>
-            <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-faint">Draw</p>
+            <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-accent">Draw</p>
             {!siteEditable && !readOnly && (
               <p className="px-3 pb-2 text-xs text-muted">
                 {origin ? "Lock the view to start tracing." : "Find the property first."}
@@ -1118,7 +1166,7 @@ export function SitePlanBuilder({
             origin={origin}
             frame={framing ? null : frame}
             initialBox={frame}
-            underlay={{ kind, opacity }}
+            underlay={{ kind: "satellite", opacity }}
             lotLines={lotLines}
             mapOffset={initial?.mapOffset ?? null}
             framing={framing && origin != null}
@@ -1131,8 +1179,10 @@ export function SitePlanBuilder({
             chrome={layer === "design" ? "design" : "full"}
           />
           {project3d && (
-            <div className="absolute inset-0 bg-[#ebe0cb]">
+            <Fade3D key={opened3d} leaving={leaving3d}>
               <Blueprint3D
+                openFrom={openFrom}
+                cameraRef={cam3d}
                 project={project3d}
                 projectName={projectName}
                 priceOverrides={prices}
@@ -1155,19 +1205,21 @@ export function SitePlanBuilder({
               />
               <div
                 ref={anchorRef}
-                className="absolute z-10 -translate-x-1/2"
+                className={`absolute z-10 -translate-x-1/2 ${leaving3d ? "hidden" : ""}`}
                 style={{ left: 0, top: 0, visibility: "hidden" }}
               >
                 {actions}
               </div>
-              <p className="pointer-events-none absolute bottom-[116px] left-3 rounded-md bg-card/90 px-2.5 py-1 text-xs text-muted shadow-sm">
+              <p
+                className={`pointer-events-none absolute bottom-[116px] left-3 rounded-md bg-card/90 px-2.5 py-1 text-xs text-muted shadow-sm ${leaving3d ? "hidden" : ""}`}
+              >
                 {planting
                   ? `Click the ground to plant ${planting.plant.name} — again for each one. Esc when you're done.`
-                  : designer3d
+                  : designing3d
                     ? "Drag to orbit, shift-drag to pan, scroll to zoom. Drag a plant to move it; shift-click to pick several."
                     : "Look around: drag to orbit, shift-drag to pan, scroll to zoom."}
               </p>
-            </div>
+            </Fade3D>
           )}
           {layer === "design" && !framing && frame != null && (
             <>
@@ -1228,7 +1280,7 @@ export function SitePlanBuilder({
         </main>
 
         {/* ── Right: what's on the plan ── */}
-        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-rule bg-card">
+        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-l border-rule bg-[color-mix(in_srgb,var(--accent)_4%,var(--card))]">
           {layer === "design" ? (
             <>
               {selected && doc.surfaces.some((x) => x.id === selected) && (
@@ -1266,7 +1318,7 @@ export function SitePlanBuilder({
                 prices={prices}
               />
               <div className="px-4 pb-2 pt-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-faint">On this plan</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">On this plan</p>
                 {house && houseRing.length > 0 && <HouseCheckLine check={check} typed={address} compact />}
               </div>
               {doc.features.length === 0 && doc.boundary.length < 3 ? (
@@ -1662,29 +1714,26 @@ function BoundarySwatch() {
   );
 }
 
-function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
+/** Where an uploaded plot plan is kept in project-media: the uploader's
+ *  folder, the project's, and a fresh name, so a replacement never
+ *  overwrites the file a saved plan still points at. */
+const planImagePath = (owner: string, projectId: string, ext: string) => `${owner}/${projectId}/site-plan-${Date.now()}.${ext}`;
+
+/** The 3D view's box: fades in over the sheet when it opens, and out
+ *  again — after it has tilted back up — when it's leaving for 2D. */
+function Fade3D({ leaving, children }: { leaving: boolean; children: React.ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const a = leaving
+      ? el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 220, delay: 600, fill: "forwards", easing: "ease-in" })
+      : el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: "ease-out" });
+    return () => a.cancel();
+  }, [leaving]);
   return (
-    <div className="flex overflow-hidden rounded-lg border border-rule-strong">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={`px-2.5 py-1 text-xs font-semibold transition ${
-            value === o.value ? "bg-ink text-paper" : "text-body hover:bg-card-hover"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div ref={box} className={`absolute inset-0 bg-[#ebe0cb] ${leaving ? "pointer-events-none" : ""}`}>
+      {children}
     </div>
   );
 }
@@ -1711,7 +1760,7 @@ function Tabs<T extends string>({
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
           className={`border-b-2 px-2 py-1 font-serif text-lg leading-tight transition ${
-            value === o.value ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"
+            value === o.value ? "border-accent text-accent" : "border-transparent text-muted hover:text-ink"
           }`}
         >
           {o.label}
@@ -1741,7 +1790,7 @@ function ToolButton({
       disabled={disabled}
       onClick={onClick}
       className={`rounded-md px-2 py-1 text-xs font-semibold transition disabled:opacity-30 ${
-        on ? "bg-ink text-paper" : "text-body hover:bg-card-hover"
+        on ? "bg-accent text-white" : "text-body hover:bg-card-hover"
       }`}
     >
       {children}
