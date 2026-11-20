@@ -55,6 +55,27 @@ const verde = (a: number) => `rgba(46,93,67,${a})`;
 const gold = (a: number) => `rgba(168,123,47,${a})`;
 const ink = (a: number) => `rgba(28,42,33,${a})`;
 
+/** How light the 3D view draws while it moves, learned from how this
+ *  machine keeps up and kept for the page. At 0 every frame is drawn in
+ *  full; each level up draws moving frames softer, then with fewer leaves on
+ *  the leafy shrubs. A view that stops is drawn again in full, so a still
+ *  view looks the same on every machine. */
+const motion = { level: 0, gaps: [] as number[] };
+const MOTION_LEVELS = 3;
+/** A moving view still this long is drawn again in full. */
+const SETTLE_MS = 150;
+
+/** Counts a gap between two moving frames. Most of a dozen running long —
+ *  under about 38 a second — and moving frames draw a level lighter. One
+ *  slow frame (a plant grown for the first time, a pause) doesn't count. */
+function keepPace(gap: number) {
+  motion.gaps.push(gap);
+  if (motion.gaps.length < 12) return;
+  const sorted = [...motion.gaps].sort((a, b) => a - b);
+  motion.gaps = [];
+  if (sorted[6] > 26 && motion.level < MOTION_LEVELS) motion.level++;
+}
+
 /* ── Component ──────────────────────────────────────────────────── */
 
 const currency = new Intl.NumberFormat("en-US", {
@@ -1005,14 +1026,30 @@ export function LivingBlueprint({
 
     let W = 0;
     let H = 0;
+    /** The screen's pixels per CSS pixel, up to 2. */
+    let dpr = 1;
+    /** Leaves drawn on the leafy shrubs: every one, or every 2nd or 3rd while
+     *  a slow machine's view moves (see `motion`) — and their outlines left
+     *  off then, which at the softer size barely show. */
+    let thin = 1;
+    /** The canvas at s pixels per CSS pixel. Setting a canvas's size wipes
+     *  it, even to the size it has, so only a real change is set. */
+    const sizeTo = (s: number) => {
+      const w = Math.round(W * s);
+      const h = Math.round(H * s);
+      if (cv.width !== w || cv.height !== h) {
+        cv.width = w;
+        cv.height = h;
+      }
+      ctx.setTransform(s, 0, 0, s, 0, 0);
+    };
     const ro = new ResizeObserver(() => {
       const r = wrap.getBoundingClientRect();
-      const dpr = Math.min(devicePixelRatio || 1, 2);
+      dpr = Math.min(devicePixelRatio || 1, 2);
       W = r.width;
       H = r.height;
-      cv.width = Math.round(W * dpr);
-      cv.height = Math.round(H * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sizeTo(dpr);
+      drawn = ""; // a resized canvas is blank: draw it again
     });
     ro.observe(wrap);
 
@@ -1498,7 +1535,7 @@ export function LivingBlueprint({
         const ox = sx(cx, cy2, cz);
         const oy = sy(cx, cy2, cz);
         const pts = kite ? sp.kites : sp.leaves;
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const px = ox + J[0] * pts[i] + J[1] * pts[i + 1] + J[2] * pts[i + 2];
@@ -1525,6 +1562,7 @@ export function LivingBlueprint({
       // The shaded heart first.
       let m0 = 0;
       for (; m0 < m && sprigs[m0].inner; m0++) {
+        if (m0 % thin) continue;
         ctx!.beginPath();
         leafPath(sprigs[m0]);
         paint(tones[WD_LEVELS + sprigs[m0].tone]);
@@ -1884,7 +1922,7 @@ export function LivingBlueprint({
         const ox = sx(cx, cy2, cz);
         const oy = sy(cx, cy2, cz);
         const pts = kite ? sp.kites : sp.leaves;
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const px = ox + J[0] * pts[i] + J[1] * pts[i + 1] + J[2] * pts[i + 2];
@@ -1912,7 +1950,7 @@ export function LivingBlueprint({
       let m0 = 0;
       for (; m0 < m && sprigs[m0].inner; m0++) {
         const sp = sprigs[m0];
-        if (!facing(sp.c, sp.n)) continue;
+        if (m0 % thin || !facing(sp.c, sp.n)) continue;
         ctx!.beginPath();
         leafPath(sp);
         paint(tones.inner[sp.tone]);
@@ -2301,7 +2339,7 @@ export function LivingBlueprint({
         const ox = sx(cx, cy2, cz);
         const oy = sy(cx, cy2, cz);
         const pts = kite ? sp.kites : sp.leaves;
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const px = ox + J[0] * pts[i] + J[1] * pts[i + 1] + J[2] * pts[i + 2];
@@ -2329,7 +2367,7 @@ export function LivingBlueprint({
       let m0 = 0;
       for (; m0 < m && sprigs[m0].inner; m0++) {
         const sp = sprigs[m0];
-        if (!facing(sp.c, sp.n)) continue;
+        if (m0 % thin || !facing(sp.c, sp.n)) continue;
         ctx!.beginPath();
         leafPath(sp);
         paint(tones.inner[sp.tone]);
@@ -3089,7 +3127,7 @@ export function LivingBlueprint({
       for (const { sp, q, J } of order) {
         const off = sp.off;
         ctx!.beginPath();
-        for (let o = 0; o < off.length; o += 18) {
+        for (let o = 0; o < off.length; o += 18 * thin) {
           for (let k = 0; k < 6; k++) {
             const i = o + k * 3;
             const sx = q[0] + J[0] * off[i] + J[2] * off[i + 1] + J[4] * off[i + 2];
@@ -3101,7 +3139,7 @@ export function LivingBlueprint({
         }
         ctx!.fillStyle = sel ? sp.gold : sp.col;
         ctx!.fill();
-        if (!sp.inner) ctx!.stroke();
+        if (!sp.inner && thin === 1) ctx!.stroke();
       }
       ctx!.lineWidth = lw;
     }
@@ -3316,7 +3354,7 @@ export function LivingBlueprint({
       ctx!.strokeStyle = sel ? gold(0.6) : ink(0.4);
       const shapes = (pts: Float32Array, corners: number, q: number[], J: number[]) => {
         ctx!.beginPath();
-        for (let o = 0; o < pts.length; o += corners * 3) {
+        for (let o = 0; o < pts.length; o += corners * 3 * thin) {
           for (let k = 0; k < corners; k++) {
             const i = o + k * 3;
             const sx = q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2];
@@ -3332,12 +3370,12 @@ export function LivingBlueprint({
         ctx!.fillStyle = t.leafCol[g];
         ctx!.fill();
         if (t.inner) continue; // an outline on a tuft in shadow is noise
-        ctx!.stroke();
+        if (thin === 1) ctx!.stroke();
         if (t.spikes.length) {
           shapes(t.spikes, 7, q, J);
           ctx!.fillStyle = t.spikeCol[g];
           ctx!.fill();
-          ctx!.stroke();
+          if (thin === 1) ctx!.stroke();
         }
       }
       ctx!.lineWidth = lw;
@@ -3542,7 +3580,7 @@ export function LivingBlueprint({
         const pts = pt.pts;
         const n = pt.corners;
         ctx!.beginPath();
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const sx = q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2];
@@ -3554,7 +3592,7 @@ export function LivingBlueprint({
         }
         ctx!.fillStyle = pt.col[g];
         ctx!.fill();
-        if (pt.kind === "inner") continue; // an outline on a leaf in shadow is noise
+        if (pt.kind === "inner" || thin > 1) continue; // an outline on a leaf in shadow is noise
         // Nor on the far side: those leaves are under the near ones, and
         // outlining them was a third of the plant's cost for nothing seen.
         if (pt.n[0] * (eye[0] - pt.c[0]) + pt.n[1] * (eye[1] - pt.c[1]) + pt.n[2] * (eye[2] - pt.c[2]) < 0) continue;
@@ -3770,7 +3808,9 @@ export function LivingBlueprint({
         }
       };
       ctx!.lineJoin = "round";
+      let nth = 0;
       for (const { pt, q, J } of order) {
+        if ((pt.kind === "frond" || pt.kind === "inner") && nth++ % thin) continue;
         const pts = pt.pts;
         const at = (i: number): [number, number] => [
           q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2],
@@ -3798,7 +3838,7 @@ export function LivingBlueprint({
         if (pt.kind === "inner") continue; // an outline on a frond in shadow is noise
         ctx!.lineWidth = lw * 0.45;
         setEdge(pt.kind === "bloom" ? pal.edge : leafEdge);
-        ctx!.stroke();
+        if (thin === 1) ctx!.stroke();
         if (pt.lines) {
           const ln = pt.lines;
           ctx!.beginPath();
@@ -4070,7 +4110,7 @@ export function LivingBlueprint({
       for (const { sp, q, J } of order) {
         const pts = sp.leaves;
         ctx!.beginPath();
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const sx = q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2];
@@ -4082,7 +4122,7 @@ export function LivingBlueprint({
         }
         ctx!.fillStyle = sp.col[g];
         ctx!.fill();
-        if (sp.inner) continue; // an outline on a sprig in shadow is noise
+        if (sp.inner || thin > 1) continue; // an outline on a sprig in shadow is noise
         if (sp.n[0] * (eye[0] - sp.c[0]) + sp.n[1] * (eye[1] - sp.c[1]) + sp.n[2] * (eye[2] - sp.c[2]) < 0) continue;
         ctx!.stroke();
       }
@@ -4372,7 +4412,7 @@ export function LivingBlueprint({
           continue;
         }
         ctx!.beginPath();
-        for (let o = 0; o < pts.length; o += n * 3) {
+        for (let o = 0; o < pts.length; o += n * 3 * thin) {
           for (let k = 0; k < n; k++) {
             const i = o + k * 3;
             const sx = q[0] + J[0] * pts[i] + J[2] * pts[i + 1] + J[4] * pts[i + 2];
@@ -4384,7 +4424,7 @@ export function LivingBlueprint({
         }
         ctx!.fillStyle = pt.col[g];
         ctx!.fill();
-        if (pt.kind === "inner") continue; // an outline on a whorl in shadow is noise
+        if (pt.kind === "inner" || thin > 1) continue; // an outline on a whorl in shadow is noise
         if (pt.n[0] * (eye[0] - pt.c[0]) + pt.n[1] * (eye[1] - pt.c[1]) + pt.n[2] * (eye[2] - pt.c[2]) < 0) continue;
         ctx!.stroke();
       }
@@ -12288,6 +12328,21 @@ export function LivingBlueprint({
     // What the last drawing showed. A still view isn't drawn again: a big
     // yard costs a whole frame to draw, sixty times a second, for nothing.
     let drawn = "";
+    // When the last drawing was made, whether the frame before this one drew
+    // too (the view is moving), and whether it was drawn light.
+    let lastDraw = -Infinity;
+    let wasDrawing = false;
+    let light = false;
+    /** Draws the view at a `motion` level: 0 in full; up from there, softer
+     *  and then with fewer leaves. */
+    const draw = (level: number) => {
+      // Below about ¾ of a pixel a CSS pixel, a softer canvas saves little
+      // more and only blurs.
+      const soft = level >= 3 ? Math.max(0.6, dpr * 0.4) : Math.max(0.75, dpr / 2);
+      sizeTo(level === 0 ? dpr : Math.min(dpr, soft));
+      thin = level >= 3 ? 3 : level >= 2 ? 2 : 1;
+      render();
+    };
     const frame = () => {
       if (embed && !interactive && !reducedMotion) {
         cur.az += 0.05; // slow ambient orbit for the preview card
@@ -12320,12 +12375,24 @@ export function LivingBlueprint({
       const gh = ghostRef.current;
       const showing = [
         cur.az, cur.el, cur.dist, cur.fov, cur.zoom, cur.planT, cur.growth, cur.panX, cur.panZ,
-        cv.width, cv.height, st.mode, st.selected, st.editing, st.selectedId, st.picks, hoverRef.current,
+        W, H, st.mode, st.selected, st.editing, st.selectedId, st.picks, hoverRef.current,
         dr?.dx, dr?.dz, dr?.moved, gh?.[0], gh?.[1], designerRef.current?.placing?.model,
       ].join();
+      const now = performance.now();
       if (W > 0 && H > 0 && showing !== drawn) {
-        render();
+        if (wasDrawing) keepPace(now - lastDraw);
+        light = wasDrawing && motion.level > 0;
+        draw(light ? motion.level : 0);
         drawn = showing;
+        lastDraw = now;
+        wasDrawing = true;
+      } else {
+        wasDrawing = false;
+        if (light && now - lastDraw > SETTLE_MS) {
+          // It stopped: the same view again, in full.
+          draw(0);
+          light = false;
+        }
       }
       raf = requestAnimationFrame(frame);
     };
