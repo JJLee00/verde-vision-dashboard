@@ -57,13 +57,16 @@ const ink = (a: number) => `rgba(28,42,33,${a})`;
 
 /** How light the 3D view draws while it moves, learned from how this
  *  machine keeps up and kept for the page. At 0 every frame is drawn in
- *  full; each level up draws moving frames softer, then with fewer leaves on
- *  the leafy shrubs. A view that stops is drawn again in full, so a still
- *  view looks the same on every machine. */
+ *  full; at 1 a moving view draws its plants from snapshots (see `fromSnap`
+ *  in the renderer); at 2, a plant drawn as ever while it moves (one too big
+ *  for a snapshot, or mid-tween) draws every other leaf. A view that stops
+ *  is drawn again in full, so a still view looks the same on every machine. */
 const motion = { level: 0, gaps: [] as number[] };
-const MOTION_LEVELS = 3;
+const MOTION_LEVELS = 2;
 /** A moving view still this long is drawn again in full. */
 const SETTLE_MS = 150;
+/** What a moving frame spends taking snapshots again, ms. */
+const SNAP_BUDGET_MS = 4;
 
 /** Counts a gap between two moving frames. Most of a dozen running long —
  *  under about 38 a second — and moving frames draw a level lighter. One
@@ -939,8 +942,10 @@ export function LivingBlueprint({
     const cv = canvasRef.current;
     const wrap = wrapRef.current;
     if (!cv || !wrap) return;
-    const ctx = cv.getContext("2d");
-    if (!ctx) return;
+    const screen = cv.getContext("2d");
+    if (!screen) return;
+    // What drawing goes to: the screen, or for a moment a plant's snapshot.
+    let ctx = screen;
 
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const K = reducedMotion ? 1 : 0.14;
@@ -1028,9 +1033,9 @@ export function LivingBlueprint({
     let H = 0;
     /** The screen's pixels per CSS pixel, up to 2. */
     let dpr = 1;
-    /** Leaves drawn on the leafy shrubs: every one, or every 2nd or 3rd while
-     *  a slow machine's view moves (see `motion`) — and their outlines left
-     *  off then, which at the softer size barely show. */
+    /** Leaves drawn on the leafy shrubs: every one, or every 2nd while a
+     *  slow machine's view moves (see `motion`) — and their outlines left
+     *  off then. */
     let thin = 1;
     /** The canvas at s pixels per CSS pixel. Setting a canvas's size wipes
      *  it, even to the size it has, so only a real change is set. */
@@ -1041,7 +1046,7 @@ export function LivingBlueprint({
         cv.width = w;
         cv.height = h;
       }
-      ctx.setTransform(s, 0, 0, s, 0, 0);
+      screen.setTransform(s, 0, 0, s, 0, 0);
     };
     const ro = new ResizeObserver(() => {
       const r = wrap.getBoundingClientRect();
@@ -11492,7 +11497,136 @@ export function LivingBlueprint({
       ctx!.stroke();
     }
 
-    function drawInstance(inst: Instance, g: number, t: number) {
+    /* ── plant snapshots ──
+     * A plant drawn leaf by leaf is nearly all of a frame's cost. On a
+     * machine that can't keep up (`motion`), a moving view draws each plant
+     * from a picture of it taken a moment ago — moved and scaled to where the
+     * plant now stands, and as sharp as ever — and takes a few again each
+     * frame, those the view has turned or zoomed furthest from. A still view
+     * is drawn leaf by leaf, as ever. */
+    type Snap = {
+      /** what the plant looked like, short of the camera */
+      key: string;
+      pic: ImageBitmap | HTMLCanvasElement;
+      /** the plant's middle; the way the eye looked at it, and the pixels a
+       *  foot there, when it was taken */
+      at: [number, number, number];
+      dir: number[];
+      pxFt: number;
+      /** the picture's corner from the middle's point on screen, CSS px */
+      ox: number;
+      oy: number;
+      /** what taking it cost, ms */
+      ms: number;
+    };
+    const snaps = new Map<string, Snap>();
+    const letGo = (sn: Snap) => {
+      if (typeof ImageBitmap !== "undefined" && sn.pic instanceof ImageBitmap) sn.pic.close();
+    };
+    // Where a snapshot is drawn before it's kept as a bitmap — the fastest
+    // thing to lay down — or, without OffscreenCanvas, kept as is.
+    const easel = typeof OffscreenCanvas === "undefined" ? null : new OffscreenCanvas(1, 1);
+    let snapping = false;
+    /** The snapshots to take again this frame (see `due`). */
+    let retake = new Set<string>();
+
+    /** Draws a plant's body from its snapshot, taking it first if it's
+     *  missing, out of date or due. False when the plant should be drawn as
+     *  ever: too big a picture, or reaching behind the eye. */
+    function fromSnap(id: string, key: string, x: number, z: number, h: number, r: number, body: () => void) {
+      // Round the plant, with room for a bloom stalk over its height.
+      const top = h * 1.3 + 0.5;
+      let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const y of [0, top]) {
+        for (const [dx, dz] of [[-r, -r], [r, -r], [-r, r], [r, r]]) {
+          const q = P(x + dx, y, z + dz);
+          if (q[2] <= 1) return false;
+          x0 = Math.min(x0, q[0]);
+          y0 = Math.min(y0, q[1]);
+          x1 = Math.max(x1, q[0]);
+          y1 = Math.max(y1, q[1]);
+        }
+      }
+      // On whole pixels, so a picture that hasn't changed size is laid down
+      // pixel for pixel.
+      [x0, y0] = [Math.floor((x0 - 4) * dpr) / dpr, Math.floor((y0 - 4) * dpr) / dpr];
+      [x1, y1] = [x1 + 4, y1 + 4];
+      if (x1 < 0 || y1 < 0 || x0 > W || y0 > H) return true; // off screen
+      if ((x1 - x0) * (y1 - y0) > W * H * 0.5) return false;
+      const at: [number, number, number] = [x, h / 2, z];
+      const m = P(...at);
+      let sn = snaps.get(id);
+      if (!sn || sn.key !== key || retake.has(id)) {
+        const t0 = performance.now();
+        const old = sn?.pic;
+        const pic = easel ?? (old instanceof HTMLCanvasElement ? old : document.createElement("canvas"));
+        const [pw, ph] = [Math.ceil((x1 - x0) * dpr), Math.ceil((y1 - y0) * dpr)];
+        if (pic.width !== pw || pic.height !== ph) {
+          pic.width = pw;
+          pic.height = ph;
+        }
+        // The plant's drawing takes either kind of 2D context alike.
+        const pc = pic.getContext("2d") as CanvasRenderingContext2D;
+        pc.setTransform(1, 0, 0, 1, 0, 0);
+        pc.clearRect(0, 0, pw, ph);
+        // The plant drawn where it stands on screen, into its picture.
+        pc.setTransform(dpr, 0, 0, dpr, -x0 * dpr, -y0 * dpr);
+        pc.save();
+        const [into, leaves] = [ctx, thin];
+        ctx = pc;
+        thin = 1;
+        try {
+          body();
+        } finally {
+          ctx = into;
+          thin = leaves;
+          pc.restore();
+        }
+        if (sn) letGo(sn);
+        const kept = easel ? easel.transferToImageBitmap() : (pic as HTMLCanvasElement);
+        sn = { key, pic: kept, at, dir: norm(sub(at, eye)), pxFt: focal / m[2], ox: x0 - m[0], oy: y0 - m[1], ms: performance.now() - t0 };
+        snaps.set(id, sn);
+      }
+      const k = focal / m[2] / sn.pxFt;
+      if (Math.abs(k - 1) < 0.04) {
+        // Near enough its own size: copied, not resampled — far cheaper.
+        const px = (v: number) => Math.round(v * dpr) / dpr;
+        ctx.drawImage(sn.pic, px(m[0] + sn.ox), px(m[1] + sn.oy), sn.pic.width / dpr, sn.pic.height / dpr);
+      } else {
+        ctx.drawImage(sn.pic, m[0] + sn.ox * k, m[1] + sn.oy * k, (sn.pic.width / dpr) * k, (sn.pic.height / dpr) * k);
+      }
+      return true;
+    }
+
+    /** The snapshots to take again this frame: those the view has turned
+     *  (by more than 1.5°) or zoomed (by more than 12%) furthest from, as
+     *  many as SNAP_BUDGET_MS allows. Ones of plants no longer there go. */
+    function due(placed: Instance[]) {
+      const here = new Set(placed.map((p) => p.id));
+      const off: [number, string, number][] = [];
+      for (const [id, sn] of snaps) {
+        if (!here.has(id)) {
+          letGo(sn);
+          snaps.delete(id);
+          continue;
+        }
+        const turn = (Math.acos(Math.min(1, dot(norm(sub(sn.at, eye)), sn.dir))) * 180) / Math.PI;
+        const zoom = Math.abs(Math.log(focal / P(...sn.at)[2] / sn.pxFt));
+        const by = turn / 1.5 + zoom / Math.log(1.12);
+        if (by > 1) off.push([by, id, sn.ms]);
+      }
+      off.sort((a, b) => b[0] - a[0]);
+      const out = new Set<string>();
+      let spent = 0;
+      for (const [, id, ms] of off) {
+        if (spent > SNAP_BUDGET_MS) break;
+        out.add(id);
+        spent += ms;
+      }
+      return out;
+    }
+
+    function drawInstance(inst: Instance, g: number, t: number, snap = false) {
       const { meta } = inst;
       const st = stateRef.current;
       // Editing addresses ONE plant; browsing still highlights the species,
@@ -11529,221 +11663,230 @@ export function LivingBlueprint({
       const markA = meta.kind === "light" ? 1 : t;
 
       ctx!.globalAlpha = bodyA * fade;
-      if (inst.model === "WhiteDawnLantana") {
-        drawWhiteDawnBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "PurpleLantana") {
-        drawPurpleLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (inst.model === "YellowLantana") {
-        drawYellowLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (inst.model === "GreenHopseed") {
-        drawHopseedBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "TexasSage") {
-        drawTexasSageBody(x, z, h, rw, inst.id, sel || hover, lw);
-      } else if (inst.model === "YellowBells") {
-        drawYellowBellsBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "RedBirdOfParadise") {
-        drawRedBirdBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "Jojoba") {
-        drawJojobaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "LittleJohnBottlebrush") {
-        drawBottlebrushBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "PaloVerde") {
-        drawPaloVerdeBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "HoneyMesquite") {
-        drawMesquiteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (EBONY_MODELS.has(inst.model)) {
-        drawEbonyBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (MULGA_MODELS.has(inst.model)) {
-        drawMulgaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "Vitex") {
-        drawChasteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "MexicanFencePost") {
-        drawFencePostBody(x, z, h, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "OrganPipe") {
-        drawOrganPipeBody(x, z, h, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "ArgentineToothpick") {
-        drawToothpickBody(x, z, h, symRot, inst.id, sel || hover, lw);
-      } else if (inst.model === "TotemPole") {
-        drawTotemBody(x, z, h, symRot, sel || hover);
-      } else if (inst.model === "MadagascarPalm") {
-        drawMadagascarBody(x, z, h, symRot, sel || hover, lw);
-      } else if (inst.model === "Firestick") {
-        drawFirestickBody(x, z, h, symRot, sel || hover, lw);
-      } else if (meta.kind === "tree" || meta.kind === "shrub") {
-        const isShrub = meta.kind === "shrub";
-        if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
-        ctx!.lineWidth = lw;
-        ctx!.strokeStyle = stroke;
-        ctx!.fillStyle = fill;
-        // The canopy carries the WHOLE plan mark, lifted — outline and the
-        // branching inside it. The silhouette alone is the generic shape of
-        // a canopy; the limbs are what say which tree it is.
-        const canopyY = h * (isShrub ? 0.45 : 0.66);
-        // A symbol with no outline has no canopy disc either: on a mulga the
-        // branches ARE the canopy, and a disc behind them is a shape the
-        // tree does not have.
-        const massed = planSym?.edge !== "none";
-        if (massed) {
-          symbolPath3D(ctx!, P, x, canopyY, z, rw, planSym, symRot);
-          ctx!.fill();
-        }
-        if (planSym) {
-          drawPlanSymbol(ctx!, P, x, z, rw, planSym, {
-            rot: symRot,
-            stroke,
-            detail: sel ? GOLD : verde(0.42),
-            lw,
-            markR: ftPx(x, z, rw),
-            seed: inst.model,
-            y: canopyY,
-          });
-        } else {
-          ctx!.stroke();
-        }
-        if (massed) {
-          symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
-          ctx!.fill();
-          ctx!.stroke();
-        }
-      } else if (meta.kind === "palm") {
-        const top = [x, h, z] as const;
-        const tp = P(...top);
-        const base = P(x, 0, z);
-        ctx!.strokeStyle = verde(0.7);
-        ctx!.lineWidth = Math.max(ftPx(x, z, 0.3), 1.2);
-        ctx!.beginPath();
-        ctx!.moveTo(base[0], base[1]);
-        ctx!.lineTo(tp[0], tp[1]);
-        ctx!.stroke();
-        ctx!.strokeStyle = stroke;
-        ctx!.lineWidth = lw;
-        for (let k = 0; k < 7; k++) {
-          const a = (k / 7) * Math.PI * 2 + 0.4;
-          const tip = P(
-            top[0] + Math.cos(a) * 4.2 * gr,
-            top[1] - 1.9 * gr,
-            top[2] + Math.sin(a) * 4.2 * gr
-          );
-          const c = P(
-            top[0] + Math.cos(a) * 1.7 * gr,
-            top[1] + 1.2 * gr,
-            top[2] + Math.sin(a) * 1.7 * gr
-          );
-          ctx!.beginPath();
-          ctx!.moveTo(tp[0], tp[1]);
-          ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
-          ctx!.stroke();
-        }
-      } else if (meta.kind === "saguaro" || meta.kind === "columnar") {
-        const base = P(x, 0, z);
-        const top = P(x, h, z);
-        const bodyR = Math.min(rw, 0.9);
-        ctx!.strokeStyle = stroke;
-        ctx!.lineCap = "round";
-        ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 2, 3);
-        ctx!.beginPath();
-        ctx!.moveTo(base[0], base[1]);
-        ctx!.lineTo(top[0], top[1]);
-        ctx!.stroke();
-        if (meta.kind === "saguaro") {
-          ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 1.2, 2);
-          for (const [dx, y0, y1] of [
-            [1.9, 0.42, 0.74],
-            [-1.9, 0.52, 0.66],
-          ]) {
-            const j0 = P(x, h * y0, z);
-            const j1 = P(x + dx * gr, h * y0, z);
-            const j2 = P(x + dx * gr, h * y1, z);
-            ctx!.beginPath();
-            ctx!.moveTo(j0[0], j0[1]);
-            ctx!.lineTo(j1[0], j1[1]);
-            ctx!.lineTo(j2[0], j2[1]);
+      const body = () => {
+        if (inst.model === "WhiteDawnLantana") {
+          drawWhiteDawnBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "PurpleLantana") {
+          drawPurpleLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
+        } else if (inst.model === "YellowLantana") {
+          drawYellowLantanaBody(x, z, h, rw, symRot, inst.id, sel || hover);
+        } else if (inst.model === "GreenHopseed") {
+          drawHopseedBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "TexasSage") {
+          drawTexasSageBody(x, z, h, rw, inst.id, sel || hover, lw);
+        } else if (inst.model === "YellowBells") {
+          drawYellowBellsBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "RedBirdOfParadise") {
+          drawRedBirdBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "Jojoba") {
+          drawJojobaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "LittleJohnBottlebrush") {
+          drawBottlebrushBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "PaloVerde") {
+          drawPaloVerdeBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "HoneyMesquite") {
+          drawMesquiteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (EBONY_MODELS.has(inst.model)) {
+          drawEbonyBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (MULGA_MODELS.has(inst.model)) {
+          drawMulgaBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "Vitex") {
+          drawChasteBody(x, z, h, rw, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "MexicanFencePost") {
+          drawFencePostBody(x, z, h, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "OrganPipe") {
+          drawOrganPipeBody(x, z, h, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "ArgentineToothpick") {
+          drawToothpickBody(x, z, h, symRot, inst.id, sel || hover, lw);
+        } else if (inst.model === "TotemPole") {
+          drawTotemBody(x, z, h, symRot, sel || hover);
+        } else if (inst.model === "MadagascarPalm") {
+          drawMadagascarBody(x, z, h, symRot, sel || hover, lw);
+        } else if (inst.model === "Firestick") {
+          drawFirestickBody(x, z, h, symRot, sel || hover, lw);
+        } else if (meta.kind === "tree" || meta.kind === "shrub") {
+          const isShrub = meta.kind === "shrub";
+          if (!isShrub) drawTrunk(x, z, h, rw, symRot, sel ? GOLD : verde(0.7), lw);
+          ctx!.lineWidth = lw;
+          ctx!.strokeStyle = stroke;
+          ctx!.fillStyle = fill;
+          // The canopy carries the WHOLE plan mark, lifted — outline and the
+          // branching inside it. The silhouette alone is the generic shape of
+          // a canopy; the limbs are what say which tree it is.
+          const canopyY = h * (isShrub ? 0.45 : 0.66);
+          // A symbol with no outline has no canopy disc either: on a mulga the
+          // branches ARE the canopy, and a disc behind them is a shape the
+          // tree does not have.
+          const massed = planSym?.edge !== "none";
+          if (massed) {
+            symbolPath3D(ctx!, P, x, canopyY, z, rw, planSym, symRot);
+            ctx!.fill();
+          }
+          if (planSym) {
+            drawPlanSymbol(ctx!, P, x, z, rw, planSym, {
+              rot: symRot,
+              stroke,
+              detail: sel ? GOLD : verde(0.42),
+              lw,
+              markR: ftPx(x, z, rw),
+              seed: inst.model,
+              y: canopyY,
+            });
+          } else {
             ctx!.stroke();
           }
-        }
-        ctx!.lineCap = "butt";
-      } else if (inst.model === "GoldenBarrel") {
-        drawGoldenBarrelBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (meta.kind === "barrel") {
-        drawBarrelBody(x, z, h, rw, symRot, stroke, fill, lw);
-      } else if (inst.model === "AZBoulder1") {
-        drawAzBoulderBody(x, z, rw, symRot, sel || hover, lw);
-      } else if (meta.kind === "boulder") {
-        drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
-      } else if (inst.model === "Ocotillo") {
-        drawOcotilloBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (inst.model.startsWith("YuccaRostrata")) {
-        drawBeakedYuccaBody(x, z, h, rw, symRot, inst.id, sel || hover);
-      } else if (inst.model === "BlackTipAgave") {
-        drawBlackTipBody(x, z, h, rw, symRot, sel || hover);
-      } else if (inst.model === "BlueGlowAgave") {
-        drawBlueGlowBody(x, z, h, rw, symRot, sel || hover);
-      } else if (inst.model === "AgaveTruncata") {
-        drawTruncataBody(x, z, h, symRot, sel || hover, lw);
-      } else if (inst.model === "AgaveAmericana") {
-        drawAmericanaBody(x, z, h, symRot, sel || hover, lw);
-      } else if (inst.model === "TropicalAgave") {
-        drawTropicalAgaveBody(x, z, h, symRot, sel || hover, lw);
-      } else if (inst.model === "AloeFerox") {
-        drawFeroxBody(x, z, h, symRot, sel || hover, lw);
-      } else if (inst.model === "Aloe Vera") {
-        drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw, !(sel || hover));
-      } else if (meta.kind === "rosette") {
-        const bp = P(x, 0, z);
-        ctx!.strokeStyle = stroke;
-        ctx!.lineWidth = Math.max(lw - 0.2, 1.2);
-        for (let k = 0; k < 9; k++) {
-          const a = (k / 9) * Math.PI * 2 + 0.2;
-          const lift = 0.55 + 0.45 * Math.abs(Math.sin(k * 1.7));
-          const tip = P(
-            x + Math.cos(a) * rw,
-            h * lift,
-            z + Math.sin(a) * rw
-          );
-          const c = P(x + Math.cos(a) * rw * 0.25, h * 0.95, z + Math.sin(a) * rw * 0.25);
+          if (massed) {
+            symbolPath3D(ctx!, P, x, h * (isShrub ? 0.8 : 0.92), z, rw * 0.55, planSym, symRot, 48);
+            ctx!.fill();
+            ctx!.stroke();
+          }
+        } else if (meta.kind === "palm") {
+          const top = [x, h, z] as const;
+          const tp = P(...top);
+          const base = P(x, 0, z);
+          ctx!.strokeStyle = verde(0.7);
+          ctx!.lineWidth = Math.max(ftPx(x, z, 0.3), 1.2);
           ctx!.beginPath();
-          ctx!.moveTo(bp[0], bp[1]);
-          ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
+          ctx!.moveTo(base[0], base[1]);
+          ctx!.lineTo(tp[0], tp[1]);
+          ctx!.stroke();
+          ctx!.strokeStyle = stroke;
+          ctx!.lineWidth = lw;
+          for (let k = 0; k < 7; k++) {
+            const a = (k / 7) * Math.PI * 2 + 0.4;
+            const tip = P(
+              top[0] + Math.cos(a) * 4.2 * gr,
+              top[1] - 1.9 * gr,
+              top[2] + Math.sin(a) * 4.2 * gr
+            );
+            const c = P(
+              top[0] + Math.cos(a) * 1.7 * gr,
+              top[1] + 1.2 * gr,
+              top[2] + Math.sin(a) * 1.7 * gr
+            );
+            ctx!.beginPath();
+            ctx!.moveTo(tp[0], tp[1]);
+            ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
+            ctx!.stroke();
+          }
+        } else if (meta.kind === "saguaro" || meta.kind === "columnar") {
+          const base = P(x, 0, z);
+          const top = P(x, h, z);
+          const bodyR = Math.min(rw, 0.9);
+          ctx!.strokeStyle = stroke;
+          ctx!.lineCap = "round";
+          ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 2, 3);
+          ctx!.beginPath();
+          ctx!.moveTo(base[0], base[1]);
+          ctx!.lineTo(top[0], top[1]);
+          ctx!.stroke();
+          if (meta.kind === "saguaro") {
+            ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 1.2, 2);
+            for (const [dx, y0, y1] of [
+              [1.9, 0.42, 0.74],
+              [-1.9, 0.52, 0.66],
+            ]) {
+              const j0 = P(x, h * y0, z);
+              const j1 = P(x + dx * gr, h * y0, z);
+              const j2 = P(x + dx * gr, h * y1, z);
+              ctx!.beginPath();
+              ctx!.moveTo(j0[0], j0[1]);
+              ctx!.lineTo(j1[0], j1[1]);
+              ctx!.lineTo(j2[0], j2[1]);
+              ctx!.stroke();
+            }
+          }
+          ctx!.lineCap = "butt";
+        } else if (inst.model === "GoldenBarrel") {
+          drawGoldenBarrelBody(x, z, h, rw, symRot, inst.id, sel || hover);
+        } else if (meta.kind === "barrel") {
+          drawBarrelBody(x, z, h, rw, symRot, stroke, fill, lw);
+        } else if (inst.model === "AZBoulder1") {
+          drawAzBoulderBody(x, z, rw, symRot, sel || hover, lw);
+        } else if (meta.kind === "boulder") {
+          drawBoulderBody(x, z, rw * 2, h, symRot, planSym, inst.id, sel, lw);
+        } else if (inst.model === "Ocotillo") {
+          drawOcotilloBody(x, z, h, rw, symRot, inst.id, sel || hover);
+        } else if (inst.model.startsWith("YuccaRostrata")) {
+          drawBeakedYuccaBody(x, z, h, rw, symRot, inst.id, sel || hover);
+        } else if (inst.model === "BlackTipAgave") {
+          drawBlackTipBody(x, z, h, rw, symRot, sel || hover);
+        } else if (inst.model === "BlueGlowAgave") {
+          drawBlueGlowBody(x, z, h, rw, symRot, sel || hover);
+        } else if (inst.model === "AgaveTruncata") {
+          drawTruncataBody(x, z, h, symRot, sel || hover, lw);
+        } else if (inst.model === "AgaveAmericana") {
+          drawAmericanaBody(x, z, h, symRot, sel || hover, lw);
+        } else if (inst.model === "TropicalAgave") {
+          drawTropicalAgaveBody(x, z, h, symRot, sel || hover, lw);
+        } else if (inst.model === "AloeFerox") {
+          drawFeroxBody(x, z, h, symRot, sel || hover, lw);
+        } else if (inst.model === "Aloe Vera") {
+          drawAloeBody(x, z, h, rw, symRot, inst.id, sel || hover ? gold : verde, stroke, lw, !(sel || hover));
+        } else if (meta.kind === "rosette") {
+          const bp = P(x, 0, z);
+          ctx!.strokeStyle = stroke;
+          ctx!.lineWidth = Math.max(lw - 0.2, 1.2);
+          for (let k = 0; k < 9; k++) {
+            const a = (k / 9) * Math.PI * 2 + 0.2;
+            const lift = 0.55 + 0.45 * Math.abs(Math.sin(k * 1.7));
+            const tip = P(
+              x + Math.cos(a) * rw,
+              h * lift,
+              z + Math.sin(a) * rw
+            );
+            const c = P(x + Math.cos(a) * rw * 0.25, h * 0.95, z + Math.sin(a) * rw * 0.25);
+            ctx!.beginPath();
+            ctx!.moveTo(bp[0], bp[1]);
+            ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
+            ctx!.stroke();
+          }
+        } else if (meta.kind === "light") {
+          const base = P(x, 0, z);
+          const top = P(x, Math.max(h, 0.5), z);
+          ctx!.strokeStyle = sel ? GOLD : verde(0.7);
+          ctx!.lineWidth = 1.4;
+          ctx!.beginPath();
+          ctx!.moveTo(base[0], base[1]);
+          ctx!.lineTo(top[0], top[1]);
+          ctx!.stroke();
+          ctx!.beginPath();
+          ctx!.arc(top[0], top[1], 2.5, 0, 7);
+          ctx!.fillStyle = sel ? GOLD : gold(0.7);
+          ctx!.fill();
+        } else if (meta.kind === "poolPrefab") {
+          // Footprint rectangle 10ft × 6ft × scale, rotated by yaw.
+          const L = 5 * inst.scale;
+          const Wd = 3 * inst.scale;
+          const a = (inst.yawDeg * Math.PI) / 180;
+          const ca = Math.cos(a);
+          const sa = Math.sin(a);
+          const corners: [number, number][] = (
+            [
+              [-L, -Wd],
+              [L, -Wd],
+              [L, Wd],
+              [-L, Wd],
+            ] as [number, number][]
+          ).map(([px, pz]) => [x + px * ca - pz * sa, z + px * sa + pz * ca]);
+          pathPoly(corners);
+          ctx!.fillStyle = WATER_FILL;
+          ctx!.fill();
+          ctx!.strokeStyle = sel ? GOLD : verde(0.5);
+          ctx!.lineWidth = lw;
+          ctx!.stroke();
+          pathPoly(shrink(corners, 0.75));
+          ctx!.strokeStyle = WATER_LINE;
+          ctx!.lineWidth = 1;
           ctx!.stroke();
         }
-      } else if (meta.kind === "light") {
-        const base = P(x, 0, z);
-        const top = P(x, Math.max(h, 0.5), z);
-        ctx!.strokeStyle = sel ? GOLD : verde(0.7);
-        ctx!.lineWidth = 1.4;
-        ctx!.beginPath();
-        ctx!.moveTo(base[0], base[1]);
-        ctx!.lineTo(top[0], top[1]);
-        ctx!.stroke();
-        ctx!.beginPath();
-        ctx!.arc(top[0], top[1], 2.5, 0, 7);
-        ctx!.fillStyle = sel ? GOLD : gold(0.7);
-        ctx!.fill();
-      } else if (meta.kind === "poolPrefab") {
-        // Footprint rectangle 10ft × 6ft × scale, rotated by yaw.
-        const L = 5 * inst.scale;
-        const Wd = 3 * inst.scale;
-        const a = (inst.yawDeg * Math.PI) / 180;
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        const corners: [number, number][] = (
-          [
-            [-L, -Wd],
-            [L, -Wd],
-            [L, Wd],
-            [-L, Wd],
-          ] as [number, number][]
-        ).map(([px, pz]) => [x + px * ca - pz * sa, z + px * sa + pz * ca]);
-        pathPoly(corners);
-        ctx!.fillStyle = WATER_FILL;
-        ctx!.fill();
-        ctx!.strokeStyle = sel ? GOLD : verde(0.5);
-        ctx!.lineWidth = lw;
-        ctx!.stroke();
-        pathPoly(shrink(corners, 0.75));
-        ctx!.strokeStyle = WATER_LINE;
-        ctx!.lineWidth = 1;
-        ctx!.stroke();
+      };
+      // Nothing to see at no opacity (a plant in the flat plan view).
+      if (bodyA * fade > 0) {
+        const key = `${inst.model}|${x}|${z}|${h}|${rw}|${symRot}|${sel}|${hover}`;
+        const reach = meta.kind === "palm" ? Math.max(rw, 4.5 * gr) : meta.kind === "saguaro" ? Math.max(rw, 2.2 * gr) : rw;
+        const drawn = snap && snapping && bodyA * fade === 1 && fromSnap(inst.id, key, x, z, h, reach * 1.25 + 0.3, body);
+        if (!drawn) body();
       }
 
       ctx!.globalAlpha = fade;
@@ -11948,6 +12091,7 @@ export function LivingBlueprint({
         const from = drag?.from.get(at.id);
         return from ? { ...at, x: from[0] + drag!.dx, z: from[1] + drag!.dz } : at;
       });
+      if (snapping) retake = due(placed);
       // What's being carried: a soft shadow on the ground under each, and
       // the ring it grows to — drawn first, so everything stands on them.
       if (lifted) {
@@ -11956,7 +12100,7 @@ export function LivingBlueprint({
       const items: { d: number; draw: () => void }[] = placed.map((inst) => ({
         d: P(inst.x, 0, inst.z)[2],
         draw: () => {
-          if (!lifted?.from.has(inst.id)) return drawInstance(inst, g, t);
+          if (!lifted?.from.has(inst.id)) return drawInstance(inst, g, t, true);
           // Held up off the ground: the same drawing, raised on screen by
           // what a little height measures there.
           const lift = Math.min(3, Math.max(1.2, matureOf(inst, g).h * 0.2));
@@ -12333,15 +12477,14 @@ export function LivingBlueprint({
     let lastDraw = -Infinity;
     let wasDrawing = false;
     let light = false;
-    /** Draws the view at a `motion` level: 0 in full; up from there, softer
-     *  and then with fewer leaves. */
+    /** Draws the view at a `motion` level: 0 in full; 1 its plants from
+     *  snapshots; 2 also with fewer leaves on any drawn as ever. */
     const draw = (level: number) => {
-      // Below about ¾ of a pixel a CSS pixel, a softer canvas saves little
-      // more and only blurs.
-      const soft = level >= 3 ? Math.max(0.6, dpr * 0.4) : Math.max(0.75, dpr / 2);
-      sizeTo(level === 0 ? dpr : Math.min(dpr, soft));
-      thin = level >= 3 ? 3 : level >= 2 ? 2 : 1;
+      snapping = level >= 1;
+      thin = level >= 2 ? 2 : 1;
       render();
+      snapping = false;
+      thin = 1;
     };
     const frame = () => {
       if (embed && !interactive && !reducedMotion) {
@@ -12400,6 +12543,7 @@ export function LivingBlueprint({
 
     return () => {
       cancelAnimationFrame(raf);
+      snaps.forEach(letGo);
       flattenRef.current = null;
       ro.disconnect();
       cv.removeEventListener("pointerdown", onDown);
