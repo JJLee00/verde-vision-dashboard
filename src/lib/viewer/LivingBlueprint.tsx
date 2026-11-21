@@ -6155,8 +6155,12 @@ export function LivingBlueprint({
       const pal = sel ? FENCE_POST_GOLD : FENCE_POST_COLOURS;
       const tones = FP_TONES[sel ? 1 : 0];
 
+      // Far first by how far each foot stands from the eye across the ground:
+      // the stems stand upright, so that's the order they hide each other in.
+      // (Each stem's depth halfway up let a tall one behind, its middle up
+      // toward the eye, cover a short one in front.)
       const order = grown.stems
-        .map((st) => ({ st, d: P(st.sx, st.ys[1] * 0.5, st.sz)[2] }))
+        .map((st) => ({ st, d: Math.hypot(st.sx - eye[0], st.sz - eye[2]) }))
         .sort((a, b) => b.d - a.d);
       ctx!.lineJoin = "round";
       ctx!.lineCap = "round";
