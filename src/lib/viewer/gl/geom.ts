@@ -17,6 +17,22 @@ export function rgba(css: string): Rgba {
 /** Bytes of an `[r, g, b]` triple, opaque. */
 export const rgb3 = (c: number[]): Rgba => [c[0] | 0, c[1] | 0, c[2] | 0, 255];
 
+/** The viewer's ink, green and (picked) gold, at a strength. */
+export const verde = (a: number) => rgba(`rgba(46,93,67,${a})`);
+export const gold = (a: number) => rgba(`rgba(168,123,47,${a})`);
+
+/** The paper the canvas lays under a translucent face (`LEAF_BODY`). */
+const PAPER = rgba("rgba(235,224,203,0.93)");
+/** A tint over the paper, as the canvas fills one and then the other: the
+ *  one colour they make, straight alpha. */
+export function overPaper(t: Rgba): Rgba {
+  const ta = t[3] / 255;
+  const pa = (PAPER[3] / 255) * (1 - ta);
+  const a = ta + pa;
+  const c = (k: number) => Math.round((t[k] * ta + PAPER[k] * pa) / a);
+  return [c(0), c(1), c(2), Math.round(a * 255)];
+}
+
 /** A simple polygon into triangles by clipping ears: corner indices, three
  *  a triangle. Any winding; small polygons only (it's quadratic). */
 export function earcut(pts: [number, number][]): number[] {

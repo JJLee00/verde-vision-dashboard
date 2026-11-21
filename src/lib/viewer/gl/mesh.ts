@@ -20,9 +20,10 @@ export const VSTRIDE = 52;
  *  least, and its mode; colour and gold; four numbers its mode reads (see
  *  the stroke shader); drawn through a local map, the centres its ends are
  *  placed from; two planes, each a normal (signed bytes) and a number,
- *  that say whether it shows (see `Op` strokes' `cull`); and a point on
- *  each, whose depth it takes drawn in paint order (see `Placed`). */
-export const SSTRIDE = 128;
+ *  that say whether it shows (see `Op` strokes' `cull`); a point on each,
+ *  whose depth it takes drawn in paint order (see `Placed`); and the
+ *  feet-to-pixels it shows between (see `atK`). */
+export const SSTRIDE = 144;
 /** A flower head: its centre, facing normal (w set: cull it on the far
  *  side), radius in feet and the angle its florets turn by, its tone, and
  *  seven jitters for the yellow lantana's florets. */
@@ -42,6 +43,8 @@ export const KSTRIDE = 60;
  *  than its centre it's drawn, feet — so a knob's shadow, the knob and
  *  its shoulder stack as the canvas paints them. */
 export const ESTRIDE = 80;
+/** A yucca's blade: its base and tip from the ball's middle, and its tone. */
+export const BSTRIDE = 28;
 
 /** The camera, for parts that change with it: the canvas's `P` (CSS
  *  pixels, and depth), the eye, which way it looks, and `ftPx` — pixels
@@ -52,6 +55,16 @@ export type Cam = {
   fw: number[];
   ft: (x: number, z: number) => number;
 };
+
+/** How long a foot along x, y or z is on screen at a point — a column of
+ *  the canvas's local map there. */
+export function step(cam: Cam, p: ArrayLike<number>, axis: 0 | 1 | 2) {
+  const q = cam.P(p[0], p[1], p[2]);
+  const e = cam.P(p[0] + (axis === 0 ? 1 : 0), p[1] + (axis === 1 ? 1 : 0), p[2] + (axis === 2 ? 1 : 0));
+  return Math.hypot(e[0] - q[0], e[1] - q[1]);
+}
+/** The canvas's `footPx` at a point: the longest of the three. */
+export const footPx = (cam: Cam, p: ArrayLike<number>) => Math.max(step(cam, p, 0), step(cam, p, 1), step(cam, p, 2));
 /** What a part does this frame: whether it shows at all, the feet-to-
  *  pixels its widths take (the plant's `ftPx` otherwise), and how opaque. */
 export type Frame = (cam: Cam) => { show?: boolean; foot?: number; alpha?: number };
@@ -93,19 +106,32 @@ export type Op =
       bias?: number;
       /** 1 shown when the eye is in front of either plane; 2 when the
        *  camera looks into both (dotted with the way it looks, over the
-       *  plane's number) */
-      cull?: 0 | 1 | 2;
+       *  plane's number); 3 when it's in front of one and not the other (an
+       *  edge of a silhouette); 4 when it's in front of both */
+      cull?: 0 | 1 | 2 | 3 | 4;
       /** drawn this many of its half-widths nearer too (see the stroke
        *  shader) */
       wbias?: number;
+      /** opaque and square: each pixel inked whole or not at all, the
+       *  card's multisampling smoothing its edges, and written in depth */
+      solid?: boolean;
+      /** its solid middles written in depth, so a nearer one hides it */
+      depth?: boolean;
+      /** each stroke placed through the local map at its own `pa`, and its
+       *  widths and window by the feet-to-pixels there (the longest of the
+       *  map's columns) — the canvas's map at each ocotillo cane */
+      atK?: boolean;
     } & Placed)
   | ({
       kind: "ellipses";
       first: number;
       count: number;
       /** 1 an americana's heart: its first half-axis's x is a radius, and
-       *  the ellipse is the canvas's, upright */
-      mode?: 0 | 1;
+       *  the ellipse is the canvas's, upright; 2 a circle that radius
+       *  through the map's longest column, a pixel at least */
+      mode?: 0 | 1 | 2;
+      /** written in depth (the default), so nearer parts go over it */
+      depth?: boolean;
     } & Placed)
   | {
       kind: "flowers";
@@ -146,6 +172,34 @@ export type Op =
       cull: 0 | 1 | 2;
       centre?: [number, number, number];
       slack?: number;
+    }
+  | {
+      kind: "blades";
+      first: number;
+      count: number;
+      /** the ball's middle, where its local map is taken; and where the
+       *  sun's way across the screen is read off (the skirt's) */
+      at: V3;
+      sun: V3;
+      /** the blades this pass draws, by their bucket (band × 5 + tone,
+       *  the band worked out from the camera), and which of each: two
+       *  buckets (-1, none), each with a side — 0 the whole blade, 1 its
+       *  sunny half, -1 its shaded half. An edge pass takes a band */
+      pick: [number, number, number, number];
+      /** 0 a stroke, 1 a kite, 2 a kite's shaded edge */
+      mode: 0 | 1 | 2;
+      colour: Rgba;
+      gold: Rgba;
+      /** a blade's length and width, feet */
+      len: number;
+      wd: number;
+      frame?: Frame;
+    }
+  | {
+      /** strokes laid out afresh each frame, as the canvas lays them on
+       *  screen: a yucca's trunk */
+      kind: "dyn";
+      build: (cam: Cam, b: MeshBuilder) => void;
     };
 
 export type Built = {
@@ -155,6 +209,7 @@ export type Built = {
   flowers: Uint8Array;
   flecks: Uint8Array;
   ellipses: Uint8Array;
+  blades: Uint8Array;
   /** lobes: their records, centres (to sort them by) and tones (to band them by) */
   lobes: Uint8Array;
   lobeC: Float64Array;
@@ -213,6 +268,7 @@ export class MeshBuilder {
   private ll: number[] = [];
   private k = new Records(KSTRIDE, 64);
   private el = new Records(ESTRIDE, 16);
+  private bl = new Records(BSTRIDE, 16);
   /** Triangle and line indices, kept apart and joined at the end. */
   readonly tri: number[] = [];
   readonly line: number[] = [];
@@ -236,6 +292,9 @@ export class MeshBuilder {
   }
   get ellipses() {
     return this.el.n;
+  }
+  get bladeCount() {
+    return this.bl.n;
   }
 
   /** A new once-group's number. */
@@ -310,7 +369,8 @@ export class MeshBuilder {
   }
 
   /** A stroke from a to b, `w` = [feet, line widths, pixels] — the canvas's
-   *  `max(ftPx(feet), lw × line widths, pixels)`. */
+   *  `max(ftPx(feet), lw × line widths, pixels)`; or, with line widths
+   *  under 0, `max(ftPx(feet), pixels)` and that many more line widths. */
   stroke(a: V3, b: V3, w: [number, number, number], col: Rgba, gold: Rgba, round: boolean, dash?: [number, number, number]) {
     this.strokeMode(a, b, w, 0, col, gold, [round ? 1 : 0, dash?.[0] ?? 0, dash?.[1] ?? 0, dash?.[2] ?? 0]);
   }
@@ -339,7 +399,7 @@ export class MeshBuilder {
     col: Rgba,
     gold: Rgba,
     s: [number, number, number, number],
-    x?: { ca?: V3; cb?: V3; na?: V3; nb?: V3; pa?: V3; pb?: V3; thr?: number },
+    x?: { ca?: V3; cb?: V3; na?: V3; nb?: V3; pa?: V3; pb?: V3; thr?: number; win?: [number, number] },
   ) {
     const o = this.s.add();
     const f = o >> 2;
@@ -373,7 +433,8 @@ export class MeshBuilder {
       I[o + at + 1] = q[1];
       I[o + at + 2] = q[2];
       I[o + at + 3] = 0;
-      return p ? (q[0] * p[0] + q[1] * p[1] + q[2] * p[2]) / 127 : (x?.thr ?? 0);
+      if (x?.thr !== undefined) return x.thr;
+      return p ? (q[0] * p[0] + q[1] * p[1] + q[2] * p[2]) / 127 : 0;
     };
     F[f + 24] = plane(x?.na, x?.pa, 88);
     F[f + 25] = plane(x?.nb ?? x?.na, x?.pb ?? x?.pa, 92);
@@ -383,6 +444,10 @@ export class MeshBuilder {
       F[f + 26 + i] = ka[i];
       F[f + 29 + i] = kb[i];
     }
+    F[f + 32] = x?.win?.[0] ?? 0;
+    F[f + 33] = Math.min(x?.win?.[1] ?? 1e30, 1e30);
+    F[f + 34] = 0;
+    F[f + 35] = 0;
   }
 
   /** A path of strokes through points, round-capped so the joins are
@@ -465,6 +530,18 @@ export class MeshBuilder {
     F[f + 19] = dz;
   }
 
+  /** A yucca's blade (see BSTRIDE). */
+  blade(base: V3, tip: V3, tone: number) {
+    const r = this.bl.add();
+    const f = r >> 2;
+    const F = this.bl.f;
+    for (let i = 0; i < 3; i++) {
+      F[f + i] = base[i];
+      F[f + 3 + i] = tip[i];
+    }
+    F[f + 6] = tone;
+  }
+
   /** Marks where a run of triangles, lines, strokes or flowers ends, as one
    *  draw. Call with where the run began. */
   tris(first: number, depth: boolean, cull: boolean | 2, o?: Placed & { offset?: number; bias?: number }) {
@@ -473,10 +550,16 @@ export class MeshBuilder {
   lines(first: number, colour: Rgba, gold: Rgba, cull: boolean, once: number) {
     if (this.line.length > first) this.ops.push({ kind: "lines", first, count: this.line.length - first, colour, gold, cull, once });
   }
-  strokeRun(first: number, once: number, stamen?: [number, number], bias?: number, o?: Placed & { cull?: 0 | 1 | 2; wbias?: number }) {
+  strokeRun(
+    first: number,
+    once: number,
+    stamen?: [number, number],
+    bias?: number,
+    o?: Placed & { cull?: 0 | 1 | 2 | 3 | 4; wbias?: number; solid?: boolean; depth?: boolean; atK?: boolean },
+  ) {
     if (this.s.n > first) this.ops.push({ kind: "strokes", first, count: this.s.n - first, once, stamen, bias, ...o });
   }
-  ellipseRun(first: number, o?: Placed & { mode?: 0 | 1 }) {
+  ellipseRun(first: number, o?: Placed & { mode?: 0 | 1 | 2; depth?: boolean }) {
     if (this.el.n > first) this.ops.push({ kind: "ellipses", first, count: this.el.n - first, ...o });
   }
   flowerRun(first: number, style: 0 | 1 | 2, bias: number, cy: number, pal: Float32Array, palGold: Float32Array) {
@@ -487,6 +570,13 @@ export class MeshBuilder {
   }
   fleckRun(first: number, o: Omit<Extract<Op, { kind: "flecks" }>, "kind" | "first" | "count">) {
     if (this.k.n > first) this.ops.push({ kind: "flecks", first, count: this.k.n - first, ...o });
+  }
+  /** A pass over the blades from `first` on (see `Op` blades). */
+  bladeRun(first: number, o: Omit<Extract<Op, { kind: "blades" }>, "kind" | "first" | "count">) {
+    if (this.bl.n > first) this.ops.push({ kind: "blades", first, count: this.bl.n - first, ...o });
+  }
+  dyn(build: (cam: Cam, b: MeshBuilder) => void) {
+    this.ops.push({ kind: "dyn", build });
   }
 
   finish(): Built {
@@ -502,6 +592,7 @@ export class MeshBuilder {
       flowers: this.fl.bytes,
       flecks: this.k.bytes,
       ellipses: this.el.bytes,
+      blades: this.bl.bytes,
       lobes: this.lo.bytes,
       lobeC: new Float64Array(this.lc),
       lobeLevel: new Uint8Array(this.ll),

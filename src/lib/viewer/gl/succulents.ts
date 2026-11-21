@@ -18,9 +18,10 @@ import { BG_FACE_LINES, BG_MODEL, BG_PTS, BG_SPLIT, BG_TONES, BLUE_GLOW_COLOURS,
 import { BLACK_TIP_COLOURS, BLACK_TIP_GOLD, BT_FACE_LINES, BT_PTS, BT_TONES, growBlackTip } from "../bodies/blackTip";
 import { TA_LEAVES, TA_PTS, TA_STRIPE, TA_TONES, TROPICAL_AGAVE_COLOURS, TROPICAL_AGAVE_GOLD, growTropicalAgave } from "../bodies/tropicalAgave";
 import { AM_DEAD, AM_DEAD_PTS, AM_FACE_LINES, AM_PTS, AM_TEETH, AM_TONES, AMERICANA_COLOURS, AMERICANA_GOLD, growAmericana } from "../bodies/americana";
+import { AF_DEAD, AF_DEAD_PTS, AF_FACE_LINES, AF_PTS, AF_TEETH, AF_TONES, FEROX_COLOURS, FEROX_GOLD, growFerox } from "../bodies/ferox";
 import { TC_DOME, TC_FACE_LINES, TC_MODEL, TC_PTS, TC_SPLIT, TC_TEETH, TC_TONES, TRUNCATA_COLOURS, TRUNCATA_GOLD, growTruncata } from "../bodies/truncata";
 import { hull3, rgb3, rgba, type Rgba } from "./geom";
-import type { Cam, MeshBuilder } from "./mesh";
+import { footPx, step, type Cam, type MeshBuilder } from "./mesh";
 
 type V3 = [number, number, number];
 /** A colour and its gold (selected) colour. */
@@ -38,6 +39,7 @@ export const SUCCULENT_MODELS = new Set([
   "TropicalAgave",
   "AgaveAmericana",
   "AgaveTruncata",
+  "AloeFerox",
 ]);
 
 /** Lays out the cactus or agave `model`, if it's one. */
@@ -52,6 +54,7 @@ export function buildSucculent(b: MeshBuilder, model: string, x: number, z: numb
   else if (model === "TropicalAgave") tropical(b, x, z, h, rot);
   else if (model === "AgaveAmericana") americana(b, x, z, h, rot);
   else if (model === "AgaveTruncata") truncata(b, x, z, h, rot);
+  else if (model === "AloeFerox") ferox(b, x, z, h, rot);
 }
 
 const at3 = (a: ArrayLike<number>, o: number): V3 => [a[o], a[o + 1], a[o + 2]];
@@ -62,16 +65,6 @@ const lerp = (a: ArrayLike<number>, c: ArrayLike<number>, t: number): V3 => [
   a[2] + (c[2] - a[2]) * t,
 ];
 const pal = (c: string, g: string): Pal => [rgba(c), rgba(g)];
-
-/** How long a foot along x, y or z is on screen at a point — a column of
- *  the canvas's local map there. */
-function step(cam: Cam, p: ArrayLike<number>, axis: 0 | 1 | 2) {
-  const q = cam.P(p[0], p[1], p[2]);
-  const e = cam.P(p[0] + (axis === 0 ? 1 : 0), p[1] + (axis === 1 ? 1 : 0), p[2] + (axis === 2 ? 1 : 0));
-  return Math.hypot(e[0] - q[0], e[1] - q[1]);
-}
-/** The canvas's `footPx` at a plant's foot: the longest of the three. */
-const footPx = (cam: Cam, p: ArrayLike<number>) => Math.max(step(cam, p, 0), step(cam, p, 1), step(cam, p, 2));
 
 /** A strip of quads between two lines of points: one face, passed over on
  *  the far side of `face` (its normal, through its middle). */
@@ -505,17 +498,17 @@ function margin(b: MeshBuilder, L: Leaves, i: number, line: number, j0: number, 
     });
   }
 }
-/** A tooth off a margin, hooked toward the tip, where either face beside
- *  the margin shows: laid once on each face's terms (it's opaque, so twice
- *  is no different). */
-function tooth(b: MeshBuilder, L: Leaves, list: Float32Array, o: number, fa: number, fb: number, c: Pal) {
+/** A tooth off a margin, hooked toward the tip (`hook` of its half-foot),
+ *  where either face beside the margin shows: laid once on each face's
+ *  terms (it's opaque, so twice is no different). */
+function tooth(b: MeshBuilder, L: Leaves, list: Float32Array, o: number, fa: number, fb: number, c: Pal, hook = 0.8) {
   const m = add(L.o, at3(list, o));
   const out = at3(list, o + 3);
   const a = at3(list, o + 6);
   for (const f of [fa, fb]) {
     const face = faceAt(L, f);
     const base = b.verts;
-    for (const p of [add(m, a, -1), add(m, a), add(add(m, out), a, 0.8)]) b.vert(p[0], p[1], p[2], c[0], c[1], face.n, face.c, L.at);
+    for (const p of [add(m, a, -1), add(m, a), add(add(m, out), a, hook)]) b.vert(p[0], p[1], p[2], c[0], c[1], face.n, face.c, L.at);
     b.tri.push(base, base + 1, base + 2);
   }
 }
@@ -760,4 +753,41 @@ function truncata(b: MeshBuilder, x: number, z: number, h: number, rot: number) 
   const s1 = b.strokes;
   for (let i = 0; i < leaves; i++) spineOf(b, L, g.spine, i, [h * 0.022, 0, 1.2], pal(C.spine, G.spine), true);
   b.strokeRun(s1, 0, undefined, 0, { local: at, wbias: 2, frame: (cam) => ({ foot: step(cam, at, 1) }) });
+}
+
+function ferox(b: MeshBuilder, x: number, z: number, h: number, rot: number) {
+  const g = growFerox(x, z, h, rot);
+  const at = g.core;
+  const C = FEROX_COLOURS;
+  const G = FEROX_GOLD;
+  const size = (cam: Cam) => step(cam, at, 1) * h;
+  // Its leaves, the dead ones at its foot and the heart go down in the
+  // canvas's far-to-near sort (see `flat`), as the americana's do.
+  const L: Leaves = { leaf: g.leaf, pts: AF_PTS, faceN: g.faceN, faceMid: g.faceMid, faceTone: g.faceTone, at, o: [0, 0, 0] };
+  const leaves = g.faceTone.length / 4;
+  const t0 = b.tri.length;
+  for (let i = 0; i < leaves; i++) for (let f = 0; f < 4; f++) leafFace(b, L, AF_TONES, i * 4 + f, i, AF_FACE_LINES[f], 0, AF_PTS - 1);
+  for (let i = 0; i < AF_DEAD; i++) {
+    const t = (k: number): Pal => pal(AF_TONES[0][g.deadTone[i * 2 + k]], AF_TONES[1][g.deadTone[i * 2 + k]]);
+    ribbon(b, g.dead, i * AF_DEAD_PTS * 6, AF_DEAD_PTS, 1, at, at3(g.deadN, i * 3), at3(g.deadMid, i * 3), t(0), t(1));
+  }
+  b.tris(t0, true, true, { local: at, flat: true });
+  const e0 = b.ellipses;
+  const core = pal(C.core, G.core);
+  b.ellipse(at, [0, 0, 0], [0.13 * h, 0, 0], [0, 0, 0], [0, 0, 0], core[0], core[1], null);
+  b.ellipseRun(e0, { local: at, mode: 1 });
+  // The red-brown margins, and the teeth down them, as soon as they'd show.
+  const s0 = b.strokes;
+  for (let i = 0; i < leaves; i++) {
+    for (const line of [1, 2]) margin(b, L, i, line, 0, AF_PTS - 1, i * 4 + line - 1, i * 4 + line + 1, h * 0.0028, pal(C.margin, G.margin));
+  }
+  b.strokeRun(s0, b.once(), undefined, 0.01, { local: at, flat: true, cull: 1, frame: (cam) => ({ show: size(cam) > 110, foot: step(cam, at, 1) }) });
+  const t1 = b.tri.length;
+  const teeth = pal(C.teeth, G.teeth);
+  for (let i = 0; i < leaves; i++) {
+    for (const line of [1, 2]) {
+      for (let k = 0; k < AF_TEETH; k++) tooth(b, L, g.teeth, ((i * 2 + line - 1) * AF_TEETH + k) * 9, i * 4 + line - 1, i * 4 + line + 1, teeth, 0.6);
+    }
+  }
+  b.tris(t1, true, true, { local: at, flat: true, offset: 0, frame: (cam) => ({ show: size(cam) > 160 }) });
 }

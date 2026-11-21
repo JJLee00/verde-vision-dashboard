@@ -1,6 +1,6 @@
 // The 3D view's WebGL layer: the yard, the leafy shrubs, the trees, the
-// cacti and the agaves, drawn by the graphics card on a canvas under the
-// one that draws everything else. Each plant is grown once into triangles,
+// cacti, agaves and aloes, the yuccas, the ocotillo and the boulders, drawn
+// by the graphics card on a canvas under the one that draws everything else. Each plant is grown once into triangles,
 // strokes, flower heads, flecks and ellipses and kept on the card, so
 // turning the camera costs a few draw calls a plant, not every leaf again.
 //
@@ -10,7 +10,7 @@
 
 import { buildPlant, plantKey, type GLPlant } from "./shrubs";
 import { buildYard, yardFrame, yardKey, SAND, GRID, type GLYard, type YardShapes, type YardStep } from "./yard";
-import { ESTRIDE, FSTRIDE, KSTRIDE, LSTRIDE, MeshBuilder, SSTRIDE, VSTRIDE, type Built, type Cam, type Frame, type Op } from "./mesh";
+import { BSTRIDE, ESTRIDE, FSTRIDE, KSTRIDE, LSTRIDE, MeshBuilder, SSTRIDE, VSTRIDE, type Built, type Cam, type Frame, type Op } from "./mesh";
 import { CT_FINGERS } from "../bodies/chaste";
 
 export type { GLPlant } from "./shrubs";
@@ -128,8 +128,16 @@ void main() {
 // they turn toward the eye. With uFlat, both ends take the depth of the
 // nearer of its planes' points that faces the eye (see `Placed` in
 // mesh.ts), uBias nearer. With uLocal, its ends are
-// placed through the local map, as the fill shader places a vertex; uCull
-// passes it over by its two planes (see `Op` strokes). uPass 1 draws only
+// placed through the local map, as the fill shader places a vertex — with
+// uAtK, the map at its own `pa`, whose longest column is then its
+// feet-to-pixels, and it shows only while that's in its window (iX); uCull
+// passes it over by its two planes (see `Op` strokes). Mode 5 is a piece of
+// a curve, a quarter (iS.y) of the canvas's quadratic from end to end
+// bowed by iS.x (a yucca's straw); mode 6 a piece of a ribbon down an
+// axis (see below); mode 7 a ray from its start, the way the local map
+// takes it to its end, as long as iS.x feet or iS.y pixels (an ocotillo's
+// flame). With uSolid it's inked whole or not at all, to be written in
+// depth, its edges left to the card's multisampling. uPass 1 draws only
 // where it covers a pixel whole, 2 only where it doesn't (see `strokes`
 // below).
 const STROKE_VS = `#version 300 es
@@ -149,6 +157,8 @@ uniform float uLocal;
 uniform mat3x2 uLJ;
 uniform float uCull;
 uniform float uFlat;
+uniform float uSolid;
+uniform float uAtK;
 layout(location = 0) in vec3 iA;
 layout(location = 1) in vec3 iB;
 layout(location = 2) in vec4 iW;
@@ -163,45 +173,95 @@ layout(location = 10) in vec4 iNB;
 layout(location = 11) in vec2 iND;
 layout(location = 12) in vec3 iKA;
 layout(location = 13) in vec3 iKB;
+layout(location = 14) in vec4 iX;
 out vec4 vC;
 out vec2 vL;
 flat out vec3 vG;
 flat out vec3 vD;
 ${SCREEN}
+const float NEAR = 1.0;
 vec3 px(vec4 c) {
   vec3 n = c.xyz / c.w;
   return vec3((n.x * 0.5 + 0.5) * uView.x, (0.5 - n.y * 0.5) * uView.y, n.z);
 }
+// Depth at a point, uBias nearer.
+float kz(vec3 k) {
+  vec4 z = uM * vec4(k - uFw * uBias, 1.0);
+  return clamp(z.z / max(z.w, NEAR), -1.0, 1.0);
+}
 void main() {
+  float ea = dot(iNA.xyz, uEye) - iND.x;
+  float eb = dot(iNB.xyz, uEye) - iND.y;
   bool off = false;
-  if (uCull > 1.5) off = dot(iNA.xyz, -uFw) - iND.x <= 0.0 || dot(iNB.xyz, -uFw) - iND.y <= 0.0;
-  else if (uCull > 0.5) off = dot(iNA.xyz, uEye) - iND.x <= 0.0 && dot(iNB.xyz, uEye) - iND.y <= 0.0;
+  if (uCull > 3.5) off = ea <= 0.0 || eb <= 0.0;
+  else if (uCull > 2.5) off = (ea > 0.0) == (eb > 0.0);
+  else if (uCull > 1.5) off = dot(iNA.xyz, -uFw) - iND.x <= 0.0 || dot(iNB.xyz, -uFw) - iND.y <= 0.0;
+  else if (uCull > 0.5) off = ea <= 0.0 && eb <= 0.0;
+  mat3x2 J = uLJ;
+  float foot = uFoot;
+  if (uAtK > 0.5) {
+    vec2 q = scr(iKA);
+    J = mat3x2(scr(iKA + vec3(1.0, 0.0, 0.0)) - q, scr(iKA + vec3(0.0, 1.0, 0.0)) - q, scr(iKA + vec3(0.0, 0.0, 1.0)) - q);
+    foot = max(max(length(J[0]), length(J[1])), length(J[2]));
+  }
+  off = off || foot < iX.x || foot >= iX.y;
   vec4 ca = uM * vec4(iA, 1.0);
   vec4 cb = uM * vec4(iB, 1.0);
-  const float NEAR = 1.0;
   if (off || (ca.w < NEAR && cb.w < NEAR)) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  // In paint order: the nearer of its planes' points that faces the eye.
+  vec3 k = (ea >= 0.0) == (eb >= 0.0) ? (dot(iKA - iKB, uFw) < 0.0 ? iKA : iKB) : (ea >= 0.0 ? iKA : iKB);
+  vC = uGold > 0.5 ? iG : iC;
+  vD = vec3(0.0);
+  if (iW.w > 5.5 && iW.w < 6.5) {
+    // A piece of a ribbon down an axis (an ocotillo's cane), A to B, each
+    // projected: across each as the axis runs there (from the points either
+    // side of it: CA and B, A and CB), half as wide as iW.x feet at A and
+    // iW.y at B, iW.z pixels at least. With iS, its middle that many feet
+    // off the axis (x at A, y at B), to the side the axis climbs the
+    // screen toward — the canvas's lit side of a cane.
+    vec4 cc = uM * vec4(iCA, 1.0);
+    vec4 cd = uM * vec4(iCB, 1.0);
+    if (min(min(ca.w, cb.w), min(cc.w, cd.w)) < NEAR) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+    vec3 A = px(ca);
+    vec3 B = px(cb);
+    vec2 dA = B.xy - px(cc).xy;
+    vec2 dB = px(cd).xy - A.xy;
+    float lA = length(dA) > 0.0 ? length(dA) : 1.0;
+    float lB = length(dB) > 0.0 ? length(dB) : 1.0;
+    vec2 nA = vec2(-dA.y, dA.x) / lA;
+    vec2 nB = vec2(-dB.y, dB.x) / lB;
+    float oA = -iS.x * foot * (dA.y > 0.0 ? 1.0 : -1.0);
+    float oB = -iS.y * foot * (dB.y > 0.0 ? 1.0 : -1.0);
+    bool atB = aQ.x > 0.5;
+    vec2 p = atB ? B.xy + nB * (oB + aQ.y * max(iW.z, iW.y * foot)) : A.xy + nA * (oA + aQ.y * max(iW.z, iW.x * foot));
+    float z = uFlat > 0.5 ? kz(k) : atB ? B.z : A.z;
+    gl_Position = vec4(p.x / uView.x * 2.0 - 1.0, 1.0 - p.y / uView.y * 2.0, z, 1.0);
+    vL = vec2(0.0);
+    vG = vec3(0.0, 0.0, 4.0);
     return;
   }
   vec3 a;
   vec3 b;
   if (uLocal > 0.5) {
-    a = vec3(scr(iCA) + uLJ * (iA - iCA), ca.z / max(ca.w, NEAR));
-    b = vec3(scr(iCB) + uLJ * (iB - iCB), cb.z / max(cb.w, NEAR));
+    a = vec3(scr(iCA) + J * (iA - iCA), ca.z / max(ca.w, NEAR));
+    b = vec3(scr(iCB) + J * (iB - iCB), cb.z / max(cb.w, NEAR));
   } else {
     if (ca.w < NEAR) ca = mix(ca, cb, (NEAR - ca.w) / (cb.w - ca.w));
     else if (cb.w < NEAR) cb = mix(cb, ca, (NEAR - cb.w) / (ca.w - cb.w));
     a = px(ca);
     b = px(cb);
   }
-  float w = max(max(iW.x * uFoot, iW.y * uLw), iW.z);
-  float bias = uBias + uWBias * 0.5 * w / max(uFoot, 1e-6);
+  // Line widths under 0: the rest, and that many line widths more.
+  float w = iW.y < 0.0 ? max(iW.x * foot, iW.z) - iW.y * uLw : max(max(iW.x * foot, iW.y * uLw), iW.z);
+  float bias = uBias + uWBias * 0.5 * w / max(foot, 1e-6);
   if (uFlat > 0.5) {
-    bool fa = dot(iNA.xyz, uEye) - iND.x >= 0.0;
-    bool fb = dot(iNB.xyz, uEye) - iND.y >= 0.0;
-    vec3 k = fa == fb ? (dot(iKA - iKB, uFw) < 0.0 ? iKA : iKB) : (fa ? iKA : iKB);
-    vec4 zk = uM * vec4(k - uFw * uBias, 1.0);
-    a.z = clamp(zk.z / max(zk.w, NEAR), -1.0, 1.0);
+    a.z = kz(k);
     b.z = a.z;
   } else if (bias > 0.0) {
     vec4 za = uM * vec4(iA - uFw * bias, 1.0);
@@ -211,7 +271,21 @@ void main() {
   }
   float round = iS.x;
   vec3 dash = vec3(0.0);
-  if (iW.w > 3.5) {
+  if (iW.w > 6.5) {
+    vec2 d = J * (iB - iA);
+    float l = length(d);
+    b = vec3(a.xy + (l > 0.0 ? d / l : vec2(0.0)) * max(iS.y, iS.x * foot), a.z);
+    round = 1.0;
+  } else if (iW.w > 4.5) {
+    vec2 c = (a.xy + b.xy) * 0.5 + vec2(a.y - b.y, b.x - a.x) * iS.x;
+    float t0 = iS.y * 0.25;
+    float t1 = t0 + 0.25;
+    vec2 q0 = mix(mix(a.xy, c, t0), mix(c, b.xy, t0), t0);
+    vec2 q1 = mix(mix(a.xy, c, t1), mix(c, b.xy, t1), t1);
+    a.xy = q0;
+    b.xy = q1;
+    round = 1.0;
+  } else if (iW.w > 3.5) {
     vec3 s = mix(a, b, iS.x);
     a = s;
     b = s;
@@ -228,7 +302,7 @@ void main() {
     float l = length(d);
     vec2 u = l > 1e-6 ? d / l : vec2(1.0, 0.0);
     vec3 s = mix(a, b, iS.x);
-    float len = max(uStamen.x * uFoot, uStamen.y);
+    float len = max(uStamen.x * foot, uStamen.y);
     a = s;
     b = vec3(s.xy + (vec2(-u.y, u.x) * iS.z + u * iS.y) * len, s.z);
     round = 1.0;
@@ -243,16 +317,17 @@ void main() {
   vec2 n = vec2(-u.y, u.x);
   float hw = 0.5 * w * uDpr;
   bool thorn = round > 1.5 && round < 2.5;
-  float ext = (round > 0.5 && !thorn ? hw : 0.0) + 1.0;
+  bool solid = uSolid > 0.5;
+  float ext = solid ? 0.0 : (round > 0.5 && !thorn ? hw : 0.0) + 1.0;
   float along = aQ.x > 0.5 ? L + ext : (thorn ? -0.25 * L - 1.0 : -ext);
-  float across = aQ.y * (hw + 1.0);
+  float across = aQ.y * (hw + (solid ? 0.0 : 1.0));
   vec2 p = pa + u * along + n * across;
-  float z = mix(a.z, b.z, clamp(along / max(L, 1e-6), 0.0, 1.0));
+  // One depth all along, in paint order, to the bit.
+  float z = uFlat > 0.5 ? a.z : mix(a.z, b.z, clamp(along / max(L, 1e-6), 0.0, 1.0));
   gl_Position = vec4(p.x / (uView.x * uDpr) * 2.0 - 1.0, 1.0 - p.y / (uView.y * uDpr) * 2.0, z, 1.0);
   vL = vec2(along, across);
-  vG = vec3(L, hw, round);
+  vG = vec3(L, hw, solid ? 4.0 : round);
   vD = dash * uDpr;
-  vC = uGold > 0.5 ? iG : iC;
 }`;
 
 const STROKE_FS = `#version 300 es
@@ -271,7 +346,9 @@ void main() {
   float L = vG.x;
   float hw = vG.y;
   float c;
-  if (vG.z > 2.5) {
+  if (vG.z > 3.5) {
+    c = 1.0;
+  } else if (vG.z > 2.5) {
     c = span(vL.y - 0.5, vL.y + 0.5, -hw, hw) * span(vL.x - 0.5, vL.x + 0.5, -hw, L + hw);
   } else if (vG.z > 1.5) {
     // A thorn: inside its two long edges and past its foot.
@@ -525,7 +602,7 @@ void main() {
 // An ellipse — a cactus's knob, or an agave's heart — placed as the canvas
 // places one: its centre's projection, shifted through the local map, and
 // the ellipse its ellipsoid's three half-axes make through that map (mode
-// 1, the americana's upright heart). Written in depth at its centre, a
+// 1, the americana's upright heart; mode 2, a yucca's round heart). Written in depth at its centre, a
 // little farther or nearer, so a knob's shadow, the knob and its shoulder
 // stack as the canvas paints them and nearer knobs go over farther.
 const ELLIPSE_VS = `#version 300 es
@@ -562,7 +639,10 @@ void main() {
   float ea;
   float eb;
   float ang = 0.0;
-  if (uMode > 0.5) {
+  if (uMode > 1.5) {
+    ea = max(1.0, iA1.x * max(max(length(uLJ[0]), length(uLJ[1])), length(uLJ[2])));
+    eb = ea;
+  } else if (uMode > 0.5) {
     ea = length(vec2(uLJ[0].x, uLJ[2].x)) * iA1.x;
     eb = length(vec2(uLJ[1].y * 0.8, uLJ[2].y)) * iA1.x;
   } else {
@@ -591,6 +671,107 @@ void main() {
   vec4 cz = uM * vec4(iC + uFw * iT.y, 1.0);
   gl_Position = vec4(p.x / uView.x * 2.0 - 1.0, 1.0 - p.y / uView.y * 2.0, clamp(cz.z / max(cz.w, 1.0), -1.0, 1.0), 1.0);
   vC = uGold > 0.5 ? iGold : iCol;
+}`;
+
+// A yucca's blade. Which pass it goes in turns with the camera, so it's
+// worked out here, as the canvas works it out: the far side of the ball,
+// or how far toward the camera its tip comes in quarters of a blade, then
+// its tone. A pass draws those of its own (uPick, see `Op` blades): close
+// up as kites, long and pointed, widest a third of the way out — the whole
+// blade, or its half toward the sun or away from it; far off as strokes;
+// and close up each one's shaded edge. Placed as the canvas places them,
+// through the local map at the ball.
+const BLADE_VS = `#version 300 es
+precision highp float;
+uniform mat4 uM;
+uniform vec2 uView;
+uniform float uDpr;
+uniform vec3 uFw;
+uniform mat3x2 uLJ;
+uniform vec3 uAt;
+uniform vec2 uSun;
+uniform vec4 uPick;
+uniform float uMode;
+uniform float uFoot;
+uniform vec2 uBlade;
+uniform vec4 uCol;
+uniform vec4 uGoldCol;
+uniform float uGold;
+layout(location = 0) in vec3 iB;
+layout(location = 1) in vec3 iT;
+layout(location = 2) in float iTone;
+out vec4 vC;
+out vec2 vL;
+flat out vec3 vG;
+flat out vec3 vD;
+${SCREEN}
+const int FAN[9] = int[](0, 1, 2, 0, 2, 3, 0, 3, 4);
+const int QUAD[9] = int[](0, 1, 2, 0, 2, 3, 0, 0, 0);
+const vec2 CORNER[9] = vec2[](vec2(0.0, -1.0), vec2(0.0, 1.0), vec2(1.0, -1.0), vec2(0.0, 1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(0.0, -1.0), vec2(0.0, -1.0), vec2(0.0, -1.0));
+void main() {
+  float d = -dot(uFw, iT) / uBlade.x;
+  float band = d < 0.0 ? 0.0 : 1.0 + min(3.0, floor(d * 4.4));
+  float key = band * 5.0 + iTone;
+  float side = 0.0;
+  bool on = true;
+  if (uMode > 1.5) on = abs(band - uPick.x) < 0.5;
+  else if (abs(key - uPick.x) < 0.5) side = uPick.y;
+  else if (uPick.z >= 0.0 && abs(key - uPick.z) < 0.5) side = uPick.w;
+  else on = false;
+  vec4 cc = uM * vec4(uAt, 1.0);
+  if (!on || cc.w < 1.0) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  vec2 q = scr(uAt);
+  vec2 b = q + uLJ * iB;
+  vec2 t = q + uLJ * iT;
+  float wPx = uBlade.y * uFoot;
+  float z = clamp(cc.z / cc.w, -1.0, 1.0);
+  vec2 u = t - b;
+  float ul = length(u) > 0.0 ? length(u) : 1.0;
+  float hk = wPx * 0.36 * sqrt(min(1.0, ul / (uBlade.x * uFoot)));
+  vec2 n = vec2(-u.y, u.x) / ul * hk;
+  int k = gl_VertexID % 9;
+  vC = uGold > 0.5 ? uGoldCol : uCol;
+  vD = vec3(0.0);
+  if (uMode > 0.5 && uMode < 1.5) {
+    if (dot(n, uSun) < 0.0) n = -n;
+    vec2 m = b + u * 0.35;
+    vec2 p;
+    if (side == 0.0) {
+      vec2 P5[5] = vec2[](b + n * 0.4, m + n, t, m - n, b - n * 0.4);
+      p = P5[FAN[k]];
+    } else {
+      vec2 P4[4] = vec2[](b, b + n * 0.4 * side, m + n * side, t);
+      p = P4[QUAD[k]];
+    }
+    gl_Position = vec4(p.x / uView.x * 2.0 - 1.0, 1.0 - p.y / uView.y * 2.0, z, 1.0);
+    vL = vec2(0.0);
+    vG = vec3(0.0, 0.0, 4.0);
+    return;
+  }
+  // A stroke, butt-ended: the whole blade, or from its widest point on its
+  // shaded side to its tip.
+  vec2 a = b;
+  float w = max(0.6, wPx * 0.5);
+  if (uMode > 1.5) {
+    if (dot(n, uSun) > 0.0) n = -n;
+    a = b + u * 0.35 + n;
+    w = max(0.6, wPx * 0.1);
+  }
+  vec2 pa = a * uDpr;
+  vec2 dd = t * uDpr - pa;
+  float L = length(dd);
+  vec2 uu = L > 1e-6 ? dd / L : vec2(1.0, 0.0);
+  float hw = 0.5 * w * uDpr;
+  vec2 cq = CORNER[k];
+  float along = cq.x > 0.5 ? L + 1.0 : -1.0;
+  float across = cq.y * (hw + 1.0);
+  vec2 p = pa + uu * along + vec2(-uu.y, uu.x) * across;
+  gl_Position = vec4(p.x / (uView.x * uDpr) * 2.0 - 1.0, 1.0 - p.y / (uView.y * uDpr) * 2.0, z, 1.0);
+  vL = vec2(along, across);
+  vG = vec3(L, hw, 0.0);
 }`;
 
 // A fleck of leaf — a dash slanted on screen, a chaste leaf's hand of five
@@ -755,6 +936,26 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
     "uLJ",
     "uCull",
     "uFlat",
+    "uSolid",
+    "uAtK",
+    "uPass",
+    "uA",
+  ]);
+  const blade = program(BLADE_VS, STROKE_FS, [
+    "uM",
+    "uView",
+    "uDpr",
+    "uFw",
+    "uLJ",
+    "uAt",
+    "uSun",
+    "uPick",
+    "uMode",
+    "uFoot",
+    "uBlade",
+    "uCol",
+    "uGoldCol",
+    "uGold",
     "uPass",
     "uA",
   ]);
@@ -836,6 +1037,19 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
     at(11, 2, gl.FLOAT, false, 96);
     at(12, 3, gl.FLOAT, false, 104);
     at(13, 3, gl.FLOAT, false, 116);
+    at(14, 4, gl.FLOAT, false, 128);
+  };
+  const bladePointers = (buf: WebGLBuffer, first: number) => {
+    const o = first * BSTRIDE;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    const at = (loc: number, n: number, off: number) => {
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, n, gl.FLOAT, false, BSTRIDE, o + off);
+      gl.vertexAttribDivisor(loc, 1);
+    };
+    at(0, 3, 0);
+    at(1, 3, 12);
+    at(2, 1, 24);
   };
   const flowerPointers = (buf: WebGLBuffer, first: number) => {
     const o = first * FSTRIDE;
@@ -908,10 +1122,11 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
     gl.vertexAttribPointer(6, 2, gl.FLOAT, false, 0, 0);
     gl.vertexAttribDivisor(6, 0);
   };
-  const instVao = (buf: WebGLBuffer, first: number, kind: "strokes" | "flowers" | "flecks" | "ellipses") => {
+  const instVao = (buf: WebGLBuffer, first: number, kind: "strokes" | "flowers" | "flecks" | "ellipses" | "blades") => {
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
     if (kind === "flecks") fleckPointers(buf, first);
+    else if (kind === "blades") bladePointers(buf, first);
     else if (kind === "ellipses") ellipsePointers(buf, first);
     else {
       if (kind === "flowers") flowerPointers(buf, first);
@@ -931,7 +1146,8 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
     fbo: WebGLBuffer;
     kbo: WebGLBuffer;
     ebo: WebGLBuffer;
-    /** a vertex array per stroke, flower, fleck or ellipse run, by its place in `ops` */
+    bbo: WebGLBuffer;
+    /** a vertex array per stroke, flower, fleck, ellipse or blade run, by its place in `ops` */
     inst: (WebGLVertexArrayObject | null)[];
     /** a tree's lobes, kept here to be sorted each frame; and, this frame,
      *  each lobe run's draws (where in the frame's lobes, how many, and
@@ -966,6 +1182,9 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
     const ebo = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, ebo);
     gl.bufferData(gl.ARRAY_BUFFER, b.ellipses.byteLength ? b.ellipses : new Uint8Array(ESTRIDE), gl.STATIC_DRAW);
+    const bbo = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, bbo);
+    gl.bufferData(gl.ARRAY_BUFFER, b.blades.byteLength ? b.blades : new Uint8Array(BSTRIDE), gl.STATIC_DRAW);
     const inst = b.ops.map((op) =>
       op.kind === "strokes"
         ? instVao(sbo, op.first, "strokes")
@@ -975,15 +1194,17 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
             ? instVao(kbo, op.first, "flecks")
             : op.kind === "ellipses"
               ? instVao(ebo, op.first, "ellipses")
-              : null,
+              : op.kind === "blades"
+                ? instVao(bbo, op.first, "blades")
+                : null,
     );
     const lobes = b.lobes.byteLength ? { rec: b.lobes, c: b.lobeC, level: b.lobeLevel } : null;
-    return { vbo, ibo, vao, sbo, fbo, kbo, ebo, inst, lobes, lobeDraws: [], ops: b.ops, wide: b.index instanceof Uint32Array, used: true };
+    return { vbo, ibo, vao, sbo, fbo, kbo, ebo, bbo, inst, lobes, lobeDraws: [], ops: b.ops, wide: b.index instanceof Uint32Array, used: true };
   };
   const free = (m: OnCard) => {
     gl.deleteVertexArray(m.vao);
     for (const v of m.inst) if (v) gl.deleteVertexArray(v);
-    for (const b of [m.vbo, m.ibo, m.sbo, m.fbo, m.kbo, m.ebo]) gl.deleteBuffer(b);
+    for (const b of [m.vbo, m.ibo, m.sbo, m.fbo, m.kbo, m.ebo, m.bbo]) gl.deleteBuffer(b);
   };
 
   // Plants by what they were grown from; let go when they leave the scene.
@@ -992,6 +1213,9 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
   let yardShapes: { src: GLYard; key: string; shapes: YardShapes; card: OnCard } | null = null;
   const yardStrokes = gl.createBuffer()!;
   const yardStrokeVao = gl.createVertexArray()!;
+  // Strokes a plant lays out afresh each frame (see `Op` dyn).
+  const dynBuf = gl.createBuffer()!;
+  const dynVao = gl.createVertexArray()!;
   // Every tree's lobes this frame, in the order they're drawn.
   const lobeBuf = gl.createBuffer()!;
   const lobeVao = gl.createVertexArray()!;
@@ -1098,6 +1322,14 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
       gl.uniform1f(stroke.u.uCull, 0);
       gl.uniform1f(stroke.u.uWBias, 0);
       gl.uniform1f(stroke.u.uFlat, 0);
+      gl.uniform1f(stroke.u.uSolid, 0);
+      gl.uniform1f(stroke.u.uAtK, 0);
+      gl.useProgram(blade.p);
+      gl.uniformMatrix4fv(blade.u.uM, false, M);
+      gl.uniform2f(blade.u.uView, W, H);
+      gl.uniform1f(blade.u.uDpr, dpr);
+      gl.uniform3f(blade.u.uFw, fw[0], fw[1], fw[2]);
+      gl.uniform1f(blade.u.uPass, 0);
       gl.useProgram(ellipse.p);
       gl.uniformMatrix4fv(ellipse.u.uM, false, M);
       gl.uniform2f(ellipse.u.uView, W, H);
@@ -1144,15 +1376,18 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
       /** `n` strokes; with a mark, inking each pixel once between them, as
        *  one canvas path does. Their solid middles go first, then their soft
        *  edges where no middle inked: inked first, one stroke's soft edge
-       *  kept the next one's middle out, and seamed every joint. */
-      const strokes = (n: number, mark: number) => {
-        if (!mark) {
+       *  kept the next one's middle out, and seamed every joint. With
+       *  `depth`, the middles are written in depth, and the edges not. */
+      const strokes = (n: number, mark: number, depth = false) => {
+        if (!mark && !depth) {
           gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
           return;
         }
-        once(mark);
+        if (mark) once(mark);
         gl.uniform1f(stroke.u.uPass, 1);
+        gl.depthMask(depth);
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+        gl.depthMask(false);
         gl.uniform1f(stroke.u.uPass, 2);
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
         gl.uniform1f(stroke.u.uPass, 0);
@@ -1386,9 +1621,17 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform1f(stroke.u.uCull, op.cull ?? 0);
               gl.uniform1f(stroke.u.uWBias, op.wbias ?? 0);
               gl.uniform1f(stroke.u.uFlat, op.flat ? 1 : 0);
+              gl.uniform1f(stroke.u.uAtK, op.atK ? 1 : 0);
               setLocal(stroke);
               gl.uniform1f(stroke.u.uA, opA);
-              strokes(op.count, op.once ? markOf(op.once) : 0);
+              if (op.solid) {
+                gl.uniform1f(stroke.u.uSolid, 1);
+                gl.depthMask(true);
+                gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, op.count);
+                gl.depthMask(false);
+                gl.uniform1f(stroke.u.uSolid, 0);
+              } else strokes(op.count, op.once ? markOf(op.once) : 0, op.depth);
+              gl.uniform1f(stroke.u.uAtK, 0);
             } else if (op.kind === "ellipses") {
               bind(ellipse);
               gl.bindVertexArray(card.inst[i]);
@@ -1396,9 +1639,47 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform1f(ellipse.u.uMode, op.mode ?? 0);
               gl.uniform1f(ellipse.u.uGold, p.gold ? 1 : 0);
               gl.uniform1f(ellipse.u.uA, opA);
-              gl.depthMask(true);
+              gl.depthMask(op.depth !== false);
               gl.drawArraysInstanced(gl.TRIANGLES, 0, ELLIPSE_SEG * 3, op.count);
               gl.depthMask(false);
+            } else if (op.kind === "blades") {
+              bind(blade);
+              gl.bindVertexArray(card.inst[i]);
+              const sj = localJ(op.sun);
+              gl.uniformMatrix3x2fv(blade.u.uLJ, false, localJ(op.at));
+              gl.uniform3f(blade.u.uAt, op.at[0], op.at[1], op.at[2]);
+              gl.uniform2f(blade.u.uSun, sj[0] * -0.44 + sj[4] * -0.43, sj[1] * -0.44 + sj[5] * -0.43);
+              gl.uniform4f(blade.u.uPick, op.pick[0], op.pick[1], op.pick[2], op.pick[3]);
+              gl.uniform1f(blade.u.uMode, op.mode);
+              gl.uniform1f(blade.u.uFoot, fr?.foot ?? foot);
+              gl.uniform2f(blade.u.uBlade, op.len, op.wd);
+              const [c, g] = [op.colour, op.gold];
+              gl.uniform4f(blade.u.uCol, c[0] / 255, c[1] / 255, c[2] / 255, c[3] / 255);
+              gl.uniform4f(blade.u.uGoldCol, g[0] / 255, g[1] / 255, g[2] / 255, g[3] / 255);
+              gl.uniform1f(blade.u.uGold, p.gold ? 1 : 0);
+              gl.uniform1f(blade.u.uA, opA);
+              gl.drawArraysInstanced(gl.TRIANGLES, 0, 9, op.count);
+            } else if (op.kind === "dyn") {
+              const db = new MeshBuilder();
+              op.build(cam, db);
+              const bytes = db.finish().strokes;
+              if (!bytes.byteLength) return;
+              bind(stroke);
+              gl.bindVertexArray(dynVao);
+              gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
+              gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.DYNAMIC_DRAW);
+              strokePointers(dynBuf, 0);
+              cornerPointer();
+              gl.uniform1f(stroke.u.uFoot, 1);
+              gl.uniform1f(stroke.u.uLw, p.lw);
+              gl.uniform1f(stroke.u.uGold, p.gold ? 1 : 0);
+              gl.uniform1f(stroke.u.uBias, 0);
+              gl.uniform1f(stroke.u.uCull, 0);
+              gl.uniform1f(stroke.u.uWBias, 0);
+              gl.uniform1f(stroke.u.uFlat, 0);
+              gl.uniform1f(stroke.u.uLocal, 0);
+              gl.uniform1f(stroke.u.uA, bodyA);
+              strokes(bytes.byteLength / SSTRIDE, 0);
             } else if (op.kind === "lobes") {
               bind(lobe);
               gl.bindVertexArray(lobeVao);
@@ -1486,9 +1767,11 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
       gl.deleteBuffer(yardStrokes);
       gl.deleteBuffer(corners);
       gl.deleteBuffer(lobeBuf);
+      gl.deleteBuffer(dynBuf);
       gl.deleteVertexArray(yardStrokeVao);
       gl.deleteVertexArray(lobeVao);
-      for (const p of [fill, stroke, flower, pattern, lobe, fleck, ellipse]) gl.deleteProgram(p.p);
+      gl.deleteVertexArray(dynVao);
+      for (const p of [fill, stroke, flower, pattern, lobe, fleck, ellipse, blade]) gl.deleteProgram(p.p);
     },
   };
 }

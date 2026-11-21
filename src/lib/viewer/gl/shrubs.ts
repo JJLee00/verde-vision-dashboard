@@ -37,6 +37,10 @@ import { earcut, hull3, rgb3, rgba, type Rgba } from "./geom";
 import { flowerPalette, MeshBuilder, type Built } from "./mesh";
 import { buildSucculent, SUCCULENT_MODELS } from "./succulents";
 import { buildTree, TREE_MODELS } from "./trees";
+import { aloeVera } from "./aloe";
+import { beakedYucca } from "./yucca";
+import { ocotillo } from "./ocotillo";
+import { azBoulder, boulder } from "./rocks";
 
 /** A plant the layer draws: where, how big, which way it turns. */
 export type GLPlant = {
@@ -51,8 +55,8 @@ export type GLPlant = {
   lw: number;
 };
 
-/** The species the layer can draw: these shrubs, the trees, and the cacti
- *  and agaves. */
+/** The species the layer can draw: these shrubs, the trees, the cacti and
+ *  agaves, the aloes, the yuccas, the ocotillo and the boulders. */
 export const GL_MODELS = new Set([
   "TexasSage",
   "GreenHopseed",
@@ -65,6 +69,13 @@ export const GL_MODELS = new Set([
   "LittleJohnBottlebrush",
   ...TREE_MODELS,
   ...SUCCULENT_MODELS,
+  "Aloe Vera",
+  "YuccaRostrataMd",
+  "YuccaRostrataSm",
+  "Ocotillo",
+  "AZBoulder1",
+  "GrayBoulder",
+  "FlatBoulder",
 ]);
 
 const INK_EDGE = rgba("rgba(28,42,33,0.4)");
@@ -123,6 +134,23 @@ export function buildPlant(p: GLPlant): Built {
       break;
     case "LittleJohnBottlebrush":
       bottlebrush(b, x, z, h, rw, rot, id);
+      break;
+    case "Aloe Vera":
+      aloeVera(b, x, z, h, rw, rot, id);
+      break;
+    case "YuccaRostrataMd":
+    case "YuccaRostrataSm":
+      beakedYucca(b, x, z, h, rw, rot, id);
+      break;
+    case "Ocotillo":
+      ocotillo(b, x, z, h, rw, rot, id);
+      break;
+    case "AZBoulder1":
+      azBoulder(b, x, z, rw, rot);
+      break;
+    case "GrayBoulder":
+    case "FlatBoulder":
+      boulder(b, p.model, x, z, h, rw, rot, id);
       break;
     default:
       if (SUCCULENT_MODELS.has(p.model)) buildSucculent(b, p.model, x, z, h, rw, rot, id);

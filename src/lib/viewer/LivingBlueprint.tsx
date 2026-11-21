@@ -44,12 +44,17 @@ import { TRUNCATA_COLOURS, TRUNCATA_GOLD, TC_PTS, TC_SPLIT, TC_FACES, TC_FACE_LI
 import { GOLDEN_BARREL_COLOURS, GOLDEN_BARREL_GOLD, GB_RIBS, type BarrelPlant, GB_ST, growGoldenBarrel } from "./bodies/goldenBarrel";
 import { BLUE_GLOW_COLOURS, BLUE_GLOW_GOLD, BG_PTS, BG_SPLIT, BG_FACES, BG_FACE_LINES, BG_TONES, BG_MODEL, type BlueGlowPlant, growBlueGlow } from "./bodies/blueGlow";
 import { BLACK_TIP_COLOURS, BLACK_TIP_GOLD, BT_PTS, BT_FACE_LINES, BT_TONES, type BlackTipPlant, BT_ALL, growBlackTip } from "./bodies/blackTip";
+import { FEROX_COLOURS, FEROX_GOLD, AF_PTS, AF_FACES, AF_FACE_LINES, AF_TEETH, AF_DEAD, AF_DEAD_PTS, AF_TONES, type FeroxPlant, growFerox } from "./bodies/ferox";
+import { OCOTILLO_COLOURS, OCOTILLO_GOLD, OC_CANES, type OcotilloPlant, growOcotillo } from "./bodies/ocotillo";
+import { BEAKED_YUCCA_COLOURS, BEAKED_YUCCA_GOLD, type YuccaPlant, BY_R, growBeakedYucca } from "./bodies/yucca";
+import { ALOE_BLOOM, ALOE_BUD, type AloePlant, growAloe } from "./bodies/aloe";
+import { type BoulderPlant, growBoulder } from "./bodies/boulder";
+import { AZ_ROCK_COLOURS, AZ_ROCK_GOLD, AZR_F, AZR_NV, AZR_NF, AZR_TONES, AZR_CREASES, AZR_FLECKS, azrFleckFace, azrFleckSize, azrFleckLight, type AzRock, growAzRock } from "./bodies/azBoulder";
 import { createGLLayer, GL_MODELS, type GLLayer, type GLPlant, type GLYard } from "./gl/layer";
 import {
   symbolFor,
   drawPlanSymbol,
   symbolPath3D,
-  edgeRadius,
   rngFor,
   type PlanSymbol,
 } from "./symbols";
@@ -222,65 +227,6 @@ function convexHull(pts: [number, number][]): [number, number][] {
   return [...half(p), ...half([...p].reverse())];
 }
 
-/** Ocotillo in leaf and flower, as the app's model is: pale grey bark, small
- *  bright green leaves the length of every cane (a few yellowing), scarlet
- *  tubes at the tips. Measured off the model's render. */
-const OCOTILLO_COLOURS = {
-  crown: "rgb(140,130,108)",
-  bark: "rgb(164,158,140)",
-  barkLit: "rgb(204,200,186)",
-  sleeve: "rgb(56,74,38)",
-  leafBack: "rgb(66,86,44)",
-  leaf: ["rgb(78,100,50)", "rgb(96,120,60)", "rgb(114,138,72)", "rgb(134,156,90)", "rgb(152,146,78)"],
-  flower: "rgb(192,66,44)",
-  flowerLit: "rgb(228,110,74)",
-};
-/** Beaked Yucca as the app's mature model is: a ball of dark green blades,
- *  a skirt of straw-coloured dead leaves, a short brown trunk. Measured off
- *  the model's render. */
-const BEAKED_YUCCA_COLOURS = {
-  trunk: "rgb(120,106,86)",
-  trunkLit: "rgb(152,136,110)",
-  trunkLine: "rgb(88,76,60)",
-  skirt: "rgb(140,126,102)",
-  skirtLit: "rgb(178,164,138)",
-  straw: ["rgb(116,102,80)", "rgb(150,136,112)", "rgb(184,170,144)"],
-  core: "rgb(30,42,22)",
-  back: ["rgb(38,54,26)", "rgb(48,66,32)"],
-  blade: ["rgb(50,70,30)", "rgb(60,82,34)", "rgb(72,94,40)", "rgb(92,114,50)", "rgb(118,142,62)"],
-  edge: "rgb(46,64,30)",
-};
-const BEAKED_YUCCA_GOLD = {
-  trunk: "rgb(150,112,52)",
-  trunkLit: "rgb(196,160,96)",
-  trunkLine: "rgb(120,88,40)",
-  skirt: "rgb(196,160,96)",
-  skirtLit: "rgb(232,206,150)",
-  straw: ["rgb(170,130,62)", "rgb(206,170,104)", "rgb(236,210,156)"],
-  core: "rgb(120,88,40)",
-  back: ["rgb(140,104,46)", "rgb(160,122,58)"],
-  blade: ["rgb(170,130,62)", "rgb(190,150,78)", "rgb(210,172,100)", "rgb(228,196,128)", "rgb(240,214,150)"],
-  edge: "rgb(140,104,46)",
-};
-const OCOTILLO_GOLD = {
-  crown: "rgb(150,112,52)",
-  bark: "rgb(196,160,96)",
-  barkLit: "rgb(232,206,150)",
-  sleeve: "rgb(140,104,46)",
-  leafBack: "rgb(150,112,52)",
-  leaf: ["rgb(170,130,62)", "rgb(196,156,84)", "rgb(218,180,108)", "rgb(236,206,140)", "rgb(240,214,150)"],
-  flower: "rgb(240,214,150)",
-  flowerLit: "rgb(252,238,200)",
-};
-
-/** The aloe's flower spikes, on the lantana's terms: confined to the flowers,
- *  muted to sit on the sand, and absent from the plan symbol. A tall stalk of
- *  hanging yellow tubes is what tells an aloe from an agave at a glance —
- *  in ink alone the spike is a bottle brush of any colour. Open flowers, and
- *  the greener buds still closed at the tip. */
-const ALOE_BLOOM = "rgba(222,184,74,0.88)";
-const ALOE_BUD = "rgba(178,180,98,0.88)";
-
 /** Madagascar palm: long strap leaves, yellow-green on top with a pale
  *  midrib, duller olive beneath, over a grey-brown trunk of pale spines. */
 const MADAGASCAR_COLOURS = {
@@ -318,47 +264,6 @@ const FIRESTICK_GOLD = {
   wood: [[150, 112, 56], [246, 222, 170]],
   straw: [[140, 100, 46], [236, 200, 128]],
   young: [[130, 96, 40], [226, 190, 112]],
-};
-
-/** Aloe ferox: thick glaucous leaves, olive grey-green, the undersides a
- *  little duller; red-brown teeth down every margin; a skirt of dead leaves
- *  gone brown at the foot. */
-const FEROX_COLOURS = {
-  upper: [[96, 106, 86], [196, 204, 176]],
-  under: [[80, 88, 70], [170, 178, 152]],
-  dead: [[72, 54, 42], [160, 130, 100]],
-  core: "rgb(48,54,42)",
-  margin: "rgba(132,70,46,0.6)",
-  teeth: "rgb(150,74,44)",
-};
-const FEROX_GOLD = {
-  upper: [[140, 100, 46], [236, 200, 128]],
-  under: [[126, 90, 42], [214, 178, 112]],
-  dead: [[110, 76, 36], [200, 160, 96]],
-  core: "rgb(100,70,30)",
-  margin: "rgba(140,90,36,0.6)",
-  teeth: "rgb(128,78,28)",
-};
-
-/** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
- *  down where it sat in the soil, flecked dark and white close up. */
-const AZ_ROCK_COLOURS = {
-  shade: [120, 104, 94],
-  lit: [214, 200, 186],
-  stain: [134, 96, 74],
-  edge: "rgba(84,70,62,0.95)",
-  crease: "rgba(92,78,70,0.45)",
-  dark: "rgba(74,66,62,0.42)",
-  light: "rgba(252,248,240,0.6)",
-};
-const AZ_ROCK_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  stain: [150, 96, 40],
-  edge: "rgba(122,86,30,0.95)",
-  crease: "rgba(122,86,30,0.45)",
-  dark: "rgba(110,76,30,0.42)",
-  light: "rgba(255,244,214,0.6)",
 };
 
 export function LivingBlueprint({
@@ -1599,6 +1504,8 @@ export function LivingBlueprint({
       }
     }
 
+    const aloeGrown = new Map<string, AloePlant>();
+
     /** Aloe vera, after the app's model.
      *
      *  It drew as the generic rosette: nine bare strokes, a tuft of grass.
@@ -1639,177 +1546,33 @@ export function LivingBlueprint({
       lw: number,
       inColour: boolean,
     ) {
-      const rng = rngFor("aloe:" + seed);
-      // Up and to the left, the light every drawing on this sheet is under.
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const N = 15;
-      const S = 14; // stations along a leaf; the odd ones carry the teeth
-      const FOLD = 0.3; // margins above the midline, of the half-width
-      const BELLY = 0.95; // underside below the margins, of the half-width
-      const deg = Math.PI / 180;
+      const key = `${seed}|${x}|${z}|${h}|${rw}|${rot}`;
+      let grown = aloeGrown.get(key);
+      if (!grown) {
+        if (aloeGrown.size > 400) aloeGrown.clear(); // growth and edits mint new keys
+        grown = growAloe(x, z, h, rw, rot, seed);
+        aloeGrown.set(key, grown);
+      }
 
       type V3 = [number, number, number];
       type Pt = [number, number];
       type Face = { pts: Pt[]; edges: { line: Pt[]; w: number; a: number | null }[]; flecks: Pt[][]; d: number; lit: number };
 
-      // Centre lines first, in feet: a leaf leaves the crown at its own
-      // angle and bends down along its length, the old ones the most.
-      const leaves: { c: V3[]; psi: number[]; halfW: number; age: number; flecked: boolean }[] = [];
-      let top = 0;
-      for (let k = 0; k < N; k++) {
-        const age = 1 - k / (N - 1); // 1 = oldest and outermost, 0 = youngest
-        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.35; // golden angle
-        // Most leaves fan out long and open, as the model's do; only the
-        // last few stand up in the core.
-        const e0 = (80 - 44 * Math.pow(age, 0.7) + (rng() - 0.5) * 10) * deg;
-        const bend = (8 + 56 * Math.pow(age, 1.2) + (rng() - 0.5) * 12) * deg;
-        // A few tips hook over, as the model's do.
-        const hook = rng() < 0.35 ? (15 + rng() * 25) * deg : 0;
-        const sway = (rng() - 0.5) * 28 * deg;
-        const L =
-          rw * (1.45 - 0.45 * age) * (0.78 + 0.22 * Math.min(1, age / 0.2)) * (0.92 + 0.16 * rng());
-        const r0 = rw * 0.08; // a crown, not a point
-        const c: V3[] = [];
-        const psi: number[] = [];
-        let y = 0;
-        let px = x + Math.cos(a) * r0;
-        let pz = z + Math.sin(a) * r0;
-        for (let i = 0; i <= S; i++) {
-          const t = i / S;
-          const ps = a + sway * t * t;
-          if (i > 0) {
-            const tm = (i - 0.5) / S;
-            const e =
-              e0 - bend * Math.pow(tm, 1.5) - hook * Math.max(0, (tm - 0.7) / 0.3) ** 2;
-            const step = L / S;
-            px += Math.cos(e) * Math.cos(ps) * step;
-            pz += Math.cos(e) * Math.sin(ps) * step;
-            y += Math.sin(e) * step;
-          }
-          c.push([px, Math.max(y, 0), pz]);
-          psi.push(ps);
-          top = Math.max(top, y);
-        }
-        // Drawn broader than life, as the agaves are: at plan scale a
-        // true-width leaf thins back into a stroke and the succulent is lost.
-        const halfW = rw * (0.11 + 0.07 * age) * (0.9 + 0.2 * rng());
-        leaves.push({ c, psi, halfW, age, flecked: rng() < 0.35 });
-      }
-      // Height follows the model's proportion; the catalog's is a ceiling.
-      const ys = top > h * 0.95 ? (h * 0.95) / top : 1;
-
-      const faces: Face[] = [];
       const proj = (v: V3): Pt => {
         const q = P(v[0], v[1], v[2]);
         return [q[0], q[1]];
       };
       const depth = (v: V3) => P(v[0], v[1], v[2])[2];
-      for (const lf of leaves) {
-        const c = lf.c.map(([cx, cy, cz]): V3 => [cx, cy * ys, cz]);
-        // Broad at the clasp and holding its width most of the way out —
-        // a fleshy leaf, not a needle — then closing to a point.
-        const width = (t: number) => lf.halfW * Math.pow(1 - t, 0.7) * (0.85 + 0.15 * Math.min(1, t / 0.07));
-        const marginL: V3[] = [];
-        const marginR: V3[] = [];
-        const keel: V3[] = [];
-        const frames: { T: V3; Sd: V3; Nn: V3 }[] = [];
-        for (let i = 0; i <= S; i++) {
-          const t = i / S;
-          const p0 = c[Math.max(0, i - 1)];
-          const p1 = c[Math.min(S, i + 1)];
-          const dx = p1[0] - p0[0];
-          const dy = p1[1] - p0[1];
-          const dz = p1[2] - p0[2];
-          const tl = Math.hypot(dx, dy, dz) || 1;
-          const T: V3 = [dx / tl, dy / tl, dz / tl];
-          const Sd: V3 = [-Math.sin(lf.psi[i]), 0, Math.cos(lf.psi[i])]; // across, level
-          // Sd x T: the upper face's normal — in toward the crown on an
-          // upright leaf, up on an open one.
-          let Nn: V3 = [Sd[1] * T[2] - Sd[2] * T[1], Sd[2] * T[0] - Sd[0] * T[2], Sd[0] * T[1] - Sd[1] * T[0]];
-          const nl = Math.hypot(...Nn) || 1;
-          Nn = [Nn[0] / nl, Nn[1] / nl, Nn[2] / nl];
-          frames.push({ T, Sd, Nn });
-          const w = width(t);
-          // A tooth is a margin vertex pushed out, on the older leaves.
-          const tooth = lf.age > 0.25 && i % 2 === 1 && i > 1 && i < S - 1 ? lf.halfW * 0.12 * (1 - 0.6 * t) : 0;
-          const at = (side: number, across: number, up: number): V3 => [
-            c[i][0] + Sd[0] * side * across + Nn[0] * up,
-            c[i][1] + Nn[1] * up,
-            c[i][2] + Sd[2] * side * across + Nn[2] * up,
-          ];
-          marginL.push(at(1, w + tooth, FOLD * w));
-          marginR.push(at(-1, w + tooth, FOLD * w));
-          keel.push(at(1, 0, -BELLY * w));
-        }
-        const fold = c;
-        const k = Math.round(S * 0.35);
-        // The middle of the leaf's section, for pointing each face's normal
-        // OUT of the leaf. Not the boulder's absolute value: that lights an
-        // underside facing the ground as brightly as a top facing the sky,
-        // and the dark belly under a light trough is what reads as thick.
-        const mid: V3 = [
-          c[k][0] - frames[k].Nn[0] * BELLY * width(k / S) * 0.4,
-          c[k][1] - frames[k].Nn[1] * BELLY * width(k / S) * 0.4,
-          c[k][2] - frames[k].Nn[2] * BELLY * width(k / S) * 0.4,
-        ];
-        const litOf = (a: V3, b: V3) => {
-          const T = frames[k].T;
-          const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-          let nx = T[1] * ac[2] - T[2] * ac[1];
-          let ny = T[2] * ac[0] - T[0] * ac[2];
-          let nz = T[0] * ac[1] - T[1] * ac[0];
-          const out = [(a[0] + b[0]) / 2 - mid[0], (a[1] + b[1]) / 2 - mid[1], (a[2] + b[2]) / 2 - mid[2]];
-          if (nx * out[0] + ny * out[1] + nz * out[2] < 0) [nx, ny, nz] = [-nx, -ny, -nz];
-          const d = (nx * LX + ny * LY + nz * LZ) / (Math.hypot(nx, ny, nz) || 1);
-          return 0.3 + 0.7 * Math.max(0, d); // a floor, so a face in shade is still paper
-        };
-        const strip = (a: V3[], b: V3[]) => [...a.map(proj), ...[...b].reverse().map(proj)];
-        const meanDepth = (a: V3[], b: V3[]) =>
-          (a.reduce((s, v) => s + depth(v), 0) + b.reduce((s, v) => s + depth(v), 0)) / (a.length + b.length);
-        for (const [margin, side] of [[marginL, 1], [marginR, -1]] as [V3[], number][]) {
-          // Upper half: the midline to the raised margin. Flecks sit here.
-          const flecks: Pt[][] = [];
-          if (lf.flecked) {
-            const n = 2 + Math.floor(rng() * 2);
-            for (let f = 0; f < n; f++) {
-              const i = 2 + Math.floor(rng() * (S * 0.45));
-              const s0 = 0.25 + rng() * 0.35;
-              const w = width(i / S);
-              const { Sd, Nn } = frames[i];
-              const pt = (s: number): V3 => [
-                c[i][0] + Sd[0] * side * w * s + Nn[0] * FOLD * w * s,
-                c[i][1] + Nn[1] * FOLD * w * s,
-                c[i][2] + Sd[2] * side * w * s + Nn[2] * FOLD * w * s,
-              ];
-              flecks.push([proj(pt(s0)), proj(pt(s0 + 0.28))]);
-            }
-          }
-          faces.push({
-            pts: strip(fold, margin),
-            edges: [
-              { line: fold.map(proj), w: 0.5, a: 0.45 },
-              { line: margin.map(proj), w: 1, a: null },
-            ],
-            flecks,
-            d: meanDepth(fold, margin),
-            lit: litOf(fold[k], margin[k]),
-          });
-          // Underside half: the margin round to the keel. This is the
-          // succulent's body, and what an agave blade has no room for.
-          faces.push({
-            pts: strip(margin, keel),
-            edges: [
-              { line: keel.map(proj), w: 0.6, a: 0.55 },
-              { line: margin.map(proj), w: 1, a: null },
-            ],
-            flecks: [],
-            d: meanDepth(margin, keel),
-            lit: litOf(margin[k], keel[k]),
-          });
-        }
-      }
+      const strip = (a: V3[], b: V3[]) => [...a.map(proj), ...[...b].reverse().map(proj)];
+      const meanDepth = (a: V3[], b: V3[]) =>
+        (a.reduce((s, v) => s + depth(v), 0) + b.reduce((s, v) => s + depth(v), 0)) / (a.length + b.length);
+      const faces: Face[] = grown.faces.map((f) => ({
+        pts: strip(f.a, f.b),
+        edges: f.edges.map((e) => ({ line: e.line.map(proj), w: e.w, a: e.a })),
+        flecks: f.flecks.map((fl) => [proj(fl[0]), proj(fl[1])]),
+        d: meanDepth(f.a, f.b),
+        lit: f.lit,
+      }));
 
       const line = (pts: Pt[]) => {
         ctx!.beginPath();
@@ -1858,63 +1621,31 @@ export function LivingBlueprint({
         ctx!.lineCap = "butt";
       };
 
-      // The blooms. Each stalk leaves the crown from among the leaves, leans
-      // a little outward and away from its partner, and carries its flowers
-      // on the top third: open tubes hanging at the bottom of the spike,
-      // shorter and turning up toward the buds at the tip.
-      const leafTop = top * ys;
+      // The blooms: each stalk in pieces, and its flowers.
       const stalkW = Math.max(ftPx(x, z, 0.04), lw * 0.9);
       const tubeW = Math.max(ftPx(x, z, 0.035), 1.6);
       const open = inColour ? ALOE_BLOOM : tint(0.3);
       const bud = inColour ? ALOE_BUD : tint(0.22);
-      const lean0 = rot + rng() * Math.PI * 2;
-      for (let st = 0; st < 2; st++) {
-        const la = lean0 + st * (Math.PI * 0.8 + rng() * 0.6);
-        const lean = Math.sin((5 + rng() * 9) * deg);
-        const tall = leafTop * (1.85 + rng() * 0.3);
-        const bx = x + Math.cos(la) * rw * 0.05;
-        const bz = z + Math.sin(la) * rw * 0.05;
-        const by = leafTop * 0.08;
-        const along = (t: number): V3 => {
-          const off = tall * lean * Math.pow(t, 1.4); // bends out more toward the top
-          return [bx + Math.cos(la) * off, by + (tall - by) * t, bz + Math.sin(la) * off];
-        };
-        const SEGS = 10;
-        for (let i = 0; i < SEGS; i++) {
-          const a = along(i / SEGS);
-          const b = along((i + 1) / SEGS);
-          const w = stalkW * (1 - 0.35 * (i / SEGS));
+      for (const st of grown.stalks) {
+        for (const pc of st.pieces) {
+          const { a, b } = pc;
+          const w = stalkW * pc.w;
           // Butt ends: the stalk is drawn in pieces for the depth sort, and
           // round caps on a translucent ink overlap into beads at every joint.
           items.push({ d: (depth(a) + depth(b)) / 2, draw: () => seg(a, b, w, tint(0.7), "butt") });
         }
-        const M = 16; // whorls up the spike
-        for (let j = 0; j < M; j++) {
-          const u = j / (M - 1); // 0 = the lowest, open flowers; 1 = the tip
-          const ax = along(0.68 + 0.315 * u);
-          const tilt = (-62 + 102 * Math.pow(u, 1.3)) * deg; // hanging, then up
-          const len = rw * (0.12 - 0.075 * u);
-          const col = u > 0.72 ? bud : open;
-          for (let m = 0; m < 3; m++) {
-            const phi = st * 1.3 + j * 2.399963 + (m * Math.PI * 2) / 3;
-            const hx = Math.cos(phi);
-            const hz = Math.sin(phi);
-            const base: V3 = [ax[0] + hx * rw * 0.02, ax[1], ax[2] + hz * rw * 0.02];
-            const tip: V3 = [
-              base[0] + hx * Math.cos(tilt) * len,
-              base[1] + Math.sin(tilt) * len,
-              base[2] + hz * Math.cos(tilt) * len,
-            ];
-            items.push({
-              d: (depth(base) + depth(tip)) / 2,
-              draw: () => {
-                // The lantana's order: ink edge, paper, then the colour.
-                seg(base, tip, tubeW + lw * 0.7, tint(0.6));
-                seg(base, tip, tubeW, LEAF_BODY);
-                seg(base, tip, tubeW, col);
-              },
-            });
-          }
+        for (const tb of st.tubes) {
+          const { base, tip } = tb;
+          const col = tb.open ? open : bud;
+          items.push({
+            d: (depth(base) + depth(tip)) / 2,
+            draw: () => {
+              // The lantana's order: ink edge, paper, then the colour.
+              seg(base, tip, tubeW + lw * 0.7, tint(0.6));
+              seg(base, tip, tubeW, LEAF_BODY);
+              seg(base, tip, tubeW, col);
+            },
+          });
         }
       }
 
@@ -4507,275 +4238,12 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The aloe ferox's leaves, the same on every plant as in the headset, in
-    // the model's measure (its height = 1): twenty-two on the golden angle off
-    // a short stem, the oldest lowest. The outer ones are held out nearly flat,
-    // the middle ones are the longest and rise at about 55°, the youngest
-    // stand up in the centre. A leaf is a thick blade, so it is four lines
-    // along its length — the fold down its middle, the two margins raised
-    // above it into a channel, the keel beneath — and four faces between
-    // them: upper left and right, under left and right. Each station holds
-    // fold, left margin, right margin, keel, as (x, y, z).
-    const AF_LEAVES = 22;
-    const AF_ALONG = [0, 0.12, 0.28, 0.46, 0.64, 0.82, 1];
-    const AF_PTS = AF_ALONG.length;
-    const AF_FACES = AF_LEAVES * 4;
-    // Which two lines bound each face, and which margin it shares.
-    const AF_FACE_LINES = [
-      [0, 1],
-      [0, 2],
-      [1, 3],
-      [2, 3],
-    ];
-    const AF_TEETH = 15; // down each margin
-    const AF_DEAD = 8;
-    const AF_DEAD_PTS = 5;
-    const AF_LEVELS = 8;
-    const afRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: AF_LEVELS }, (_, i) => {
-        const t = i / (AF_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Upper faces, under faces, dead leaves — the sheet's and gold.
-    const AF_TONES = [FEROX_COLOURS, FEROX_GOLD].map((pal) => [
-      ...afRamp(pal.upper[0], pal.upper[1]),
-      ...afRamp(pal.under[0], pal.under[1]),
-      ...afRamp(pal.dead[0], pal.dead[1]),
-    ]);
-    const AF_MODEL = (() => {
-      const rng = rngFor("aloe-ferox");
-      const deg = Math.PI / 180;
-      const leaf = new Float32Array(AF_LEAVES * AF_PTS * 12);
-      // Each tooth: where it sits on the margin, then out to its point, then
-      // half its foot along the margin.
-      const teeth = new Float32Array(AF_LEAVES * 2 * AF_TEETH * 9);
-      const dead = new Float32Array(AF_DEAD * AF_DEAD_PTS * 6);
-      let top = 0;
-      for (let i = 0; i < AF_LEAVES; i++) {
-        const t = i / (AF_LEAVES - 1); // 0 the oldest, outermost; 1 the youngest
-        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
-        const e0Deg = 12 + 64 * Math.pow(t, 1.1) + (rng() - 0.5) * 10;
-        const e0 = e0Deg * deg;
-        // Every leaf turns up a little toward its tip.
-        const bend = (-10 + (rng() - 0.5) * 10) * deg;
-        const len = (0.7 + 0.32 * Math.exp(-(((e0Deg - 57) / 18) ** 2))) * (0.92 + 0.16 * rng());
-        const hw = 0.15 * (0.85 + 0.3 * rng()) * (1 - 0.25 * t);
-        const sway = (rng() - 0.5) * 16 * deg;
-        const r0 = 0.05 * (1 - 0.5 * t);
-        let px = Math.cos(az) * r0;
-        let py = 0.1 + 0.2 * Math.pow(t, 0.8);
-        let pz = Math.sin(az) * r0;
-        let prev = 0;
-        const frame: number[][] = [];
-        for (let j = 0; j < AF_PTS; j++) {
-          const s = AF_ALONG[j];
-          if (j > 0) {
-            // Along the stretch since the last station, at its middle angle.
-            const sm = (prev + s) / 2;
-            const e = e0 - bend * Math.pow(sm, 1.5);
-            const ps = az + sway * sm * sm;
-            const step = (s - prev) * len;
-            px += Math.cos(e) * Math.cos(ps) * step;
-            py += Math.sin(e) * step;
-            pz += Math.cos(e) * Math.sin(ps) * step;
-          }
-          prev = s;
-          // Along the leaf; across it, level; and up off its upper face
-          // (across × along) — up on a flat leaf, in toward the crown on an
-          // upright one.
-          const e = e0 - bend * Math.pow(s, 1.5);
-          const ps = az + sway * s * s;
-          const T = [Math.cos(e) * Math.cos(ps), Math.sin(e), Math.cos(e) * Math.sin(ps)];
-          const S = [-Math.sin(ps), 0, Math.cos(ps)];
-          const N = [-Math.cos(ps) * Math.sin(e), Math.cos(e), -Math.sin(ps) * Math.sin(e)];
-          // Broad at the clasp, tapering the whole way to a sharp point.
-          const w = hw * Math.pow(1 - s, 0.6) * (0.85 + 0.15 * Math.min(1, s / 0.12));
-          const fold = 0.12 * w;
-          const keel = 0.5 * w;
-          leaf.set(
-            [
-              px, py, pz,
-              px + S[0] * w + N[0] * fold, py + N[1] * fold, pz + S[2] * w + N[2] * fold,
-              px - S[0] * w + N[0] * fold, py + N[1] * fold, pz - S[2] * w + N[2] * fold,
-              px - N[0] * keel, py - N[1] * keel, pz - N[2] * keel,
-            ],
-            (i * AF_PTS + j) * 12,
-          );
-          frame.push([...T, ...S, ...N]);
-          top = Math.max(top, py);
-        }
-        // Teeth down both margins, hooked a little toward the tip, smaller
-        // as the leaf narrows.
-        for (let side = 0; side < 2; side++) {
-          const sg = side === 0 ? 1 : -1;
-          for (let k = 0; k < AF_TEETH; k++) {
-            const s = 0.06 + (0.8 * (k + 0.3 + rng() * 0.4)) / AF_TEETH;
-            let j = 0;
-            while (j < AF_PTS - 2 && AF_ALONG[j + 1] < s) j++;
-            const f = (s - AF_ALONG[j]) / (AF_ALONG[j + 1] - AF_ALONG[j]);
-            const a = (i * AF_PTS + j) * 12 + 3 + side * 3;
-            const b = a + 12;
-            const [Tx, Ty, Tz, Sx, , Sz, Nx, Ny, Nz] = frame[j];
-            const size = (hw / 0.15) * (1 - 0.55 * s);
-            const out = 0.012 * size;
-            const foot = 0.007 * size;
-            teeth.set(
-              [
-                leaf[a] + (leaf[b] - leaf[a]) * f,
-                leaf[a + 1] + (leaf[b + 1] - leaf[a + 1]) * f,
-                leaf[a + 2] + (leaf[b + 2] - leaf[a + 2]) * f,
-                (Sx * sg * 0.9 + Nx * 0.2 + Tx * 0.35) * out,
-                (Ny * 0.2 + Ty * 0.35) * out,
-                (Sz * sg * 0.9 + Nz * 0.2 + Tz * 0.35) * out,
-                Tx * foot,
-                Ty * foot,
-                Tz * foot,
-              ],
-              ((i * 2 + side) * AF_TEETH + k) * 9,
-            );
-          }
-        }
-      }
-      // The dead leaves at the foot: narrow, gone brown, curled down to the
-      // ground and lying on it. Each as centre and half-width, point by point.
-      for (let i = 0; i < AF_DEAD; i++) {
-        const az = i * 2.39996 + 0.8 + (rng() - 0.5) * 0.5;
-        const e0 = (-30 - rng() * 30) * deg;
-        const curl = (20 + rng() * 40) * deg;
-        const len = 0.14 + rng() * 0.1;
-        const hw = 0.03 * (0.8 + 0.4 * rng());
-        const lift = (rng() - 0.5) * 0.6;
-        let px = Math.cos(az) * 0.05;
-        let py = 0.05 + rng() * 0.05;
-        let pz = Math.sin(az) * 0.05;
-        for (let j = 0; j < AF_DEAD_PTS; j++) {
-          const s = j / (AF_DEAD_PTS - 1);
-          if (j > 0) {
-            const e = e0 - curl * ((j - 0.5) / (AF_DEAD_PTS - 1));
-            const step = len / (AF_DEAD_PTS - 1);
-            px += Math.cos(e) * Math.cos(az) * step;
-            py = Math.max(0.004, py + Math.sin(e) * step);
-            pz += Math.cos(e) * Math.sin(az) * step;
-          }
-          const w = hw * (1 - 0.7 * s);
-          dead.set([px, py, pz, -Math.sin(az) * w, lift * w, Math.cos(az) * w], (i * AF_DEAD_PTS + j) * 6);
-        }
-      }
-      // The tallest leaf tip to the full height.
-      const ys = 1 / top;
-      for (let k = 1; k < leaf.length; k += 3) leaf[k] *= ys;
-      for (let k = 1; k < teeth.length; k += 3) teeth[k] *= ys;
-      for (let k = 1; k < dead.length; k += 3) dead[k] *= ys;
-      return { leaf, teeth, dead, core: [0, 0.2 * ys, 0] };
-    })();
-
-    // Grown once per plant and kept, as the trees are.
-    type FeroxPlant = {
-      /** the leaves' lines, turned, scaled and placed */
-      leaf: Float32Array;
-      /** each face's outward normal, its middle and its tone */
-      faceN: Float32Array;
-      faceMid: Float32Array;
-      faceTone: Uint8Array;
-      teeth: Float32Array;
-      /** the dead leaves as centre and half-width, each one's middle, the
-       *  normal of its upper side, and its tone seen from above and below */
-      dead: Float32Array;
-      deadMid: Float32Array;
-      deadN: Float32Array;
-      deadTone: Uint8Array;
-      core: [number, number, number];
-    };
     const feroxGrown = new Map<string, FeroxPlant>();
     // Scratch, reused plant to plant.
     const afOrder: number[] = [];
     const afDepth = new Float32Array(AF_FACES + AF_DEAD + 1);
     const afVis = new Uint8Array(AF_FACES);
     const afDone = new Uint8Array(AF_FACES);
-
-    function growFerox(x: number, z: number, h: number, rot: number): FeroxPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const level = (n: V3) =>
-        Math.max(0, Math.min(AF_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (AF_LEVELS - 1))));
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (src: Float32Array, dst: Float32Array, o: number, offset: boolean) => {
-        const mx = src[o];
-        const mz = src[o + 2];
-        dst[o] = (offset ? x : 0) + (mx * cr - mz * sr) * h;
-        dst[o + 1] = src[o + 1] * h;
-        dst[o + 2] = (offset ? z : 0) + (mx * sr + mz * cr) * h;
-      };
-
-      const leaf = new Float32Array(AF_MODEL.leaf.length);
-      for (let o = 0; o < leaf.length; o += 3) turn(AF_MODEL.leaf, leaf, o, true);
-      const teeth = new Float32Array(AF_MODEL.teeth.length);
-      for (let o = 0; o < teeth.length; o += 9) {
-        turn(AF_MODEL.teeth, teeth, o, true);
-        turn(AF_MODEL.teeth, teeth, o + 3, false);
-        turn(AF_MODEL.teeth, teeth, o + 6, false);
-      }
-      // Each face lit by its normal a third of the way out, pointed away
-      // from the middle of the leaf's section.
-      const faceN = new Float32Array(AF_FACES * 3);
-      const faceMid = new Float32Array(AF_FACES * 3);
-      const faceTone = new Uint8Array(AF_FACES);
-      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * AF_PTS + j) * 12 + line * 3 + k];
-      for (let i = 0; i < AF_LEAVES; i++) {
-        const along: V3 = [0, 1, 2].map((k) => pt(i, 3, 0, k) - pt(i, 1, 0, k)) as V3;
-        const middle: V3 = [0, 1, 2].map((k) => pt(i, 2, 0, k) * 0.6 + pt(i, 2, 3, k) * 0.4) as V3;
-        for (let f = 0; f < 4; f++) {
-          const [la, lb] = AF_FACE_LINES[f];
-          const a: V3 = [0, 1, 2].map((k) => pt(i, 2, la, k)) as V3;
-          const b: V3 = [0, 1, 2].map((k) => pt(i, 2, lb, k)) as V3;
-          const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-          let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
-          const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
-          if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
-          const fi = i * 4 + f;
-          faceN.set(n, fi * 3);
-          for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (pt(i, 3, la, k) + pt(i, 3, lb, k)) / 2;
-          faceTone[fi] = AF_LEVELS + level(n);
-        }
-        // The upper face, though channelled, reads as one broad surface:
-        // both halves take the tone of their mean. Halves apart, every leaf
-        // is a folded blade, light and dark, and the plant an agave.
-        const o = i * 12;
-        const up = unit([faceN[o] + faceN[o + 3], faceN[o + 1] + faceN[o + 4], faceN[o + 2] + faceN[o + 5]]);
-        faceTone[i * 4] = faceTone[i * 4 + 1] = level(up);
-      }
-
-      const dead = new Float32Array(AF_MODEL.dead.length);
-      for (let o = 0; o < dead.length; o += 6) {
-        turn(AF_MODEL.dead, dead, o, true);
-        turn(AF_MODEL.dead, dead, o + 3, false);
-      }
-      const deadMid = new Float32Array(AF_DEAD * 3);
-      const deadN = new Float32Array(AF_DEAD * 3);
-      const deadTone = new Uint8Array(AF_DEAD * 2);
-      for (let i = 0; i < AF_DEAD; i++) {
-        const a = (i * AF_DEAD_PTS + 1) * 6;
-        const b = (i * AF_DEAD_PTS + 3) * 6;
-        const m = (i * AF_DEAD_PTS + 2) * 6;
-        deadMid.set([dead[m], dead[m + 1], dead[m + 2]], i * 3);
-        const t: V3 = [dead[b] - dead[a], dead[b + 1] - dead[a + 1], dead[b + 2] - dead[a + 2]];
-        const w: V3 = [dead[m + 3], dead[m + 4], dead[m + 5]];
-        let n = unit([w[1] * t[2] - w[2] * t[1], w[2] * t[0] - w[0] * t[2], w[0] * t[1] - w[1] * t[0]]);
-        if (n[1] < 0) n = [-n[0], -n[1], -n[2]];
-        deadN.set(n, i * 3);
-        deadTone[i * 2] = 2 * AF_LEVELS + level(n);
-        deadTone[i * 2 + 1] = 2 * AF_LEVELS + level([-n[0], -n[1], -n[2]]);
-      }
-      const c = AF_MODEL.core;
-      return { leaf, faceN, faceMid, faceTone, teeth, dead, deadMid, deadN, deadTone, core: [x + c[0] * h, c[1] * h, z + c[2] * h] };
-    }
 
     /** Aloe ferox, after the app's model.
      *
@@ -5382,152 +4850,12 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The model's canes, as splayed to the species' 12 ft: per cane nine
-    // points up its axis from the crown — x and z across the spread (1 = the
-    // plant's radius), y up its height (1 = the plant's height) — its
-    // half-girth at the crown and at the tip in thousandths of the radius,
-    // and 1 where it ends in a flower spike.
-    const OC_CANES: [number[], number, number, number][] = [
-      [[0.082, 0.005, -0.072, 0.132, 0.101, -0.083, 0.235, 0.197, -0.086, 0.337, 0.292, -0.069, 0.435, 0.388, -0.078, 0.52, 0.484, -0.143, 0.587, 0.58, -0.249, 0.66, 0.676, -0.352, 0.73, 0.771, -0.395], 15, 4, 0],
-      [[-0.04, 0.004, -0.094, -0.126, 0.113, -0.15, -0.251, 0.223, -0.199, -0.383, 0.333, -0.224, -0.505, 0.442, -0.242, -0.599, 0.552, -0.283, -0.656, 0.661, -0.361, -0.69, 0.771, -0.466, -0.722, 0.881, -0.554], 11, 2, 1],
-      [[0.032, 0.005, -0.018, 0.026, 0.1, -0.014, 0.012, 0.195, 0.016, -0.002, 0.291, 0.088, 0.007, 0.386, 0.19, 0.05, 0.481, 0.322, 0.134, 0.576, 0.497, 0.226, 0.672, 0.688, 0.301, 0.767, 0.886], 16, 3, 0],
-      [[0.024, 0.005, -0.078, 0.005, 0.123, -0.072, -0.006, 0.241, -0.066, 0.034, 0.359, -0.061, 0.135, 0.476, -0.061, 0.267, 0.594, -0.09, 0.394, 0.712, -0.172, 0.476, 0.829, -0.31, 0.526, 0.947, -0.477], 16, 3, 1],
-      [[-0.055, 0.003, -0.03, -0.162, 0.116, -0.01, -0.282, 0.228, 0.017, -0.402, 0.341, 0.088, -0.478, 0.453, 0.18, -0.55, 0.566, 0.296, -0.625, 0.678, 0.363, -0.707, 0.791, 0.354, -0.809, 0.903, 0.305], 15, 3, 0],
-      [[0.052, 0.004, -0.02, 0.092, 0.105, 0.021, 0.16, 0.206, 0.064, 0.247, 0.307, 0.105, 0.319, 0.408, 0.153, 0.361, 0.509, 0.215, 0.383, 0.61, 0.306, 0.401, 0.711, 0.392, 0.425, 0.812, 0.447], 14, 4, 0],
-      [[-0.013, 0.004, -0.113, -0.06, 0.108, -0.167, -0.113, 0.211, -0.231, -0.137, 0.314, -0.317, -0.112, 0.418, -0.419, -0.062, 0.521, -0.524, -0.024, 0.625, -0.624, -0.056, 0.728, -0.696, -0.111, 0.832, -0.721], 13, 4, 1],
-      [[0.011, 0.004, -0.042, 0.023, 0.123, -0.063, 0.025, 0.243, -0.088, 0.01, 0.362, -0.089, -0.004, 0.481, -0.047, -0.002, 0.6, 0.05, 0.002, 0.719, 0.215, -0.032, 0.839, 0.392, -0.084, 0.958, 0.502], 18, 4, 0],
-      [[0.051, 0.005, -0.06, 0.04, 0.119, -0.048, 0.036, 0.233, -0.037, 0.056, 0.347, -0.044, 0.114, 0.461, -0.084, 0.198, 0.575, -0.15, 0.303, 0.689, -0.232, 0.43, 0.803, -0.321, 0.57, 0.917, -0.406], 15, 4, 1],
-      [[-0.018, 0.008, -0.072, -0.007, 0.11, -0.062, 0.004, 0.213, -0.065, 0.003, 0.315, -0.089, -0.019, 0.417, -0.137, -0.077, 0.519, -0.193, -0.177, 0.622, -0.24, -0.305, 0.724, -0.263, -0.442, 0.826, -0.27], 17, 3, 0],
-      [[0.033, 0.005, -0.046, 0.04, 0.115, -0.043, 0.048, 0.225, -0.031, 0.046, 0.335, 0.016, 0.034, 0.444, 0.103, 0.021, 0.554, 0.228, 0.024, 0.664, 0.384, 0.06, 0.773, 0.556, 0.105, 0.883, 0.682], 13, 3, 0],
-      [[0.034, 0.007, -0.077, 0.019, 0.121, -0.054, -0.004, 0.235, -0.048, -0.03, 0.348, -0.07, -0.006, 0.462, -0.11, 0.093, 0.576, -0.159, 0.255, 0.69, -0.217, 0.402, 0.804, -0.303, 0.479, 0.918, -0.384], 15, 4, 0],
-      [[-0.032, 0.004, -0.005, -0.097, 0.119, 0.041, -0.205, 0.233, 0.102, -0.317, 0.347, 0.147, -0.453, 0.462, 0.202, -0.567, 0.576, 0.268, -0.659, 0.69, 0.353, -0.743, 0.805, 0.462, -0.798, 0.919, 0.54], 14, 4, 0],
-      [[0.083, 0.004, -0.05, 0.168, 0.101, -0.052, 0.278, 0.199, -0.058, 0.391, 0.297, -0.059, 0.484, 0.394, -0.045, 0.554, 0.492, -0.016, 0.611, 0.59, 0.027, 0.663, 0.687, 0.074, 0.699, 0.785, 0.104], 13, 5, 0],
-      [[0.012, 0.005, -0.056, 0.007, 0.09, -0.037, 0.002, 0.175, -0.014, -0.029, 0.259, -0.025, -0.062, 0.344, -0.08, -0.108, 0.429, -0.201, -0.179, 0.514, -0.342, -0.301, 0.599, -0.479, -0.454, 0.684, -0.579], 16, 2, 1],
-      [[0.012, 0.008, -0.021, 0.004, 0.127, -0.053, -0.002, 0.246, -0.072, 0.002, 0.365, -0.056, 0.013, 0.483, 0.003, 0.023, 0.602, 0.112, 0.017, 0.721, 0.254, -0.024, 0.84, 0.44, -0.081, 0.959, 0.587], 18, 4, 0],
-      [[0.072, 0.008, -0.095, 0.131, 0.111, -0.137, 0.215, 0.214, -0.177, 0.307, 0.317, -0.209, 0.375, 0.42, -0.24, 0.413, 0.523, -0.288, 0.416, 0.626, -0.364, 0.393, 0.729, -0.468, 0.365, 0.832, -0.564], 14, 4, 0],
-      [[-0.027, 0.008, -0.056, -0.079, 0.124, -0.065, -0.142, 0.24, -0.071, -0.208, 0.356, -0.053, -0.264, 0.471, -0.002, -0.298, 0.587, 0.048, -0.328, 0.703, 0.087, -0.35, 0.819, 0.092, -0.372, 0.934, 0.07], 17, 5, 1],
-      [[0.081, 0.005, -0.009, 0.126, 0.118, 0.038, 0.197, 0.232, 0.089, 0.292, 0.345, 0.128, 0.35, 0.459, 0.152, 0.378, 0.572, 0.195, 0.367, 0.686, 0.288, 0.327, 0.799, 0.406, 0.306, 0.913, 0.467], 12, 5, 0],
-      [[0.018, 0.003, -0.136, 0.012, 0.115, -0.268, 0.002, 0.227, -0.405, -0.001, 0.339, -0.559, 0.018, 0.451, -0.677, 0.067, 0.563, -0.785, 0.137, 0.675, -0.858, 0.228, 0.787, -0.93, 0.298, 0.899, -0.981], 12, 3, 0],
-      [[-0.01, 0.004, -0.01, -0.041, 0.124, 0.049, -0.106, 0.245, 0.136, -0.196, 0.365, 0.211, -0.298, 0.486, 0.288, -0.387, 0.607, 0.388, -0.435, 0.727, 0.528, -0.437, 0.848, 0.719, -0.418, 0.968, 0.906], 13, 3, 1],
-      [[0.07, 0.007, -0.07, 0.055, 0.1, -0.074, 0.05, 0.192, -0.1, 0.075, 0.285, -0.145, 0.139, 0.377, -0.198, 0.253, 0.469, -0.25, 0.405, 0.562, -0.288, 0.607, 0.654, -0.318, 0.79, 0.747, -0.341], 20, 4, 0],
-      [[0.002, 0.004, -0.068, 0.017, 0.055, -0.075, 0.014, 0.106, -0.085, -0.025, 0.157, -0.103, -0.107, 0.209, -0.132, -0.225, 0.26, -0.181, -0.372, 0.311, -0.264, -0.535, 0.362, -0.394, -0.655, 0.413, -0.516], 16, 3, 0],
-      [[0.039, 0.004, -0.02, 0.073, 0.066, 0.05, 0.09, 0.127, 0.156, 0.083, 0.188, 0.267, 0.085, 0.249, 0.36, 0.114, 0.31, 0.417, 0.181, 0.371, 0.449, 0.255, 0.433, 0.476, 0.288, 0.494, 0.506], 13, 4, 1],
-      [[0.047, 0.004, -0.093, 0.07, 0.05, -0.093, 0.086, 0.096, -0.11, 0.105, 0.142, -0.169, 0.134, 0.188, -0.266, 0.19, 0.234, -0.376, 0.301, 0.281, -0.504, 0.452, 0.327, -0.608, 0.653, 0.373, -0.702], 16, 3, 0],
-      [[-0.026, 0.003, -0.038, 0.022, 0.048, -0.046, 0.063, 0.092, -0.046, 0.056, 0.137, -0.051, -0.009, 0.182, -0.076, -0.112, 0.227, -0.109, -0.283, 0.272, -0.147, -0.481, 0.317, -0.145, -0.661, 0.362, -0.096], 11, 2, 0],
-      [[0.027, 0.007, -0.047, -0.008, 0.12, -0.05, -0.062, 0.232, -0.05, -0.076, 0.344, -0.058, -0.047, 0.457, -0.091, 0.042, 0.569, -0.158, 0.134, 0.682, -0.195, 0.264, 0.794, -0.191, 0.324, 0.907, -0.154], 17, 4, 0],
-      [[0.002, 0.004, -0.11, -0.007, 0.104, -0.173, 0.007, 0.204, -0.245, 0.025, 0.304, -0.304, 0.02, 0.403, -0.327, -0.027, 0.503, -0.317, -0.09, 0.603, -0.278, -0.138, 0.703, -0.223, -0.139, 0.803, -0.196], 11, 3, 0],
-      [[0.013, 0.008, -0.036, 0.007, 0.097, -0.084, -0.007, 0.185, -0.135, -0.034, 0.274, -0.172, -0.034, 0.362, -0.157, -0.021, 0.451, -0.105, -0.003, 0.539, -0.016, -0.003, 0.628, 0.089, -0.036, 0.717, 0.204], 13, 2, 0],
-      [[0.056, 0.007, -0.078, 0.113, 0.11, -0.109, 0.165, 0.213, -0.158, 0.194, 0.316, -0.205, 0.213, 0.419, -0.242, 0.228, 0.523, -0.238, 0.259, 0.626, -0.185, 0.309, 0.729, -0.081, 0.365, 0.832, 0.037], 11, 2, 0],
-      [[-0.013, 0.004, -0.061, 0.045, 0.093, -0.029, 0.1, 0.182, -0.012, 0.135, 0.271, -0.023, 0.15, 0.361, -0.056, 0.117, 0.45, -0.092, 0.052, 0.539, -0.095, -0.052, 0.628, -0.063, -0.168, 0.717, -0.002], 12, 3, 0],
-      [[0.034, 0.005, -0.036, -0, 0.105, -0.066, -0.041, 0.206, -0.092, -0.059, 0.306, -0.097, -0.047, 0.407, -0.093, 0.01, 0.508, -0.08, 0.124, 0.608, -0.048, 0.244, 0.709, 0.007, 0.32, 0.809, 0.061], 12, 3, 0],
-      [[0.01, 0.005, -0.093, 0.017, 0.104, -0.076, 0.031, 0.203, -0.05, 0.061, 0.302, -0.041, 0.086, 0.401, -0.055, 0.081, 0.5, -0.095, 0.033, 0.599, -0.156, -0.059, 0.698, -0.24, -0.119, 0.797, -0.294], 19, 5, 0],
-      [[-0.023, 0.008, -0.031, -0.069, 0.095, 0.006, -0.128, 0.183, 0.055, -0.184, 0.271, 0.081, -0.239, 0.359, 0.063, -0.286, 0.446, 0.012, -0.311, 0.534, -0.038, -0.301, 0.622, -0.045, -0.275, 0.709, -0.02], 16, 4, 0],
-    ];
-    type OcotilloCane = {
-      /** the axis, 9 points, feet */
-      ax: Float32Array;
-      /** half-girth at each axis point, feet */
-      r: Float32Array;
-      /** leaves, 8 numbers each: where along the axis (0–8), the leaf's
-       *  base and tip as offsets from there (feet), its tone (4 = yellowing) */
-      leaves: Float32Array;
-      /** flower tubes at the tip, 7 numbers each: base and tip offsets from
-       *  the cane's tip, lit or not */
-      flowers: Float32Array;
-      /** how far a flower spike stands past the tip, feet */
-      spike: number;
-    };
-    type OcotilloPlant = { canes: OcotilloCane[]; leafLen: number; tube: number };
     const ocotilloGrown = new Map<string, OcotilloPlant>();
     // Scratch for one cane's projected axis and depth order.
     const ocSx = new Float32Array(9);
     const ocSy = new Float32Array(9);
     const ocDepth = new Float32Array(OC_CANES.length);
     const ocOrder = new Int32Array(OC_CANES.length);
-
-    function growOcotillo(x: number, z: number, h: number, rw: number, rot: number, seed: string): OcotilloPlant {
-      const rng = rngFor("ocotillo:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      // Leaves about two inches long on a grown plant, scaled with it as the
-      // app scales its model.
-      const leafLen = rw * 0.025;
-      const tube = rw * 0.02;
-      const canes = OC_CANES.map(([pts, g0, g1, flowering]) => {
-        const ax = new Float32Array(27);
-        const r = new Float32Array(9);
-        for (let i = 0; i < 9; i++) {
-          const mx = pts[i * 3];
-          const mz = pts[i * 3 + 2];
-          ax[i * 3] = x + (mx * cr - mz * sr) * rw;
-          ax[i * 3 + 1] = pts[i * 3 + 1] * h;
-          ax[i * 3 + 2] = z + (mx * sr + mz * cr) * rw;
-          r[i] = ((g0 + ((g1 - g0) * i) / 8) / 1000) * rw;
-        }
-        // The axis's direction at a point along it.
-        const tangent = (i: number): [number, number, number] => {
-          const a = Math.max(0, Math.min(7, Math.floor(i)));
-          const d = [ax[a * 3 + 3] - ax[a * 3], ax[a * 3 + 4] - ax[a * 3 + 1], ax[a * 3 + 5] - ax[a * 3 + 2]];
-          const l = Math.hypot(d[0], d[1], d[2]) || 1;
-          return [d[0] / l, d[1] / l, d[2] / l];
-        };
-        let len = 0;
-        for (let i = 1; i < 9; i++)
-          len += Math.hypot(ax[i * 3] - ax[i * 3 - 3], ax[i * 3 + 1] - ax[i * 3 - 2], ax[i * 3 + 2] - ax[i * 3 - 1]);
-        // Leaves the whole length of the cane, as the model has them, half
-        // as many.
-        const n = Math.round(len / (rw * 0.008));
-        const leaves = new Float32Array(n * 8);
-        for (let k = 0; k < n; k++) {
-          const along = 8 * (0.03 + (0.96 * (k + rng())) / n);
-          const t = tangent(along);
-          // Two directions square to the cane, to spin the leaf round it.
-          const up = Math.abs(t[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0];
-          let e1 = [t[1] * up[2] - t[2] * up[1], t[2] * up[0] - t[0] * up[2], t[0] * up[1] - t[1] * up[0]];
-          const l1 = Math.hypot(e1[0], e1[1], e1[2]);
-          e1 = [e1[0] / l1, e1[1] / l1, e1[2] / l1];
-          const e2 = [t[1] * e1[2] - t[2] * e1[1], t[2] * e1[0] - t[0] * e1[2], t[0] * e1[1] - t[1] * e1[0]];
-          const a = rng() * Math.PI * 2;
-          const rise = 0.3 + 0.5 * rng(); // leaves angle up the cane a little
-          const out = [Math.cos(a) * e1[0] + Math.sin(a) * e2[0], Math.cos(a) * e1[1] + Math.sin(a) * e2[1], Math.cos(a) * e1[2] + Math.sin(a) * e2[2]];
-          let d = [out[0] + t[0] * rise, out[1] + t[1] * rise, out[2] + t[2] * rise];
-          const ld = Math.hypot(d[0], d[1], d[2]);
-          d = [d[0] / ld, d[1] / ld, d[2] / ld];
-          const i0 = Math.min(8, Math.floor(along));
-          const rr = r[i0];
-          const ll = leafLen * (0.75 + 0.5 * rng());
-          // Lit toward the sun and higher up the fan; a few going yellow.
-          const lit = 0.5 + 0.5 * (d[0] * LX + d[1] * LY + d[2] * LZ);
-          const shade = (0.35 + 0.65 * lit) * (0.7 + 0.3 * (along / 8)) * (0.75 + 0.5 * rng());
-          const tone = rng() < 0.04 ? 4 : Math.max(0, Math.min(3, Math.floor(shade * 4)));
-          leaves.set([along, out[0] * rr, out[1] * rr, out[2] * rr, out[0] * rr + d[0] * ll, out[1] * rr + d[1] * ll, out[2] * rr + d[2] * ll, tone], k * 8);
-        }
-        // The spike: a cluster of red tubes up a short bare stalk past the
-        // tip, each angled out and up, the lower ones longer.
-        const spike = flowering ? rw * 0.09 : 0;
-        const fl: number[] = [];
-        if (flowering) {
-          const t = tangent(7.9);
-          for (let k = 0; k < 14; k++) {
-            const s = spike * (0.3 + (0.7 * k) / 13);
-            const a = rng() * Math.PI * 2;
-            const lean = 0.5 + 0.5 * rng();
-            let d = [Math.cos(a) * lean + t[0], t[1] + 0.2, Math.sin(a) * lean + t[2]];
-            const ld = Math.hypot(d[0], d[1], d[2]);
-            d = [d[0] / ld, d[1] / ld, d[2] / ld];
-            const tl = tube * (1.1 - 0.5 * (k / 13));
-            const b = [t[0] * s, t[1] * s, t[2] * s];
-            const lit = d[0] * LX + d[1] * LY + d[2] * LZ > 0.1 ? 1 : 0;
-            fl.push(b[0], b[1], b[2], b[0] + d[0] * tl, b[1] + d[1] * tl, b[2] + d[2] * tl, lit);
-          }
-        }
-        return { ax, r, leaves, flowers: new Float32Array(fl), spike };
-      });
-      return { canes, leafLen, tube };
-    }
 
     /** Ocotillo, after the app's model: in leaf and in flower.
      *
@@ -5729,26 +5057,6 @@ export function LivingBlueprint({
       ctx!.lineJoin = "miter";
     }
 
-    type YuccaPlant = {
-      /** the ball's middle, feet */
-      gy: number;
-      /** blades, 7 numbers each: base and tip as offsets from the ball's
-       *  middle (feet), tone 0–4 */
-      blades: Float32Array;
-      /** dead leaves on the skirt, 8 each: top and tip as offsets from the
-       *  skirt's middle (feet), tone 0–2, how far it curls to one side */
-      straw: Float32Array;
-      /** the skirt's middle, feet up */
-      sy: number;
-      /** the skirt's outline, height and radius in feet, bottom up */
-      skirt: number[];
-      bladeLen: number;
-      bladeW: number;
-      strawLen: number;
-      trunkR: number;
-      trunkTop: number;
-      coreR: number;
-    };
     const yuccaGrown = new Map<string, YuccaPlant>();
     // Scratch for one plant's blades this frame: where each lands on
     // screen, and the passes they go in, each blade sorted into its pass.
@@ -5760,118 +5068,6 @@ export function LivingBlueprint({
     const yuccaOrder = new Int16Array(1500);
     const yuccaStart = new Int32Array(26);
     const yuccaAt = new Int32Array(26);
-    // The app's mature model, metres: 4.27 tall, 1.40 at the widest radius.
-    const BY_H = 4.267;
-    const BY_R = 1.3985;
-
-    function growBeakedYucca(h: number, rw: number, rot: number, seed: string): YuccaPlant {
-      const rng = rngFor("beakedyucca:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const kx = rw / BY_R;
-      const ky = h / BY_H;
-      const gyM = 2.69;
-      // Blades, as the model's 1,880 run: straight out of a crown on the
-      // trunk's head (2.2–3.2 m up), the lowest angled 30° down, the top ones
-      // 72° up — the higher on the crown, the steeper — each 1.06–1.39 m.
-      const N = 1500;
-      const blades = new Float32Array(N * 7);
-      for (let k = 0; k < N; k++) {
-        const t = (k + rng()) / N;
-        const e = ((-30 + 102 * t) * Math.PI) / 180;
-        const a = k * 2.39996 + rot + (rng() - 0.5) * 0.4;
-        const dx = Math.cos(e) * Math.cos(a);
-        const dy = Math.sin(e);
-        const dz = Math.cos(e) * Math.sin(a);
-        const by = 2.22 + 0.94 * t + (rng() - 0.5) * 0.2 - gyM;
-        const len = 1.06 + 0.33 * rng();
-        // Lit half by where it is on the ball (the far side of the ball
-        // shades it) and half by its face: a flat blade's upper face, square
-        // to it and as near up as it can be, catches the sun from above.
-        let fx = -dx * dy;
-        let fy = 1 - dy * dy;
-        let fz = -dz * dy;
-        const fl = Math.hypot(fx, fy, fz) || 1;
-        fx /= fl;
-        fy /= fl;
-        fz /= fl;
-        const lit = 0.5 + 0.25 * (dx * LX + dy * LY + dz * LZ) + 0.25 * (fx * LX + fy * LY + fz * LZ);
-        const shade = (0.4 + 0.6 * lit) * (0.5 + rng());
-        blades.set(
-          [
-            Math.cos(a) * 0.02 * kx,
-            by * ky,
-            Math.sin(a) * 0.02 * kx,
-            (Math.cos(a) * 0.02 + dx * len) * kx,
-            (by + dy * len) * ky,
-            (Math.sin(a) * 0.02 + dz * len) * kx,
-            Math.max(0, Math.min(4, Math.floor(shade * 5))),
-          ],
-          k * 7,
-        );
-      }
-      // The skirt: last years' leaves hanging straight down the trunk from
-      // under the ball, a straw column a little wider at the top.
-      const ring: [number, number][] = [
-        [0.62, 0.15],
-        [0.8, 0.26],
-        [1.05, 0.32],
-        [1.45, 0.35],
-        [1.9, 0.34],
-        [2.3, 0.28],
-      ];
-      const skirt: number[] = [];
-      for (const [y, r] of ring) skirt.push(y * ky, r * kx);
-      const syM = 1.45;
-      const S = 720;
-      const straw = new Float32Array(S * 8);
-      for (let k = 0; k < S; k++) {
-        const y0 = 0.8 + 1.5 * rng();
-        let r0 = 0.15;
-        for (let i = 1; i < ring.length; i++)
-          if (y0 <= ring[i][0]) {
-            const f = (y0 - ring[i - 1][0]) / (ring[i][0] - ring[i - 1][0]);
-            r0 = ring[i - 1][1] + (ring[i][1] - ring[i - 1][1]) * f;
-            break;
-          }
-        // From the trunk, as the model's do, hanging out to the skirt's edge.
-        r0 = 0.15 + (r0 - 0.15) * 0.4;
-        const a = rng() * Math.PI * 2;
-        const drop = ((60 + 22 * rng()) * Math.PI) / 180;
-        const len = Math.min(0.3 + 0.25 * rng(), (y0 - 0.55) / Math.sin(drop));
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        const lit = 0.5 + 0.5 * (ca * LX + sa * LZ) * 0.9;
-        const tone = Math.max(0, Math.min(2, Math.floor((0.3 + 0.7 * lit) * (0.7 + 0.6 * rng()) * 3)));
-        straw.set(
-          [
-            ca * r0 * kx,
-            (y0 - syM) * ky,
-            sa * r0 * kx,
-            (ca * (r0 + Math.cos(drop) * len)) * kx,
-            (y0 - syM - Math.sin(drop) * len) * ky,
-            (sa * (r0 + Math.cos(drop) * len)) * kx,
-            tone,
-            (rng() - 0.5) * 0.5, // dead leaves curl as they dry
-          ],
-          k * 8,
-        );
-      }
-      return {
-        gy: gyM * ky,
-        blades,
-        straw,
-        sy: syM * ky,
-        skirt,
-        bladeLen: 1.22 * kx,
-        bladeW: 0.088 * kx,
-        strawLen: 0.42 * kx,
-        trunkR: 0.165 * kx,
-        trunkTop: 1.0 * ky,
-        coreR: 0.55 * kx,
-      };
-    }
 
     // The local map at a point: screen and depth per foot along x, y, z.
     function localMap(x: number, y: number, z: number): number[] {
@@ -6602,171 +5798,6 @@ export function LivingBlueprint({
       ctx!.lineJoin = "miter";
     }
 
-    /** AZ Boulder 1: the scanned rock itself.
-     *
-     *  The boulder body below is a jittered solid, a fair stand-in for a
-     *  rock nobody has scanned. This one has been: a low granite slab a
-     *  fifth as tall as it is long, with a step across its top where a layer
-     *  broke away, and chipped corners. So its body is the scan, cut down to
-     *  199 faces. It is the same rock at every placement, as it is in the
-     *  headset, lit face by face under the sheet's light.
-     */
-    // x along its length (-0.5 to 0.5), y up, z across, in lengths of the
-    // rock; three vertices to a face, wound outward.
-    const AZR_V = [
-      0.5, 0.042, -0.062, 0.431, 0.004, -0.203, 0.417, 0.003, 0.065, 0.415, 0.086, 0.027, 0.324,
-      0.102, 0.054, 0.286, 0.14, 0.038, 0.319, 0.003, 0.154, -0.326, 0.036, 0.32, -0.061, 0.005,
-      0.339, -0.033, 0.102, 0.273, -0.041, 0.004, 0.303, 0.033, 0.179, -0.09, 0.13, 0.004, 0.216,
-      -0.498, 0.004, 0.245, -0.4, 0.003, 0.307, -0.398, 0.049, 0.326, 0.43, 0.072, -0.066, -0.367,
-      0.15, 0.295, 0.071, 0.004, 0.253, 0.122, 0.088, 0.164, 0.004, 0.003, 0.279, 0.049, 0.065,
-      0.221, -0.251, 0.003, -0.118, -0.413, 0.002, 0.14, -0.41, 0.152, 0.125, 0.024, 0.171, -0.308,
-      -0.088, 0.18, -0.28, 0.287, 0.118, -0.218, 0.206, 0.143, -0.181, -0.041, 0.208, -0.169,
-      -0.078, 0.21, -0.225, -0.127, 0.204, -0.147, -0.26, 0.068, -0.039, 0.191, 0.15, -0.093, 0.152,
-      0.137, -0.077, 0.123, 0.161, -0.245, 0.487, 0.006, 0.04, 0.49, 0.052, 0.015, -0.007, 0.103,
-      0.229, 0.252, 0.061, 0.141, 0.24, 0.004, 0.181, 0.183, 0.004, 0.204, -0.17, 0.076, -0.197,
-      -0.251, 0.169, -0.198, -0.24, 0.142, -0.098, -0.252, 0.054, -0.119, -0.235, 0.109, -0.191,
-      -0.217, 0.193, -0.25, -0.137, 0.14, -0.243, -0.16, 0.194, -0.265, -0.309, 0.071, 0.284,
-      -0.211, 0.142, 0.283, -0.273, 0.142, 0.27, -0.243, 0.151, -0.038, 0.204, 0.128, 0.102, 0.054,
-      0.179, 0.03, -0.205, 0.213, -0.05, 0.497, 0.042, -0.134, -0.442, 0.12, 0.277, 0.318, 0.003,
-      0.098, -0.331, 0.066, 0.047, -0.315, 0.003, 0.021, -0.312, 0.008, 0.019, -0.275, 0.005, 0.307,
-      -0.203, 0.213, -0.173, -0.222, 0.089, 0.31, -0.182, 0.123, 0.324, -0.458, 0.044, 0.186, 0.212,
-      0.118, -0.019, -0.247, 0.058, 0.3, 0.268, 0.047, -0.373, 0.263, 0.004, -0.349, 0.266, 0.103,
-      0.09, 0.338, 0.074, -0.328, 0.286, 0.086, -0.375, -0.053, 0.204, -0.076, 0.36, 0.003, -0.228,
-      -0.488, 0.096, 0.221, -0.44, 0, 0.21, -0.024, 0.075, -0.257, 0.319, 0.107, -0.075, 0.17,
-      0.127, -0.344, 0.107, 0.153, -0.32, 0.198, 0.003, -0.328, -0.362, 0.147, 0.062, -0.5, 0.057,
-      0.258, -0.462, 0.152, 0.188, -0.281, 0.148, 0.164, 0.193, 0.134, -0.286, -0.12, 0.118, 0.317,
-      -0.163, 0.043, 0.373, -0.174, 0.071, 0.329, -0.07, 0.004, -0.205, 0.055, 0.181, -0.191,
-      -0.221, 0.149, 0.061, 0.056, 0.003, -0.26, 0.052, 0.094, -0.29, 0.274, 0.105, -0.301, 0.376,
-      0.067, -0.291, 0.391, 0.08, -0.182, 0.427, 0.059, -0.226, -0.114, 0.208, 0.008, 0.077, 0.172,
-      0.132, -0.192, 0.141, 0.206, -0.093, 0.143, 0.28, -0.073, 0.189, 0.188, -0.196, 0.203, 0.065,
-      -0.022, 0.195, 0.101, -0.15, 0.194, 0.18, 0.47, 0.002, -0.158, 0.341, 0.002, -0.276, -0.355,
-      0.003, 0.071, -0.219, 0.004, -0.13, -0.274, 0.003, -0.022, -0.149, 0.002, 0.375,
-    ];
-    const AZR_F = [
-      62, 61, 111, 14, 15, 13, 60, 61, 111, 62, 113, 61, 73, 110, 71, 0, 109, 57, 100, 109, 1, 83,
-      70, 71, 0, 36, 109, 58, 85, 15, 15, 17, 58, 86, 58, 17, 85, 67, 13, 85, 58, 77, 85, 77, 67, 4,
-      6, 59, 5, 4, 3, 80, 5, 3, 2, 3, 4, 4, 59, 2, 82, 81, 96, 83, 96, 81, 102, 19, 54, 107, 105,
-      102, 63, 7, 14, 63, 50, 7, 63, 69, 50, 22, 113, 45, 80, 16, 99, 112, 22, 45, 101, 56, 106,
-      102, 55, 107, 108, 105, 107, 19, 102, 21, 102, 105, 38, 80, 28, 33, 27, 80, 99, 38, 104, 9,
-      104, 38, 105, 28, 80, 27, 101, 108, 107, 51, 66, 104, 103, 104, 108, 21, 102, 38, 79, 48, 26,
-      78, 67, 23, 110, 98, 76, 45, 32, 44, 75, 11, 29, 56, 75, 31, 29, 31, 75, 70, 74, 73, 107, 55,
-      101, 98, 110, 73, 73, 71, 70, 37, 3, 36, 17, 50, 52, 52, 87, 17, 8, 9, 89, 38, 9, 10, 89, 9,
-      104, 101, 106, 108, 94, 103, 106, 106, 103, 108, 104, 105, 108, 104, 103, 51, 19, 12, 41, 77,
-      58, 86, 79, 25, 96, 26, 25, 79, 4, 39, 6, 4, 72, 39, 4, 5, 72, 68, 54, 72, 56, 101, 75, 17,
-      24, 86, 24, 17, 87, 99, 57, 100, 57, 109, 100, 66, 65, 69, 73, 97, 98, 0, 37, 36, 68, 72, 5,
-      68, 5, 33, 5, 80, 33, 98, 99, 100, 34, 68, 33, 78, 67, 13, 3, 2, 36, 91, 66, 69, 65, 66, 51,
-      70, 83, 81, 64, 47, 43, 47, 64, 49, 53, 60, 84, 53, 32, 60, 60, 32, 113, 62, 60, 113, 16, 57,
-      99, 98, 100, 76, 76, 100, 1, 97, 27, 98, 98, 27, 99, 62, 61, 60, 83, 95, 96, 55, 75, 101, 55,
-      11, 75, 82, 35, 88, 12, 19, 21, 111, 23, 60, 64, 44, 56, 44, 53, 56, 15, 85, 13, 53, 106, 56,
-      106, 53, 94, 90, 114, 8, 25, 82, 96, 95, 79, 96, 16, 37, 0, 16, 0, 57, 39, 72, 54, 55, 102,
-      54, 44, 32, 53, 25, 35, 82, 81, 74, 70, 88, 97, 81, 97, 74, 81, 74, 97, 73, 65, 51, 52, 69,
-      52, 50, 69, 65, 52, 16, 80, 3, 37, 16, 3, 15, 7, 50, 14, 7, 15, 15, 50, 17, 10, 20, 38, 88,
-      35, 28, 21, 20, 18, 12, 21, 18, 20, 21, 38, 91, 89, 66, 8, 89, 90, 66, 89, 104, 91, 90, 89,
-      51, 103, 52, 94, 87, 103, 53, 84, 94, 8, 10, 9, 48, 79, 92, 49, 64, 31, 34, 11, 55, 68, 34,
-      55, 54, 68, 55, 60, 67, 84, 84, 67, 24, 23, 67, 60, 77, 86, 67, 86, 24, 67, 93, 34, 33, 30,
-      25, 26, 31, 26, 49, 64, 56, 31, 45, 46, 112, 42, 112, 46, 47, 46, 43, 47, 49, 48, 46, 47, 48,
-      30, 26, 31, 49, 26, 48, 87, 84, 24, 103, 87, 52, 94, 84, 87, 11, 93, 29, 42, 46, 48, 44, 64,
-      43, 11, 34, 93, 81, 82, 88, 91, 69, 114, 69, 63, 114, 90, 91, 114, 45, 44, 46, 46, 44, 43, 27,
-      97, 88, 35, 25, 93, 95, 92, 79, 92, 112, 42, 29, 30, 31, 93, 25, 30, 93, 30, 29, 45, 113, 32,
-      39, 41, 40, 40, 6, 39, 92, 42, 48, 54, 41, 39, 54, 19, 41, 93, 28, 35, 28, 93, 33, 28, 27, 88,
-    ];
-    const AZR_NV = AZR_V.length / 3;
-    const AZR_NF = AZR_F.length / 3;
-    const AZR_LEVELS = 8;
-    const AZR_H = AZR_V.reduce((m, v, i) => (i % 3 === 1 ? Math.max(m, v) : m), 0);
-    // Shade to lit, then the same again stained, for each palette.
-    const AZR_TONES = [AZ_ROCK_COLOURS, AZ_ROCK_GOLD].map((pal) =>
-      [0, 0.35].flatMap((stain) =>
-        Array.from({ length: AZR_LEVELS }, (_, i) => {
-          const t = i / (AZR_LEVELS - 1);
-          const rgb = pal.shade.map((v, k) => {
-            const c = v + (pal.lit[k] - v) * t;
-            return (c + (pal.stain[k] - c) * stain) | 0;
-          });
-          return `rgb(${rgb.join(",")})`;
-        }),
-      ),
-    );
-    const azrNormal = (f: number) => {
-      const a = AZR_F[f * 3] * 3;
-      const b = AZR_F[f * 3 + 1] * 3;
-      const d = AZR_F[f * 3 + 2] * 3;
-      const ux = AZR_V[b] - AZR_V[a];
-      const uy = AZR_V[b + 1] - AZR_V[a + 1];
-      const uz = AZR_V[b + 2] - AZR_V[a + 2];
-      const wx = AZR_V[d] - AZR_V[a];
-      const wy = AZR_V[d + 1] - AZR_V[a + 1];
-      const wz = AZR_V[d + 2] - AZR_V[a + 2];
-      return [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
-    };
-    // Where the stone breaks: edges whose faces meet at more than 40 degrees,
-    // the step and the chipped corners, as (vertex, vertex, face, face).
-    const AZR_CREASES: number[] = (() => {
-      const sides = new Map<number, number[]>();
-      for (let f = 0; f < AZR_NF; f++) {
-        for (let k = 0; k < 3; k++) {
-          const a = AZR_F[f * 3 + k];
-          const b = AZR_F[f * 3 + ((k + 1) % 3)];
-          const key = Math.min(a, b) * 256 + Math.max(a, b);
-          const fs = sides.get(key);
-          if (fs) fs.push(f);
-          else sides.set(key, [f]);
-        }
-      }
-      const out: number[] = [];
-      const cos40 = Math.cos((40 * Math.PI) / 180);
-      for (const [key, fs] of sides) {
-        if (fs.length !== 2) continue;
-        const p = azrNormal(fs[0]);
-        const q = azrNormal(fs[1]);
-        const c = (p[0] * q[0] + p[1] * q[1] + p[2] * q[2]) / (Math.hypot(...p) * Math.hypot(...q) || 1);
-        if (c < cos40) out.push(key >> 8, key & 255, fs[0], fs[1]);
-      }
-      return out;
-    })();
-    // The granite's grain, scattered by area over its faces: each fleck's
-    // face, place in the rock's own measure, size, and whether it's light.
-    // Few and the same size, they read as polka dots; this is grit.
-    const AZR_FLECKS = 900;
-    const azrFleckFace = new Uint16Array(AZR_FLECKS);
-    const azrFleckAt = new Float32Array(AZR_FLECKS * 3);
-    const azrFleckSize = new Float32Array(AZR_FLECKS);
-    const azrFleckLight = new Uint8Array(AZR_FLECKS);
-    {
-      const rng = rngFor("az-boulder");
-      const upTo: number[] = [];
-      let total = 0;
-      for (let f = 0; f < AZR_NF; f++) upTo.push((total += Math.hypot(...azrNormal(f)) / 2));
-      for (let i = 0; i < AZR_FLECKS; i++) {
-        const pick = rng() * total;
-        let f = 0;
-        while (f < AZR_NF - 1 && upTo[f] < pick) f++;
-        const r1 = Math.sqrt(rng());
-        const r2 = rng();
-        const wa = 1 - r1;
-        const wb = r1 * (1 - r2);
-        const wd = r1 * r2;
-        for (let k = 0; k < 3; k++) {
-          azrFleckAt[i * 3 + k] =
-            AZR_V[AZR_F[f * 3] * 3 + k] * wa + AZR_V[AZR_F[f * 3 + 1] * 3 + k] * wb + AZR_V[AZR_F[f * 3 + 2] * 3 + k] * wd;
-        }
-        azrFleckFace[i] = f;
-        azrFleckSize[i] = 0.5 + rng() * rng() * 1.5;
-        azrFleckLight[i] = rng() < 0.55 ? 1 : 0;
-      }
-    }
-
-    type AzRock = {
-      /** the vertices on the ground, and each face's outward normal and
-       *  centre, in feet */
-      v: Float32Array;
-      n: Float32Array;
-      c: Float32Array;
-      /** each face's tone, plus AZR_LEVELS when stained */
-      band: Uint8Array;
-      /** the flecks on the ground */
-      fl: Float32Array;
-    };
     const azRockGrown = new Map<string, AzRock>();
     // Scratch, reused rock to rock: projected vertices, which faces show,
     // and their depths.
@@ -6774,48 +5805,6 @@ export function LivingBlueprint({
     const azrSeen = new Uint8Array(AZR_NF);
     const azrDepth = new Float32Array(AZR_NF);
     const azrOrder: number[] = [];
-
-    function growAzRock(x: number, z: number, len: number, rot: number): AzRock {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const put = (src: ArrayLike<number>, i: number, out: Float32Array) => {
-        const mx = src[i * 3];
-        const mz = src[i * 3 + 2];
-        out[i * 3] = x + (mx * cr - mz * sr) * len;
-        out[i * 3 + 1] = src[i * 3 + 1] * len;
-        out[i * 3 + 2] = z + (mx * sr + mz * cr) * len;
-      };
-      const v = new Float32Array(AZR_NV * 3);
-      for (let i = 0; i < AZR_NV; i++) put(AZR_V, i, v);
-      const n = new Float32Array(AZR_NF * 3);
-      const c = new Float32Array(AZR_NF * 3);
-      const band = new Uint8Array(AZR_NF);
-      for (let f = 0; f < AZR_NF; f++) {
-        const [mx, my, mz] = azrNormal(f);
-        const L = Math.hypot(mx, my, mz) || 1;
-        const nx = (mx * cr - mz * sr) / L;
-        const ny = my / L;
-        const nz = (mx * sr + mz * cr) / L;
-        n[f * 3] = nx;
-        n[f * 3 + 1] = ny;
-        n[f * 3 + 2] = nz;
-        for (let k = 0; k < 3; k++) {
-          c[f * 3 + k] = (v[AZR_F[f * 3] * 3 + k] + v[AZR_F[f * 3 + 1] * 3 + k] + v[AZR_F[f * 3 + 2] * 3 + k]) / 3;
-        }
-        // Wrapped light, so the shaded sides still turn.
-        const lit = Math.pow(0.5 + 0.5 * (nx * LX + ny * LY + nz * LZ), 1.5);
-        const tone = Math.max(0, Math.min(AZR_LEVELS - 1, Math.round(lit * (AZR_LEVELS - 1))));
-        // A side low down, where the rock sat in the soil, is stained.
-        const stained = c[f * 3 + 1] < 0.3 * AZR_H * len && Math.abs(ny) < 0.6;
-        band[f] = tone + (stained ? AZR_LEVELS : 0);
-      }
-      const fl = new Float32Array(AZR_FLECKS * 3);
-      for (let i = 0; i < AZR_FLECKS; i++) put(azrFleckAt, i, fl);
-      return { v, n, c, band, fl };
-    }
 
     function drawAzBoulderBody(x: number, z: number, rw: number, rot: number, sel: boolean, lw: number) {
       // The plan mark's radius is half the rock's length.
@@ -6954,64 +5943,15 @@ export function LivingBlueprint({
       sel: boolean,
       lw: number,
     ) {
-      const R = wFt / 2;
-      const N = 13; // facets around — enough to read as cut, not as a circle
-      const rng = rngFor("rock:" + seed);
-      const leanA = rng() * Math.PI * 2;
-      const lean = 0.13 + rng() * 0.12; // how far the crown sits off centre
-
-      type V = { sx: number; sy: number; d: number; wx: number; wy: number; wz: number };
-      const ring = (frac: number, yFrac: number, jitter: number, off: number): V[] =>
-        Array.from({ length: N }, (_, i) => {
-          // The spokes are jittered too. On even ones the facets came out
-          // as regular as a cut gem, and a 3 ft boulder read as a tent.
-          const th = ((i + (rng() - 0.5) * 0.45) / N) * Math.PI * 2;
-          const r =
-            R * (sym ? edgeRadius(sym, th - rot) : 1) * frac *
-            (1 - jitter / 2 + rng() * jitter);
-          const wx = x + Math.cos(leanA) * R * off + Math.cos(th) * r;
-          const wz = z + Math.sin(leanA) * R * off + Math.sin(th) * r;
-          const wy = hFt * yFrac * (0.84 + rng() * 0.32);
-          const q = P(wx, wy, wz);
-          return { sx: q[0], sy: q[1], d: q[2], wx, wy, wz };
-        });
-      // Four rings, not three: a rock has a shoulder AND a brow, and the
-      // band between them is where most of its faces are. With the crown
-      // taken straight off the shoulder, every face ran the full height and
-      // the drawing came out a cone.
-      const foot = ring(0.88, 0, 0.1, 0); // the rock settles into the soil
-      const shoulder = ring(1, 0.3, 0.17, lean * 0.3);
-      const brow = ring(0.82, 0.63, 0.2, lean * 0.7);
-      const cap = ring(0.5, 0.86, 0.26, lean);
-
-      // Up and to the left, the light every drawing on this sheet is under.
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const faces: { vs: V[]; d: number; lit: number }[] = [];
-      const face = (vs: V[]) => {
-        const ax = vs[1].wx - vs[0].wx;
-        const ay = vs[1].wy - vs[0].wy;
-        const az = vs[1].wz - vs[0].wz;
-        const bx = vs[2].wx - vs[0].wx;
-        const by = vs[2].wy - vs[0].wy;
-        const bz = vs[2].wz - vs[0].wz;
-        const nx = ay * bz - az * by;
-        const ny = az * bx - ax * bz;
-        const nz = ax * by - ay * bx;
-        const L = Math.hypot(nx, ny, nz) || 1;
-        // Absolute, so the quad's winding — which flips round the back of
-        // the rock — cannot turn a face into a hole.
-        const lit = Math.abs((nx * LX + ny * LY + nz * LZ) / L);
-        faces.push({ vs, d: vs.reduce((s, v) => s + v.d, 0) / vs.length, lit });
-      };
-      for (let i = 0; i < N; i++) {
-        const j = (i + 1) % N;
-        face([foot[i], foot[j], shoulder[j], shoulder[i]]);
-        face([shoulder[i], shoulder[j], brow[j], brow[i]]);
-        face([brow[i], brow[j], cap[j], cap[i]]);
-      }
-      face(cap);
+      const rock: BoulderPlant = growBoulder(x, z, wFt, hFt, rot, sym, seed);
+      const vs = rock.pts.map((p) => {
+        const q = P(p[0], p[1], p[2]);
+        return { sx: q[0], sy: q[1], d: q[2] };
+      });
+      const faces = rock.faces.map((f) => {
+        const fv = f.vs.map((i) => vs[i]);
+        return { vs: fv, d: fv.reduce((s, v) => s + v.d, 0) / fv.length, lit: f.lit };
+      });
       faces.sort((p, q) => q.d - p.d); // far first, so near stone covers it
 
       const tint = sel ? gold : verde;
@@ -7036,9 +5976,7 @@ export function LivingBlueprint({
 
       // The silhouette, drawn over the facets at full weight: the edge of a
       // rock is a hard line, and face strokes alone leave it furry.
-      const hull = convexHull(
-        [...foot, ...shoulder, ...brow, ...cap].map((v): [number, number] => [v.sx, v.sy]),
-      );
+      const hull = convexHull(vs.map((v): [number, number] => [v.sx, v.sy]));
       if (hull.length < 3) return;
       ctx!.beginPath();
       ctx!.moveTo(hull[0][0], hull[0][1]);
@@ -7568,7 +6506,8 @@ export function LivingBlueprint({
             h,
             rw,
             rot: (inst.yawDeg * Math.PI) / 180,
-            gold: sel || hover,
+            // A plain boulder turns gold when it's picked, not hovered.
+            gold: sel || (hover && (inst.meta.kind !== "boulder" || inst.model === "AZBoulder1")),
             lw: sel ? 2 : hover ? 1.8 : 1.4,
           });
         }
