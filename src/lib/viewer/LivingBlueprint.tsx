@@ -21,6 +21,30 @@ import Link from "next/link";
 import { METERS_TO_FEET, type ProjectFileJSON } from "./types";
 import { buildScene, buildRail, localToScene, sceneToLocal, type Instance } from "./scene";
 import { sizeFactor, speciesMeta } from "./catalog";
+import { growTexasSage, sageCoreRing, SAGE_COLOURS, SAGE_GOLD, type SageTuft } from "./bodies/sage";
+import { WHITE_DAWN_COLOURS, WHITE_DAWN_GOLD, type WhiteDawnSprig, type WhiteDawnPlant, WHITE_DAWN_LEAF, WHITE_DAWN_KITE, WD_LEVELS, WD_TONES, growWhiteDawn } from "./bodies/whiteDawn";
+import { PURPLE_LANTANA_COLOURS, PURPLE_LANTANA_GOLD, YELLOW_LANTANA_COLOURS, YELLOW_LANTANA_GOLD, type PurpleSprig, type PurplePlant, PURPLE_LEAF, PURPLE_KITE, PL_TONES, growPurpleLantana, type YellowSprig, type YellowPlant, YELLOW_LEAF, YELLOW_KITE, YL_TONES, growYellowLantana } from "./bodies/lantana";
+import { type HopseedSpray, growHopseed } from "./bodies/hopseed";
+import { type YellowBellsPart, growYellowBells } from "./bodies/yellowBells";
+import { RED_BIRD_COLOURS, RED_BIRD_GOLD, type RedBirdPart, growRedBird } from "./bodies/redBird";
+import { JOJOBA_COLOURS, JOJOBA_GOLD, type JojobaSprig, JOJOBA_LEAF, jojobaCoreRing, growJojoba } from "./bodies/jojoba";
+import { BOTTLEBRUSH_COLOURS, BOTTLEBRUSH_GOLD, type BottlebrushPart, BOTTLEBRUSH_LEAF, bottlebrushCoreRing, growBottlebrush } from "./bodies/bottlebrush";
+import { PALO_VERDE_COLOURS, PALO_VERDE_GOLD, type PaloVerdeTree, PV_LEVELS, PV_TONES, growPaloVerde } from "./bodies/paloVerde";
+import { MESQUITE_COLOURS, MESQUITE_GOLD, type MesquiteTree, MQ_LEVELS, MQ_TONES, growMesquite } from "./bodies/mesquite";
+import { EBONY_COLOURS, EBONY_MODELS, EBONY_GOLD, type EbonyTree, EB_LEVELS, EB_PUFF, EB_TONES, EB_PUFF_TONES, growEbony } from "./bodies/ebony";
+import { MULGA_COLOURS, MULGA_GOLD, MULGA_MODELS, type MulgaTree, MU_LEVELS, MU_TONES, growMulga } from "./bodies/mulga";
+import { CHASTE_COLOURS, CHASTE_GOLD, type ChasteTree, CT_LEVELS, CT_SPIKE_LEVELS, CT_LEAF_TONES, CT_SPIKE_TONES, CT_FINGERS, growChaste } from "./bodies/chaste";
+import { FENCE_POST_COLOURS, FENCE_POST_GOLD, type FencePostClump, FP_RIBS, FP_TONES, growFencePost } from "./bodies/fencePost";
+import { ORGAN_PIPE_COLOURS, ORGAN_PIPE_GOLD, type OrganPipeClump, OP_LEVELS, OP_PTS, OP_BANDS, OP_TONES, growOrganPipe } from "./bodies/organPipe";
+import { TOOTHPICK_COLOURS, TOOTHPICK_GOLD, type ToothpickPlant, TP_LEVELS, TP_PTS, TP_TONES, growToothpick } from "./bodies/toothpick";
+import { TOTEM_COLOURS, TOTEM_GOLD, type TotemPlant, TT_TONES, TT_N, growTotem } from "./bodies/totem";
+import { TROPICAL_AGAVE_COLOURS, TROPICAL_AGAVE_GOLD, TA_LEAVES, TA_PTS, TA_STRIPE, TA_TONES, type TropicalAgavePlant, growTropicalAgave } from "./bodies/tropicalAgave";
+import { AMERICANA_COLOURS, AMERICANA_GOLD, AM_PTS, AM_FACES, AM_FACE_LINES, AM_TEETH, AM_DEAD, AM_DEAD_PTS, AM_TONES, type AmericanaPlant, growAmericana } from "./bodies/americana";
+import { TRUNCATA_COLOURS, TRUNCATA_GOLD, TC_PTS, TC_SPLIT, TC_FACES, TC_FACE_LINES, TC_TEETH, TC_TONES, TC_MODEL, type TruncataPlant, TC_DOME, growTruncata } from "./bodies/truncata";
+import { GOLDEN_BARREL_COLOURS, GOLDEN_BARREL_GOLD, GB_RIBS, type BarrelPlant, GB_ST, growGoldenBarrel } from "./bodies/goldenBarrel";
+import { BLUE_GLOW_COLOURS, BLUE_GLOW_GOLD, BG_PTS, BG_SPLIT, BG_FACES, BG_FACE_LINES, BG_TONES, BG_MODEL, type BlueGlowPlant, growBlueGlow } from "./bodies/blueGlow";
+import { BLACK_TIP_COLOURS, BLACK_TIP_GOLD, BT_PTS, BT_FACE_LINES, BT_TONES, type BlackTipPlant, BT_ALL, growBlackTip } from "./bodies/blackTip";
+import { createGLLayer, GL_MODELS, type GLLayer, type GLPlant, type GLYard } from "./gl/layer";
 import {
   symbolFor,
   drawPlanSymbol,
@@ -135,6 +159,10 @@ export type LivingBlueprintProps = {
   openFrom?: CameraSpot | null;
   /** The way back to 2D (`CameraHandle.flatten`). */
   cameraRef?: React.Ref<CameraHandle>;
+  /** The WebGL pilot (the dev test page only): "webgl" draws the ground and
+   *  Texas Sage on the graphics card, under this canvas. Absent, as
+   *  everywhere else, it's the canvas alone. */
+  renderer?: "canvas" | "webgl";
 };
 
 /** A spot on the ground as a flat plan shows it: the point in the middle
@@ -194,77 +222,6 @@ function convexHull(pts: [number, number][]): [number, number][] {
   return [...half(p), ...half([...p].reverse())];
 }
 
-/** White Dawn lantana: mid-dark green trailing runners, greenish-brown
- *  stems, and white posies with a yellow eye. */
-const WHITE_DAWN_COLOURS = {
-  leafLit: [150, 166, 116],
-  leafShade: [48, 58, 42],
-  inner: [38, 46, 34],
-  stem: "rgba(98,86,64,0.85)",
-  flower: "rgb(244,242,232)",
-  floret: "rgb(252,251,246)",
-  eye: "rgb(218,182,72)",
-};
-const WHITE_DAWN_GOLD = {
-  leafLit: [226, 192, 120],
-  leafShade: [152, 114, 54],
-  inner: [118, 86, 40],
-  stem: "rgba(168,123,47,0.85)",
-  flower: "rgb(244,222,166)",
-  floret: "rgb(250,232,184)",
-  eye: "rgb(168,123,47)",
-};
-
-/** Purple lantana: a dense olive mound of small leaves, its lavender flower
- *  heads all over it, each a ring of florets with a pale eye. The scan's
- *  colours, the flowers a little clearer than its washed lavender. */
-const PURPLE_LANTANA_COLOURS = {
-  leafLit: [150, 162, 100],
-  leafShade: [40, 43, 36],
-  inner: [32, 35, 28],
-  core: "rgb(36,40,31)",
-  flowerLit: [214, 194, 222],
-  flower: [174, 140, 184],
-  flowerShade: [112, 84, 118],
-  eye: "rgb(240,232,204)",
-};
-const PURPLE_LANTANA_GOLD = {
-  leafLit: [226, 192, 120],
-  leafShade: [150, 112, 52],
-  inner: [116, 84, 38],
-  core: "rgb(104,76,34)",
-  flowerLit: [252, 238, 200],
-  flower: [240, 214, 150],
-  flowerShade: [196, 160, 92],
-  eye: "rgb(255,248,226)",
-};
-
-/** Yellow lantana: the purple's dark green leaves, smothered in golden
- *  heads — a third of what the scan shows is flower. Each head a ring of
- *  golden florets round a deeper amber heart of buds. */
-const YELLOW_LANTANA_COLOURS = {
-  leafLit: [144, 154, 98],
-  leafShade: [40, 44, 34],
-  inner: [31, 35, 27],
-  core: "rgb(34,38,29)",
-  flowerLit: [240, 204, 128],
-  flower: [212, 160, 78],
-  flowerShade: [146, 100, 44],
-  bud: [208, 136, 56],
-  eye: "rgb(186,116,44)",
-};
-const YELLOW_LANTANA_GOLD = {
-  leafLit: [226, 192, 120],
-  leafShade: [150, 112, 52],
-  inner: [116, 84, 38],
-  core: "rgb(104,76,34)",
-  flowerLit: [252, 238, 200],
-  flower: [240, 214, 150],
-  flowerShade: [196, 160, 92],
-  bud: [226, 190, 120],
-  eye: "rgb(196,150,72)",
-};
-
 /** Ocotillo in leaf and flower, as the app's model is: pale grey bark, small
  *  bright green leaves the length of every cane (a few yellowing), scarlet
  *  tubes at the tips. Measured off the model's render. */
@@ -305,71 +262,6 @@ const BEAKED_YUCCA_GOLD = {
   blade: ["rgb(170,130,62)", "rgb(190,150,78)", "rgb(210,172,100)", "rgb(228,196,128)", "rgb(240,214,150)"],
   edge: "rgb(140,104,46)",
 };
-/** Golden Barrel as the app's scan is: from any distance a ball of pale
- *  gold spines; close to, a dark green body under them and cream wool at
- *  the areoles and the crown. Flank tones shade to lit, far off and near;
- *  measured off the scan's render. */
-const GOLDEN_BARREL_COLOURS = {
-  far: [[96, 84, 50], [130, 112, 68], [160, 138, 88], [188, 164, 110], [212, 192, 136]],
-  body: [[56, 60, 30], [74, 80, 40], [94, 100, 52], [116, 120, 64], [138, 140, 78]],
-  groove: "rgb(50,50,28)",
-  ridge: "rgb(222,200,140)",
-  spine: "rgb(190,158,92)",
-  spineLit: "rgb(236,212,150)",
-  wool: "rgb(236,220,180)",
-  crown: "rgb(228,206,160)",
-  crownHeart: "rgb(222,194,150)",
-};
-const GOLDEN_BARREL_GOLD = {
-  far: [[150, 112, 52], [176, 136, 66], [200, 160, 90], [222, 188, 120], [240, 214, 150]],
-  body: [[120, 88, 40], [140, 104, 46], [160, 122, 58], [182, 144, 74], [204, 168, 96]],
-  groove: "rgb(110,80,36)",
-  ridge: "rgb(244,224,170)",
-  spine: "rgb(206,170,104)",
-  spineLit: "rgb(248,232,190)",
-  wool: "rgb(250,238,206)",
-  crown: "rgb(244,226,184)",
-  crownHeart: "rgb(232,196,140)",
-};
-/** Blue Glow agave as the app's scan is: the standing leaves blue-grey, the
- *  old outer ones sage, their backs a yellower green, the oldest dead brown;
- *  a thin red margin and a dark red-brown spine. Measured off the model's
- *  render. */
-const BLUE_GLOW_COLOURS = {
-  blue: [[40, 50, 50], [134, 152, 142]],
-  sage: [[50, 58, 38], [164, 170, 112]],
-  under: [[46, 54, 36], [152, 158, 102]],
-  dead: [[64, 50, 38], [140, 112, 84]],
-  core: "rgb(50,60,52)",
-  margin: "rgba(132,58,48,0.55)",
-  spine: "rgb(84,38,32)",
-};
-const BLUE_GLOW_GOLD = {
-  blue: [[140, 100, 46], [236, 200, 128]],
-  sage: [[146, 104, 50], [240, 206, 140]],
-  under: [[126, 90, 42], [214, 178, 112]],
-  dead: [[110, 76, 36], [200, 160, 96]],
-  core: "rgb(100,70,30)",
-  margin: "rgba(140,90,36,0.6)",
-  spine: "rgb(96,62,22)",
-};
-/** Black Tip agave as the app's scan is: pale glaucous blue-grey, the
- *  backs a little greener; fine pale margins and dark spines. Measured off
- *  the model's render. */
-const BLACK_TIP_COLOURS = {
-  upper: [[38, 48, 52], [158, 170, 168]],
-  back: [[72, 84, 82], [170, 178, 168]],
-  core: "rgb(64,78,78)",
-  margin: "rgba(226,232,226,0.45)",
-  spine: "rgb(36,30,28)",
-};
-const BLACK_TIP_GOLD = {
-  upper: [[140, 100, 46], [236, 200, 128]],
-  back: [[126, 90, 42], [214, 178, 112]],
-  core: "rgb(100,70,30)",
-  margin: "rgba(255,236,190,0.5)",
-  spine: "rgb(96,62,22)",
-};
 const OCOTILLO_GOLD = {
   crown: "rgb(150,112,52)",
   bark: "rgb(196,160,96)",
@@ -388,286 +280,6 @@ const OCOTILLO_GOLD = {
  *  the greener buds still closed at the tip. */
 const ALOE_BLOOM = "rgba(222,184,74,0.88)";
 const ALOE_BUD = "rgba(178,180,98,0.88)";
-
-/** Shrub foliage, on the same terms: muted, 3D only, gold under selection.
- *  A shrub is a mass of leaves, and in ink alone one shrub is every shrub —
- *  the green, and how it goes from lit to shadow, is most of what tells a
- *  hopseed from a sage at a glance. RGB, mixed per spray by its light. */
-const HOPSEED_LEAF = {
-  lit: [118, 148, 88],
-  shade: [50, 82, 54],
-  fresh: [160, 182, 104], // the paler new growth at the top
-  core: [36, 60, 42], // the shadow inside the mass
-};
-const HOPSEED_GOLD = {
-  lit: [226, 192, 120],
-  shade: [152, 114, 54],
-  fresh: [236, 212, 146],
-  core: [118, 86, 40],
-};
-
-/** Texas sage: lavender bloom over woolly silver leaves — the model is in
- *  flower, as the plant is for weeks after every monsoon. */
-const SAGE_COLOURS = {
-  core: [150, 140, 170], // the dense middle, seen between the tufts
-  bloomLit: [184, 166, 222],
-  bloomShade: [122, 104, 164],
-  bloomPale: [222, 212, 242], // the open flowers catching the light
-  leafLit: [206, 212, 196],
-  leafShade: [142, 152, 134],
-};
-const SAGE_GOLD = {
-  core: [170, 132, 66],
-  bloomLit: [228, 196, 128],
-  bloomShade: [156, 118, 58],
-  bloomPale: [240, 220, 160],
-  leafLit: [222, 200, 140],
-  leafShade: [150, 120, 64],
-};
-
-/** Yellow bells: deep glossy green, and the golden trumpets it's named for. */
-const YELLOW_BELLS_COLOURS = {
-  core: [58, 90, 52],
-  leafLit: [128, 168, 82],
-  leafShade: [56, 94, 52],
-  bloomLit: [232, 190, 62],
-  bloomShade: [184, 136, 36],
-};
-const YELLOW_BELLS_GOLD = {
-  core: [118, 86, 40],
-  leafLit: [226, 192, 120],
-  leafShade: [152, 114, 54],
-  bloomLit: [244, 222, 160],
-  bloomShade: [196, 158, 86],
-};
-
-/** Red bird of paradise: dark fern-green fronds, scarlet ruffled blooms
- *  edged in gold, and the pale bark of its open stems. */
-const RED_BIRD_COLOURS = {
-  deep: [40, 70, 44], // fronds inside the canopy
-  leafLit: [98, 140, 84],
-  leafShade: [50, 88, 56],
-  bloomLit: [228, 82, 52],
-  bloomShade: [176, 50, 36],
-  edge: "rgba(236,170,56,0.95)", // the gold rim of the petals
-  stamen: "rgba(196,40,32,0.85)",
-  stem: "rgba(150,132,112,0.9)",
-};
-const RED_BIRD_GOLD = {
-  deep: [118, 86, 40],
-  leafLit: [226, 192, 120],
-  leafShade: [152, 114, 54],
-  bloomLit: [244, 222, 160],
-  bloomShade: [196, 158, 86],
-  edge: "rgba(168,123,47,0.9)",
-  stamen: "rgba(168,123,47,0.8)",
-  stem: "rgba(168,123,47,0.8)",
-};
-
-/** Jojoba: the dull grey-green of a shrub that turns its leaves edge-on to
- *  the sun, mottled, over the grey of its twigs. No flowers worth drawing. */
-const JOJOBA_COLOURS = {
-  core: [76, 88, 77], // the shadow inside the mound — darker than any leaf, or the shaded side melts into it
-  leafLit: [190, 198, 178],
-  leafShade: [112, 124, 108],
-  twig: "rgba(104,94,80,0.8)",
-  stem: "rgba(84,80,70,0.5)",
-};
-const JOJOBA_GOLD = {
-  core: [118, 86, 40],
-  leafLit: [226, 192, 120],
-  leafShade: [152, 114, 54],
-  twig: "rgba(168,123,47,0.8)",
-  stem: "rgba(168,123,47,0.5)",
-};
-
-/** Little John bottlebrush: dark blue-green needles, paler yellow-green at
- *  the growing tips, and the crimson brushes it's named for. */
-const BOTTLEBRUSH_COLOURS = {
-  core: [46, 60, 54], // the shadow at the heart of the mound
-  leafLit: [138, 150, 128],
-  leafShade: [62, 76, 70],
-  tip: [176, 182, 124], // new growth
-  stem: "rgba(96,84,72,0.85)",
-  brush: "rgb(146,20,36)", // the flower spike under its stamens
-  stamen: "rgba(214,42,54,0.95)",
-};
-const BOTTLEBRUSH_GOLD = {
-  core: [118, 86, 40],
-  leafLit: [226, 192, 120],
-  leafShade: [152, 114, 54],
-  tip: [240, 216, 150],
-  stem: "rgba(168,123,47,0.8)",
-  brush: "rgb(168,123,47)",
-  stamen: "rgba(236,206,140,0.95)",
-};
-
-/** Blue palo verde: the misty sage of a canopy that's mostly fine green
- *  twigs, the smooth pale bark it's named for, and a light spring bloom. */
-const PALO_VERDE_COLOURS = {
-  lit: [210, 216, 186],
-  shade: [124, 140, 114],
-  bloom: "rgb(224,208,138)",
-  trunk: "rgb(156,162,138)",
-  limb: "rgba(122,142,112,0.95)",
-  twig: "rgba(128,148,118,0.8)",
-};
-const PALO_VERDE_GOLD = {
-  lit: [232, 204, 140],
-  shade: [160, 122, 60],
-  bloom: "rgb(246,226,170)",
-  trunk: "rgb(196,150,70)",
-  limb: "rgba(186,138,60,0.95)",
-  twig: "rgba(196,150,70,0.8)",
-};
-
-/** Honey mesquite: fresh yellow-green feathery leaves, the dark rough grey
- *  of its trunk and crooked limbs, and pale catkins of bloom. */
-const MESQUITE_COLOURS = {
-  lit: [182, 194, 132],
-  shade: [88, 114, 64],
-  bloom: "rgb(218,212,158)",
-  trunk: "rgb(104,94,86)",
-  limb: "rgba(112,102,94,0.95)",
-  twig: "rgba(126,118,106,0.8)",
-  strand: "rgba(112,138,80,0.75)",
-};
-const MESQUITE_GOLD = {
-  lit: [232, 204, 140],
-  shade: [160, 122, 60],
-  bloom: "rgb(246,226,170)",
-  trunk: "rgb(176,128,56)",
-  limb: "rgba(186,138,60,0.95)",
-  twig: "rgba(196,150,70,0.8)",
-  strand: "rgba(196,150,70,0.75)",
-};
-
-/** Texas ebony: the darkest green in the catalog, a near-black canopy lit
- *  by small bright leaflets, its brown pods, and a pale trunk. */
-const EBONY_COLOURS = {
-  core: [30, 44, 34], // the shadow inside the crown
-  shade: [36, 54, 40],
-  lit: [80, 108, 70],
-  fleckShade: [52, 78, 48],
-  fleckLit: [128, 158, 94],
-  pod: "rgb(164,114,80)",
-  trunk: "rgb(152,142,132)",
-  limb: "rgba(128,118,108,0.95)",
-};
-// Every container size is its own model; the viewer draws them all at the
-// mature size, so all three take the mature tree's body.
-const EBONY_MODELS = new Set(["TexasEbonySm", "TexasEbonyMd", "TexasEbonyLg"]);
-const EBONY_GOLD = {
-  core: [118, 86, 40],
-  shade: [140, 104, 50],
-  lit: [210, 170, 100],
-  fleckShade: [170, 130, 64],
-  fleckLit: [240, 214, 150],
-  pod: "rgb(120,80,30)",
-  trunk: "rgb(196,150,70)",
-  limb: "rgba(186,138,60,0.95)",
-};
-
-/** Mulga: the palest crown in the catalog — silver-grey phyllodes — over
- *  the reddish-brown of its leader and branches. */
-const MULGA_COLOURS = {
-  lit: [204, 216, 206],
-  shade: [124, 142, 134],
-  trunk: "rgb(140,108,96)",
-  limb: "rgba(142,110,98,0.95)",
-  twig: "rgba(150,124,112,0.8)",
-};
-const MULGA_GOLD = {
-  lit: [232, 204, 140],
-  shade: [160, 122, 60],
-  trunk: "rgb(176,128,56)",
-  limb: "rgba(186,138,60,0.95)",
-  twig: "rgba(196,150,70,0.8)",
-};
-// The sapling and the mature tree are separate models; the viewer draws
-// every size mature, so both take the mature body.
-const MULGA_MODELS = new Set(["MulgaAcaciaSm", "MulgaAcaciaLg"]);
-
-/** Chaste tree: a soft grey-green crown of palmate leaves, crowned all
- *  summer with lavender flower spikes, on slim grey-brown trunks. */
-const CHASTE_COLOURS = {
-  shade: [56, 80, 52],
-  lit: [112, 142, 92],
-  leafShade: [80, 112, 70],
-  leafLit: [176, 202, 146],
-  spikeShade: [126, 108, 188],
-  spikeLit: [198, 182, 240],
-  trunk: "rgb(132,118,104)",
-  limb: "rgba(126,114,102,0.95)",
-};
-const CHASTE_GOLD = {
-  shade: [140, 104, 50],
-  lit: [210, 170, 100],
-  leafShade: [170, 130, 64],
-  leafLit: [240, 214, 150],
-  spikeShade: [214, 182, 120],
-  spikeLit: [252, 240, 204],
-  trunk: "rgb(176,128,56)",
-  limb: "rgba(186,138,60,0.95)",
-};
-
-/** Mexican fence post: mid-green ribbed stems, every rib crest lined with
- *  the white felt of its fused areoles — the stripes it's named for. */
-const FENCE_POST_COLOURS = {
-  shade: [60, 98, 58],
-  lit: [152, 190, 114],
-  felt: "rgb(234,230,214)",
-  feltShade: "rgb(172,172,156)",
-};
-const FENCE_POST_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  felt: "rgb(252,244,218)",
-  feltShade: "rgb(212,186,134)",
-};
-
-/** Organ pipe: a dark grey-green, its many low ribs catching the light in
- *  fine lines, paler at the tips with new growth and grey spines. */
-const ORGAN_PIPE_COLOURS = {
-  shade: [52, 68, 60],
-  lit: [150, 168, 138],
-  tip: [184, 190, 152],
-  spines: "rgba(206,206,192,0.55)",
-};
-const ORGAN_PIPE_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  tip: [252, 230, 172],
-  spines: "rgba(255,244,214,0.6)",
-};
-
-/** Argentine toothpick: a light olive green, bristling with the long tan
- *  spines it's named for, a reddish crown of them at every tip. */
-const TOOTHPICK_COLOURS = {
-  shade: [104, 126, 74],
-  lit: [200, 214, 144],
-  spine: "rgba(224,198,152,0.9)",
-  tuft: "rgba(192,128,94,0.95)",
-};
-const TOOTHPICK_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  spine: "rgba(255,240,206,0.9)",
-  tuft: "rgba(214,160,90,0.95)",
-};
-
-/** Totem pole: the scan's pale yellow-sage, every knob lit on its
- *  shoulder and shadowed under its drip, deep olive in the creases. */
-const TOTEM_COLOURS = {
-  shade: [98, 100, 58],
-  lit: [218, 220, 160],
-  crease: "rgb(80,82,46)",
-};
-const TOTEM_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  crease: "rgb(116,80,36)",
-};
 
 /** Madagascar palm: long strap leaves, yellow-green on top with a pale
  *  midrib, duller olive beneath, over a grey-brown trunk of pale spines. */
@@ -728,66 +340,6 @@ const FEROX_GOLD = {
   teeth: "rgb(128,78,28)",
 };
 
-/** Tropical agave: variegated — cream margins down every leaf with a broad
- *  grey-green stripe between them, on both faces; the undersides' margins
- *  paler and greener. */
-const TROPICAL_AGAVE_COLOURS = {
-  cream: [[150, 146, 100], [236, 230, 176]],
-  green: [[98, 112, 84], [180, 196, 158]],
-  under: [[126, 132, 92], [208, 210, 170]],
-  spine: "rgb(96,72,52)",
-};
-const TROPICAL_AGAVE_GOLD = {
-  cream: [[160, 120, 60], [248, 220, 150]],
-  green: [[130, 94, 40], [222, 186, 108]],
-  under: [[126, 90, 42], [214, 178, 112]],
-  spine: "rgb(110,76,30)",
-};
-
-/** Agave americana: glaucous blue-grey, the old outer leaves gone dusty tan,
- *  dead ones brown on the ground; dark brown teeth and terminal spines. */
-const AMERICANA_COLOURS = {
-  upper: [[86, 100, 96], [204, 214, 206]],
-  under: [[76, 90, 86], [176, 188, 182]],
-  dustyUpper: [[96, 92, 76], [200, 192, 166]],
-  dustyUnder: [[86, 82, 68], [176, 168, 144]],
-  dead: [[90, 68, 50], [176, 148, 112]],
-  core: "rgb(46,56,54)",
-  margin: "rgba(96,66,46,0.55)",
-  teeth: "rgb(98,66,44)",
-  spine: "rgb(64,48,38)",
-};
-const AMERICANA_GOLD = {
-  upper: [[140, 100, 46], [236, 200, 128]],
-  under: [[126, 90, 42], [214, 178, 112]],
-  dustyUpper: [[146, 104, 50], [240, 206, 140]],
-  dustyUnder: [[130, 92, 44], [218, 182, 118]],
-  dead: [[110, 76, 36], [200, 160, 96]],
-  core: "rgb(100,70,30)",
-  margin: "rgba(140,90,36,0.6)",
-  teeth: "rgb(118,74,26)",
-  spine: "rgb(96,62,22)",
-};
-
-/** Agave truncata: pale glaucous blue-grey above, the backs a creamy sage;
- *  fine red-brown teeth and a stout red-brown spine at every tip. */
-const TRUNCATA_COLOURS = {
-  upper: [[104, 118, 112], [204, 214, 206]],
-  under: [[122, 130, 118], [222, 218, 190]],
-  core: "rgb(58,70,66)",
-  margin: "rgba(132,96,72,0.5)",
-  teeth: "rgb(128,78,58)",
-  spine: "rgb(92,52,38)",
-};
-const TRUNCATA_GOLD = {
-  upper: [[140, 100, 46], [236, 200, 128]],
-  under: [[126, 90, 42], [214, 178, 112]],
-  core: "rgb(100,70,30)",
-  margin: "rgba(140,90,36,0.6)",
-  teeth: "rgb(118,74,26)",
-  spine: "rgb(96,62,22)",
-};
-
 /** AZ Boulder: the scan's granite, a pinkish grey-tan, stained rust low
  *  down where it sat in the soil, flecked dark and white close up. */
 const AZ_ROCK_COLOURS = {
@@ -829,6 +381,7 @@ export function LivingBlueprint({
   designer = null,
   openFrom = null,
   cameraRef,
+  renderer,
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -906,6 +459,21 @@ export function LivingBlueprint({
   const ghostRef = useRef<[number, number] | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const glRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef(renderer);
+  useEffect(() => {
+    rendererRef.current = renderer;
+  }, [renderer]);
+  // The WebGL layer, kept across the scene's changes so its plants stay
+  // grown on the card: an edit regrows only the plants it touched.
+  const glLayerRef = useRef<{ layer: GLLayer | null; failed: boolean } | null>(null);
+  useEffect(
+    () => () => {
+      glLayerRef.current?.layer?.dispose();
+      glLayerRef.current = null;
+    },
+    [],
+  );
   const wrapRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
 
@@ -1221,9 +789,52 @@ export function LivingBlueprint({
     let fade = 1;
     // The designer's plants picked together, this frame.
     let picked = new Set<string>();
+    // The WebGL layer under this canvas, made the first time it's asked
+    // for, and the plants it drew this frame (their bodies aren't drawn
+    // here).
+    const glCv = glRef.current;
+    let glDrawn = new Set<string>();
+    const glLayer = () => {
+      if (rendererRef.current !== "webgl" || !glCv) return null;
+      const gs = (glLayerRef.current ??= { layer: null, failed: false });
+      if (gs.failed) return null;
+      if (!gs.layer) {
+        try {
+          gs.layer = createGLLayer(glCv);
+        } catch (e) {
+          console.warn("WebGL layer:", e);
+          gs.layer = null;
+        }
+        gs.failed = !gs.layer;
+      }
+      gs.layer?.resize(W, H, dpr);
+      return gs.layer;
+    };
+    // The yard as WebGL takes it; the same all this scene.
+    const glYard: GLYard = {
+      ground: {
+        pts:
+          scene.boundary.length >= 3
+            ? scene.boundary
+            : [
+                [cx - R, cz - R],
+                [cx + R, cz - R],
+                [cx + R, cz + R],
+                [cx - R, cz + R],
+              ],
+        x0: cx - R,
+        x1: cx + R,
+        z0: cz - R,
+        z1: cz + R,
+      },
+      boundary: scene.boundary,
+      features: scene.features.map((f) => ({ kind: f.kind, pts: f.pts })),
+      hardscape: scene.hardscape.map((h) => ({ style: h.style, pts: h.pts })),
+      removals: scene.removals,
+    };
 
-    function drawExtruded(pts: [number, number][], hFt: number, label: string | null, t: number) {
-      const quads = pts
+    function drawExtruded(pts: [number, number][], hFt: number, label: string | null, t: number, body = true) {
+      const quads = (body ? pts : [])
         .map((p, i) => {
           const q = pts[(i + 1) % pts.length];
           const mid = P((p[0] + q[0]) / 2, hFt / 2, (p[1] + q[1]) / 2);
@@ -1247,12 +858,14 @@ export function LivingBlueprint({
         ctx!.lineWidth = 1;
         ctx!.stroke();
       }
-      pathPoly(pts, hFt);
-      ctx!.fillStyle = "#e6dbc0";
-      ctx!.fill();
-      ctx!.strokeStyle = verde(0.5);
-      ctx!.lineWidth = 1.1;
-      ctx!.stroke();
+      if (body) {
+        pathPoly(pts, hFt);
+        ctx!.fillStyle = "#e6dbc0";
+        ctx!.fill();
+        ctx!.strokeStyle = verde(0.5);
+        ctx!.lineWidth = 1.1;
+        ctx!.stroke();
+      }
       if (label) {
         const [gx, gz] = centroid(pts);
         const s = P(gx, hFt, gz);
@@ -1291,186 +904,10 @@ export function LivingBlueprint({
      *  a barrel, and no clue which way is up. */
 
     // White Dawn, grown once per plant and kept, as the shrubs are.
-    type WhiteDawnSprig = {
-      c: [number, number, number];
-      /** leaf corners as offsets from c, xyz; WHITE_DAWN_LEAF.length each */
-      leaves: Float32Array;
-      /** the same leaves as kites, WHITE_DAWN_KITE.length each */
-      kites: Float32Array;
-      inner: boolean;
-      /** its step on the light ramp, 0 shade to WD_LEVELS - 1 lit */
-      tone: number;
-    };
-    type WhiteDawnPlant = {
-      /** the runners, each a path from the crown */
-      runners: [number, number, number][][];
-      sprigs: WhiteDawnSprig[];
-      /** flower heads: centre and radius, ft */
-      flowers: [number, number, number, number][];
-    };
-    // A lantana leaf: a broad oval to a blunt point. Narrower, they read as
-    // fern.
-    const WHITE_DAWN_LEAF: [number, number][] = [[0, 0], [0.22, 0.48], [0.62, 0.44], [1, 0], [0.62, -0.44], [0.22, -0.48]];
-    // The leaf as a kite of the same area, for leaves a few pixels long:
-    // the oval can't be told from it at that size, and the plant's
-    // thousands of corners are most of its cost.
-    const WHITE_DAWN_KITE: [number, number][] = [[0, 0], [0.4, 0.64], [1, 0], [0.4, -0.64]];
-    // Leaf tones in steps, made once, so a fill's colour is only set when
-    // the step changes: the leaves', then the shaded heart's. A fill per
-    // cluster: sharing fills — a run of one tone, or a band of depth and a
-    // step of tone at once — was slower, the long paths costing more to
-    // fill than the fills they save.
-    const WD_LEVELS = 8;
-    const WD_TONES = [WHITE_DAWN_COLOURS, WHITE_DAWN_GOLD].map((pal) => {
-      const ramp = (inner: boolean) =>
-        Array.from({ length: WD_LEVELS }, (_, k) => {
-          const t = 0.25 + (0.75 * k) / (WD_LEVELS - 1);
-          const col = pal.leafShade.map((v, i) => v + (pal.leafLit[i] - v) * t);
-          const c = inner ? pal.inner.map((v, i) => v + (col[i] - v) * 0.45) : col;
-          return `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-        });
-      return [...ramp(false), ...ramp(true)];
-    });
     const whiteDawnGrown = new Map<string, WhiteDawnPlant>();
     // Scratch, reused plant to plant.
     let wdDepth = new Float32Array(1024);
     let wdOrder = new Int32Array(1024);
-
-    function growWhiteDawn(x: number, z: number, h: number, rw: number, rot: number, seed: string): WhiteDawnPlant {
-      const rng = rngFor("white-dawn:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      // A mat, lit from above: leaves high on an arch catch the light, the
-      // ones down in it don't. Mottled a step either way, as the scan is.
-      const toneAt = (c: V3, n: V3) => {
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.4 + 0.6 * lit) * (0.62 + 0.38 * Math.min(1, c[1] / (h * 0.5))) * (0.9 + 0.2 * rng());
-        return Math.max(0, Math.min(WD_LEVELS - 1, Math.round(((shade - 0.25) / 0.75) * (WD_LEVELS - 1))));
-      };
-
-      const runners: V3[][] = [];
-      const sprigs: WhiteDawnSprig[] = [];
-      const flowers: [number, number, number, number][] = [];
-      const L = rw * 0.085;
-      // A cluster of four to six leaves round a point on a runner, held near
-      // flat — a groundcover turns its leaves to the sky.
-      const cluster = (c: V3, dir: V3, len: number, inner: boolean) => {
-        const side = nrm(crs([0, 1, 0], dir));
-        const pts: number[] = [];
-        const kts: number[] = [];
-        const put = (d: V3, l: number) => {
-          const p = nrm(crs([0, 1, 0], d));
-          for (const [f, q] of WHITE_DAWN_LEAF) {
-            for (let i = 0; i < 3; i++) pts.push(d[i] * l * f + p[i] * l * 0.62 * q);
-          }
-          for (const [f, q] of WHITE_DAWN_KITE) {
-            for (let i = 0; i < 3; i++) kts.push(d[i] * l * f + p[i] * l * 0.62 * q);
-          }
-        };
-        const spin = rng() * Math.PI;
-        const k = 4 + Math.floor(rng() * 3);
-        for (let j = 0; j < k; j++) {
-          const ang = spin + (j / k) * Math.PI * 2 + (rng() - 0.5) * 0.9;
-          const l = 0.75 + 0.3 * rng();
-          const ca = Math.cos(ang);
-          const sa = Math.sin(ang);
-          const d = nrm([dir[0] * ca + side[0] * sa, 0.12 + (rng() - 0.3) * 0.5, dir[2] * ca + side[2] * sa]);
-          put(d, len * l);
-        }
-        const n = nrm([(c[0] - x) / rw, 1.6, (c[2] - z) / rw]);
-        sprigs.push({ c, leaves: new Float32Array(pts), kites: new Float32Array(kts), inner, tone: toneAt(c, n) });
-      };
-      // A flower head on a short stalk over the leaves.
-      const bloom = (c: V3) => {
-        flowers.push([c[0], c[1] + h * 0.04, c[2], rw * (0.032 + 0.012 * rng())]);
-      };
-
-      // Runners: wiry stems out of a small crown, arching up and over and
-      // trailing out low across the ground, their tips lifting — a few
-      // standing right up at the edge, as the scan's do. Each forks once
-      // or twice. Out to an oval a fifth narrower across the plant's yaw
-      // than along it, as the model is.
-      const walk = (p0: V3, p1: V3, p2: V3, p3: V3, flowerAtTip: boolean) => {
-        const at = (t: number): V3 => {
-          const u = 1 - t;
-          return [0, 1, 2].map((i) => u * u * u * p0[i] + 3 * u * u * t * p1[i] + 3 * u * t * t * p2[i] + t * t * t * p3[i]) as V3;
-        };
-        const path: V3[] = [];
-        for (let i = 0; i <= 10; i++) path.push(at(i / 10));
-        runners.push(path);
-        let len = 0;
-        for (let i = 1; i < path.length; i++) len += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1], path[i][2] - path[i - 1][2]);
-        const n = Math.max(3, Math.round(len / (rw * 0.08)));
-        for (let i = 0; i < n; i++) {
-          const t = Math.min(1, 0.12 + (0.88 * (i + 0.2 + 0.6 * rng())) / n);
-          const c = at(t);
-          const c2 = at(Math.min(1, t + 0.02));
-          const dir = nrm([c2[0] - c[0], 0, c2[2] - c[2]]);
-          cluster(c, dir, L * (t > 0.9 ? 0.75 : 1), false);
-          if (rng() < 0.03) bloom(c);
-        }
-        if (flowerAtTip && rng() < 0.45) bloom(at(1));
-        return at;
-      };
-      const NR = 22;
-      for (let k = 0; k < NR; k++) {
-        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.5;
-        const edge = rw * (1 - 0.21 * Math.sin(a - rot) ** 2);
-        const R = edge * (0.5 + 0.5 * Math.sqrt(rng()));
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        const wob = (rng() - 0.5) * 0.24 * R;
-        const lift = rng() < 0.12;
-        const pt = (r: number, y: number, side: number): V3 => [x + ca * r - sa * side, y, z + sa * r + ca * side];
-        const at = walk(
-          pt(rw * 0.04, h * 0.12, 0),
-          pt(R * 0.3, h * (0.42 + 0.16 * rng()), wob * 0.5),
-          pt(R * 0.7, h * (lift ? 0.3 + 0.12 * rng() : 0.18 + 0.12 * rng()), wob),
-          pt(R * (lift ? 0.9 : 1), h * (lift ? 0.55 + 0.25 * rng() : 0.1 + 0.12 * rng()), wob * 1.3 + (lift ? (rng() - 0.5) * R * 0.3 : 0)),
-          true,
-        );
-        // Side runners forking off partway out.
-        const forks = 1 + (rng() < 0.5 ? 1 : 0);
-        for (let f = 0; f < forks; f++) {
-          const t = 0.3 + 0.3 * rng();
-          const p0 = at(t);
-          const b = a + (rng() < 0.5 ? 1 : -1) * (0.45 + 0.35 * rng());
-          const rr = R * (0.3 + 0.25 * rng());
-          const cb = Math.cos(b);
-          const sb = Math.sin(b);
-          walk(
-            p0,
-            [p0[0] + cb * rr * 0.35, p0[1] + h * 0.06, p0[2] + sb * rr * 0.35],
-            [p0[0] + cb * rr * 0.75, h * (0.14 + 0.1 * rng()), p0[2] + sb * rr * 0.75],
-            [p0[0] + cb * rr, h * (0.08 + 0.12 * rng()), p0[2] + sb * rr],
-            true,
-          );
-        }
-      }
-      // The heart of the mat, where the runners crowd out of the crown:
-      // clusters in shade, fill only, so it reads as a mat there and not a
-      // tangle of wire.
-      for (let i = 0; i < 70; i++) {
-        const th = rng() * Math.PI * 2;
-        const r = rw * 0.5 * Math.sqrt(rng()) * (1 - 0.21 * Math.sin(th - rot) ** 2);
-        const c: V3 = [x + Math.cos(th) * r, h * (0.08 + 0.26 * rng()) * (1 - (0.5 * r) / rw), z + Math.sin(th) * r];
-        cluster(c, [Math.cos(th + 1.3), 0, Math.sin(th + 1.3)], L * 1.15, true);
-      }
-      // The heart first, a step of tone at a time; the rest as grown.
-      sprigs.sort((a, b) => (a.inner === b.inner ? (a.inner ? a.tone - b.tone : 0) : a.inner ? -1 : 1));
-      return { runners, sprigs, flowers };
-    }
 
     /** White Dawn lantana, after the app's model.
      *
@@ -1641,229 +1078,10 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    type PurpleSprig = {
-      c: [number, number, number];
-      /** the mound's outward normal there, to pass over the far side */
-      n: [number, number, number];
-      /** leaf corners as offsets from c, xyz; PURPLE_LEAF.length each */
-      leaves: Float32Array;
-      /** the same leaves as kites, PURPLE_KITE.length each */
-      kites: Float32Array;
-      inner: boolean;
-      /** its step on the light ramp, 0 shade to PL_LEVELS - 1 lit */
-      tone: number;
-    };
-    type PurplePlant = {
-      sprigs: PurpleSprig[];
-      /** flower heads, 8 numbers each: centre, radius (ft), outward
-       *  normal, step on the flower ramp */
-      flowers: Float32Array;
-      /** the heart of the mound, set in from the leaves, hulled for the
-       *  dark core */
-      core: [number, number, number][];
-    };
-    // A lantana leaf, broad and ovate.
-    const PURPLE_LEAF: [number, number][] = [[0, 0], [0.2, 0.5], [0.6, 0.5], [1, 0], [0.6, -0.5], [0.2, -0.5]];
-    // The leaf as a kite of the same area, for leaves a few pixels long.
-    const PURPLE_KITE: [number, number][] = [[0, 0], [0.4, 0.7], [1, 0], [0.4, -0.7]];
-    const PL_LEVELS = 8;
-    const PL_FLOWER_LEVELS = 4;
-    // Tones made once, so a fill's colour is only set when the step changes.
-    const PL_TONES = [PURPLE_LANTANA_COLOURS, PURPLE_LANTANA_GOLD].map((pal) => {
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const leaf = Array.from({ length: PL_LEVELS }, (_, k) => mix(pal.leafShade, pal.leafLit, 0.2 + (0.8 * k) / (PL_LEVELS - 1)));
-      const step = (k: number) => k / (PL_FLOWER_LEVELS - 1);
-      return {
-        leaf: leaf.map(rgb),
-        inner: leaf.map((c) => rgb(mix(pal.inner, c, 0.4))),
-        flower: Array.from({ length: PL_FLOWER_LEVELS }, (_, k) => rgb(mix(pal.flowerShade, pal.flower, step(k)))),
-        flowerLit: Array.from({ length: PL_FLOWER_LEVELS }, (_, k) => rgb(mix(pal.flower, pal.flowerLit, 0.15 + 0.5 * step(k)))),
-        floret: Array.from({ length: PL_FLOWER_LEVELS }, (_, k) => rgb(mix(mix(pal.flowerShade, pal.flower, step(k)), pal.flowerLit, 0.35))),
-      };
-    });
     const purpleGrown = new Map<string, PurplePlant>();
     // Scratch, reused plant to plant.
     let plDepth = new Float32Array(2048);
     let plOrder = new Int32Array(2048);
-
-    function growPurpleLantana(x: number, z: number, h: number, rw: number, rot: number, seed: string): PurplePlant {
-      const rng = rngFor("purple-lantana:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-
-      // The outline: an oval a quarter narrower across the plant's yaw than
-      // along it, as the scan is, thrown out in low arms with notches
-      // between; shoots trail out past it to the plant's full spread.
-      const ph2 = rng() * Math.PI * 2;
-      const ph3 = rng() * Math.PI * 2;
-      const ph5 = rng() * Math.PI * 2;
-      const oval = (th: number) => rw * (1 - 0.24 * Math.sin(th - rot) ** 2);
-      const edge = (th: number) =>
-        oval(th) * (0.86 + 0.06 * Math.sin(2 * th + ph2) + 0.05 * Math.sin(3 * th + ph3) + 0.03 * Math.sin(5 * th + ph5));
-      // The mound: a low flat-topped cushion, held up nearly to its edge as
-      // the scan is, with lumps and pockets all over it — not a smooth bun.
-      // A sprinkle of lumps, not a few big ones: big ones stack into a peak.
-      const lumps = Array.from({ length: 11 }, (_, i) => {
-        const th = i * 2.399963 + rng();
-        const r = rw * 0.75 * Math.sqrt((i + 0.5) / 11);
-        return [x + Math.cos(th) * r, z + Math.sin(th) * r, (rng() < 0.3 ? -0.5 : 1) * (0.12 + 0.14 * rng()), rw * (0.12 + 0.08 * rng())];
-      });
-      // Flat-topped in the middle and falling away with the distance out,
-      // so the arms run lower than the body; rounded off at the outline.
-      const raw = (px: number, pz: number) => {
-        const r = Math.hypot(px - x, pz - z);
-        const th = Math.atan2(pz - z, px - x);
-        const rho = r / edge(th);
-        if (rho >= 1) return 0;
-        const out = Math.min(1, r / oval(th));
-        let lump = 0;
-        for (const [lx, lz, a, sg] of lumps) lump += a * Math.exp(-((px - lx) ** 2 + (pz - lz) ** 2) / (sg * sg));
-        return (0.8 * (0.15 + 0.85 * (1 - out ** 2.5) ** 0.8) + lump * (1 - rho ** 4)) * (1 - rho ** 6) ** 0.5;
-      };
-      // Scaled so its highest lump, with the leaves standing on it, is the
-      // plant's height.
-      let top = 0;
-      for (let i = 0; i < 400; i++) {
-        const r = Math.sqrt((i + 0.5) / 400) * rw;
-        top = Math.max(top, raw(x + Math.cos(i * 2.399963) * r, z + Math.sin(i * 2.399963) * r));
-      }
-      const S = (px: number, pz: number) => (raw(px, pz) * h * 0.88) / top;
-      const e = rw * 0.03;
-      const normalAt = (px: number, pz: number): V3 =>
-        nrm([(S(px - e, pz) - S(px + e, pz)) / (2 * e), 1, (S(px, pz - e) - S(px, pz + e)) / (2 * e)]);
-      // Down in the folds between lumps is darker.
-      const foldAt = (px: number, pz: number) => {
-        const f = rw * 0.07;
-        const dip = (S(px + f, pz) + S(px - f, pz) + S(px, pz + f) + S(px, pz - f)) / 4 - S(px, pz);
-        return 1 - Math.min(0.45, Math.max(0, dip / (h * 0.04)) * 0.45);
-      };
-      // Lit from above, darker low down, mottled a step either way.
-      const toneAt = (c: V3, n: V3, dark: number) => {
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.25 + 0.75 * lit) * (0.5 + 0.5 * Math.min(1, c[1] / (h * 0.7))) * dark * (0.72 + 0.5 * rng());
-        const step = Math.round(((shade - 0.2) / 0.8) * (PL_LEVELS - 1)) + (rng() < 0.15 ? 2 : 0);
-        return Math.max(0, Math.min(PL_LEVELS - 1, step));
-      };
-
-      const sprigs: PurpleSprig[] = [];
-      const L = rw * 0.06;
-      // A cluster of three to five leaves round a shoot tip, lying in the
-      // mound's skin and lifting a little off it.
-      const cluster = (c: V3, n: V3, len: number, inner: boolean, dark: number) => {
-        const t1 = nrm(crs(n, Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
-        const t2 = crs(n, t1);
-        const pts: number[] = [];
-        const kts: number[] = [];
-        const spin = rng() * Math.PI * 2;
-        const m = 3 + Math.floor(rng() * 3);
-        for (let j = 0; j < m; j++) {
-          const a = spin + (j / m) * Math.PI * 2 + (rng() - 0.5) * 0.8;
-          const l = len * (0.8 + 0.4 * rng());
-          const lift = 0.15 + 0.35 * rng();
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          const d = nrm([t1[0] * ca + t2[0] * sa + n[0] * lift, t1[1] * ca + t2[1] * sa + n[1] * lift, t1[2] * ca + t2[2] * sa + n[2] * lift]);
-          const p = nrm(crs(n, d));
-          for (const [f, q] of PURPLE_LEAF) for (let i = 0; i < 3; i++) pts.push(d[i] * l * f + p[i] * l * 0.7 * q);
-          for (const [f, q] of PURPLE_KITE) for (let i = 0; i < 3; i++) kts.push(d[i] * l * f + p[i] * l * 0.7 * q);
-        }
-        sprigs.push({ c, n, leaves: new Float32Array(pts), kites: new Float32Array(kts), inner, tone: toneAt(c, n, dark) });
-      };
-      const flowers: number[] = [];
-      // A flower head sitting up off the leaves.
-      const bloom = (c: V3, n: V3) => {
-        const r = rw * (0.022 + 0.02 * rng());
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.35 + 0.65 * lit) * (0.7 + 0.3 * Math.min(1, c[1] / (h * 0.6)));
-        const tone = Math.max(0, Math.min(PL_FLOWER_LEVELS - 1, Math.round(shade * (PL_FLOWER_LEVELS - 1))));
-        flowers.push(c[0] + n[0] * r * 0.6, c[1] + n[1] * r * 0.6, c[2] + n[2] * r * 0.6, r, n[0], n[1], n[2], tone);
-      };
-      // A point on the mound's top, or on its side down to the ground.
-      const onTop = (th: number, rho: number): [V3, V3, number] => {
-        const r = rho * edge(th);
-        const px = x + Math.cos(th) * r;
-        const pz = z + Math.sin(th) * r;
-        return [[px, S(px, pz), pz], normalAt(px, pz), foldAt(px, pz)];
-      };
-      const onSide = (th: number): [V3, V3] => {
-        const r = (0.86 + (rng() < 0.2 ? 0.25 : 0.12) * rng()) * edge(th);
-        const px = x + Math.cos(th) * r;
-        const pz = z + Math.sin(th) * r;
-        return [[px, S(px, pz) * (0.05 + 0.9 * rng()), pz], nrm([Math.cos(th), 0.55, Math.sin(th)])];
-      };
-
-      // The shaded layer under the leaves, so a gap shows leaves in shadow
-      // before it shows the core.
-      for (let i = 0; i < 150; i++) {
-        const [c, n] = onTop(i * 2.399963, 0.95 * Math.sqrt((i + 0.5) / 150));
-        cluster([c[0], c[1] - h * 0.09, c[2]], n, L * 1.1, true, 0.8);
-      }
-      // The skin, evenly over the top on a spiral, then round the sides.
-      const NT = 640;
-      for (let i = 0; i < NT; i++) {
-        const [c, n, fold] = onTop(i * 2.399963 + (rng() - 0.5) * 0.2, Math.min(0.97, Math.sqrt((i + 0.5) / NT) + (rng() - 0.5) * 0.03));
-        const proud = rng() < 0.12 ? h * (0.04 + 0.06 * rng()) : h * 0.04 * (rng() - 0.5);
-        cluster([c[0] + n[0] * proud, c[1] + n[1] * proud, c[2] + n[2] * proud], n, L, false, fold);
-      }
-      for (let i = 0; i < 180; i++) {
-        const [c, n] = onSide(i * 2.399963 + rng() * 0.3);
-        cluster(c, n, L, false, 1);
-      }
-      // Shoots trailing out past the mound, low, to break its edge.
-      for (let i = 0; i < 22; i++) {
-        const th = i * 2.399963 + rng() * 0.5;
-        const ed = edge(th);
-        const out = Math.min(rw * (1 - 0.24 * Math.sin(th - rot) ** 2), ed * (1.08 + 0.16 * rng())) / ed;
-        const side = (rng() - 0.5) * 0.5;
-        const y0 = S(x + Math.cos(th) * ed * 0.75, z + Math.sin(th) * ed * 0.75) * (0.6 + 0.4 * rng());
-        const n = nrm([Math.cos(th), 1, Math.sin(th)]);
-        let c: V3 = [x, 0, z];
-        for (let k = 1; k <= 5; k++) {
-          const f = (0.78 + ((out - 0.78) * k) / 5) * ed;
-          const a = th + side * (k / 5);
-          c = [x + Math.cos(a) * f, Math.max(h * 0.03, y0 * (1 - k / 5.5)), z + Math.sin(a) * f];
-          cluster(c, n, L * 0.9, false, 1);
-        }
-        if (rng() < 0.4) bloom(c, n);
-      }
-      // Flowers all over it, the sides as well as the top.
-      for (let i = 0; i < 130; i++) {
-        const th = rng() * Math.PI * 2;
-        if (rng() < 0.3) {
-          const [c, n] = onSide(th);
-          bloom(c, n);
-        } else {
-          const [c, n] = onTop(th, 0.95 * Math.sqrt(rng()));
-          bloom(c, n);
-        }
-      }
-      // The heart, set in from the skin.
-      const core: V3[] = [];
-      for (let i = 0; i < 16; i++) {
-        const th = (i / 16) * Math.PI * 2;
-        for (const rho of [0.25, 0.5, 0.72]) {
-          const [c] = onTop(th, rho);
-          core.push([c[0], c[1] * 0.85 - h * 0.04, c[2]]);
-        }
-        const r = 0.72 * edge(th);
-        core.push([x + Math.cos(th) * r, 0, z + Math.sin(th) * r]);
-      }
-      // The shaded layer first, a step of tone at a time; the rest as grown.
-      sprigs.sort((a, b) => (a.inner === b.inner ? (a.inner ? a.tone - b.tone : 0) : a.inner ? -1 : 1));
-      return { sprigs, flowers: new Float32Array(flowers), core };
-    }
 
     /** Purple lantana, after the app's model.
      *
@@ -2027,258 +1245,10 @@ export function LivingBlueprint({
       }
     }
 
-    type YellowSprig = {
-      c: [number, number, number];
-      /** the cushion's outward normal there, to pass over the far side */
-      n: [number, number, number];
-      /** leaf corners as offsets from c, xyz; YELLOW_LEAF.length each */
-      leaves: Float32Array;
-      /** the same leaves as kites, YELLOW_KITE.length each */
-      kites: Float32Array;
-      inner: boolean;
-      /** its step on the light ramp, 0 shade to YL_LEVELS - 1 lit */
-      tone: number;
-    };
-    type YellowPlant = {
-      sprigs: YellowSprig[];
-      /** flower heads, 8 numbers each: centre, radius (ft), outward
-       *  normal, step on the flower ramp */
-      flowers: Float32Array;
-      /** the heart of the cushion, set in from the leaves, hulled for the
-       *  dark core */
-      core: [number, number, number][];
-    };
-    // A lantana leaf, ovate to a point.
-    const YELLOW_LEAF: [number, number][] = [[0, 0], [0.18, 0.42], [0.55, 0.46], [1, 0], [0.55, -0.46], [0.18, -0.42]];
-    // The leaf as a kite of the same area, for leaves a few pixels long.
-    const YELLOW_KITE: [number, number][] = [[0, 0], [0.4, 0.61], [1, 0], [0.4, -0.61]];
-    const YL_LEVELS = 8;
-    const YL_FLOWER_LEVELS = 4;
-    // Tones made once, so a fill's colour is only set when the step changes.
-    const YL_TONES = [YELLOW_LANTANA_COLOURS, YELLOW_LANTANA_GOLD].map((pal) => {
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const leaf = Array.from({ length: YL_LEVELS }, (_, k) => mix(pal.leafShade, pal.leafLit, 0.2 + (0.8 * k) / (YL_LEVELS - 1)));
-      const step = (k: number) => k / (YL_FLOWER_LEVELS - 1);
-      const ramp = (f: (t: number) => number[]) => Array.from({ length: YL_FLOWER_LEVELS }, (_, k) => rgb(f(step(k))));
-      return {
-        leaf: leaf.map(rgb),
-        inner: leaf.map((c) => rgb(mix(pal.inner, c, 0.4))),
-        flower: ramp((t) => mix(pal.flowerShade, pal.flower, t)),
-        flowerLit: ramp((t) => mix(pal.flower, pal.flowerLit, 0.15 + 0.5 * t)),
-        floret: ramp((t) => mix(mix(pal.flowerShade, pal.flower, t), pal.flowerLit, 0.45)),
-        bud: ramp((t) => mix(pal.flowerShade, pal.bud, 0.5 + 0.5 * t)),
-      };
-    });
     const yellowGrown = new Map<string, YellowPlant>();
     // Scratch, reused plant to plant.
     let ylDepth = new Float32Array(2048);
     let ylOrder = new Int32Array(2048);
-
-    function growYellowLantana(x: number, z: number, h: number, rw: number, rot: number, seed: string): YellowPlant {
-      const rng = rngFor("yellow-lantana:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-
-      // The outline: an oval a fifth narrower across the plant's yaw than
-      // along it, as the scan is, and only gently lobed — this one is a full
-      // round cushion, where the purple throws out arms.
-      const ph2 = rng() * Math.PI * 2;
-      const ph3 = rng() * Math.PI * 2;
-      const ph5 = rng() * Math.PI * 2;
-      const oval = (th: number) => rw * (1 - 0.2 * Math.sin(th - rot) ** 2);
-      const edge = (th: number) =>
-        oval(th) * (0.88 + 0.04 * Math.sin(2 * th + ph2) + 0.03 * Math.sin(3 * th + ph3) + 0.02 * Math.sin(5 * th + ph5));
-      // The cushion: flat-topped, held high nearly to its edge and then
-      // steep to the ground, a little hollow in the middle where the crown
-      // opens, and lumpy all over.
-      const lumps = Array.from({ length: 12 }, (_, i) => {
-        const th = i * 2.399963 + rng();
-        const r = rw * 0.75 * Math.sqrt((i + 0.5) / 12);
-        return [x + Math.cos(th) * r, z + Math.sin(th) * r, (rng() < 0.3 ? -0.7 : 1) * (0.08 + 0.1 * rng()), rw * (0.1 + 0.08 * rng())];
-      });
-      const raw = (px: number, pz: number) => {
-        const rho = Math.hypot(px - x, pz - z) / edge(Math.atan2(pz - z, px - x));
-        if (rho >= 1) return 0;
-        let lump = 0;
-        for (const [lx, lz, a, sg] of lumps) lump += a * Math.exp(-((px - lx) ** 2 + (pz - lz) ** 2) / (sg * sg));
-        return (1 - rho ** 5) ** 0.4 - 0.12 * Math.exp(-((rho / 0.3) ** 2)) + lump * (1 - rho ** 4);
-      };
-      // Scaled so the cushion stands a little under the plant's height: the
-      // shoots standing out of it make up the rest.
-      let top = 0;
-      for (let i = 0; i < 400; i++) {
-        const r = Math.sqrt((i + 0.5) / 400) * rw;
-        top = Math.max(top, raw(x + Math.cos(i * 2.399963) * r, z + Math.sin(i * 2.399963) * r));
-      }
-      const S = (px: number, pz: number) => (raw(px, pz) * h * 0.82) / top;
-      const e = rw * 0.03;
-      const normalAt = (px: number, pz: number): V3 =>
-        nrm([(S(px - e, pz) - S(px + e, pz)) / (2 * e), 1, (S(px, pz - e) - S(px, pz + e)) / (2 * e)]);
-      // Down in the folds between lumps is darker.
-      const foldAt = (px: number, pz: number) => {
-        const f = rw * 0.07;
-        const dip = (S(px + f, pz) + S(px - f, pz) + S(px, pz + f) + S(px, pz - f)) / 4 - S(px, pz);
-        return 1 - Math.min(0.45, Math.max(0, dip / (h * 0.04)) * 0.45);
-      };
-      // Lit from above, darker low down, mottled a step either way.
-      const toneAt = (c: V3, n: V3, dark: number) => {
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.25 + 0.75 * lit) * (0.5 + 0.5 * Math.min(1, c[1] / (h * 0.7))) * dark * (0.72 + 0.5 * rng());
-        const step = Math.round(((shade - 0.2) / 0.8) * (YL_LEVELS - 1)) + (rng() < 0.15 ? 2 : 0);
-        return Math.max(0, Math.min(YL_LEVELS - 1, step));
-      };
-
-      const sprigs: YellowSprig[] = [];
-      const L = rw * 0.062;
-      // A cluster of three to five leaves round a shoot tip, lying in the
-      // cushion's skin and lifting a little off it.
-      const cluster = (c: V3, n: V3, len: number, inner: boolean, dark: number) => {
-        const t1 = nrm(crs(n, Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
-        const t2 = crs(n, t1);
-        const pts: number[] = [];
-        const kts: number[] = [];
-        const spin = rng() * Math.PI * 2;
-        const m = 3 + Math.floor(rng() * 3);
-        for (let j = 0; j < m; j++) {
-          const a = spin + (j / m) * Math.PI * 2 + (rng() - 0.5) * 0.8;
-          const l = len * (0.8 + 0.4 * rng());
-          const lift = 0.15 + 0.35 * rng();
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          const d = nrm([t1[0] * ca + t2[0] * sa + n[0] * lift, t1[1] * ca + t2[1] * sa + n[1] * lift, t1[2] * ca + t2[2] * sa + n[2] * lift]);
-          const p = nrm(crs(n, d));
-          for (const [f, q] of YELLOW_LEAF) for (let i = 0; i < 3; i++) pts.push(d[i] * l * f + p[i] * l * 0.7 * q);
-          for (const [f, q] of YELLOW_KITE) for (let i = 0; i < 3; i++) kts.push(d[i] * l * f + p[i] * l * 0.7 * q);
-        }
-        sprigs.push({ c, n, leaves: new Float32Array(pts), kites: new Float32Array(kts), inner, tone: toneAt(c, n, dark) });
-      };
-      const flowers: number[] = [];
-      // A flower head sitting up off the leaves; many open in pairs, two
-      // heads touching, as the scan's do.
-      const bloom = (c: V3, n: V3) => {
-        const r = rw * (0.035 + 0.025 * rng());
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.35 + 0.65 * lit) * (0.7 + 0.3 * Math.min(1, c[1] / (h * 0.6)));
-        const tone = Math.max(0, Math.min(YL_FLOWER_LEVELS - 1, Math.round(shade * (YL_FLOWER_LEVELS - 1))));
-        flowers.push(c[0] + n[0] * r * 0.6, c[1] + n[1] * r * 0.6, c[2] + n[2] * r * 0.6, r, n[0], n[1], n[2], tone);
-        if (rng() < 0.4) {
-          const t1 = nrm(crs(n, Math.abs(n[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
-          const t2 = crs(n, t1);
-          const a = rng() * Math.PI * 2;
-          const r2 = r * (0.7 + 0.25 * rng());
-          const d = r + r2 * 0.6;
-          const ox = (t1[0] * Math.cos(a) + t2[0] * Math.sin(a)) * d;
-          const oy = (t1[1] * Math.cos(a) + t2[1] * Math.sin(a)) * d;
-          const oz = (t1[2] * Math.cos(a) + t2[2] * Math.sin(a)) * d;
-          flowers.push(c[0] + ox + n[0] * r2 * 0.6, c[1] + oy + n[1] * r2 * 0.6, c[2] + oz + n[2] * r2 * 0.6, r2, n[0], n[1], n[2], tone);
-        }
-      };
-      // A point on the cushion's top, or on its steep side down to the
-      // ground.
-      const onTop = (th: number, rho: number): [V3, V3, number] => {
-        const r = rho * edge(th);
-        const px = x + Math.cos(th) * r;
-        const pz = z + Math.sin(th) * r;
-        return [[px, S(px, pz), pz], normalAt(px, pz), foldAt(px, pz)];
-      };
-      const onSide = (th: number): [V3, V3] => {
-        const ed = edge(th);
-        const r = (0.9 + (rng() < 0.2 ? 0.16 : 0.08) * rng()) * ed;
-        const shoulder = S(x + Math.cos(th) * ed * 0.9, z + Math.sin(th) * ed * 0.9);
-        return [[x + Math.cos(th) * r, shoulder * (0.02 + 0.93 * rng()), z + Math.sin(th) * r], nrm([Math.cos(th), 0.35, Math.sin(th)])];
-      };
-
-      // The shaded layer under the leaves, so a gap shows leaves in shadow
-      // before it shows the core.
-      for (let i = 0; i < 140; i++) {
-        const [c, n] = onTop(i * 2.399963, 0.95 * Math.sqrt((i + 0.5) / 140));
-        cluster([c[0], c[1] - h * 0.09, c[2]], n, L * 1.1, true, 0.8);
-      }
-      // The skin, evenly over the top on a spiral, then round the sides.
-      const NT = 480;
-      for (let i = 0; i < NT; i++) {
-        const [c, n, fold] = onTop(i * 2.399963 + (rng() - 0.5) * 0.2, Math.min(0.97, Math.sqrt((i + 0.5) / NT) + (rng() - 0.5) * 0.03));
-        const proud = rng() < 0.12 ? h * (0.04 + 0.06 * rng()) : h * 0.04 * (rng() - 0.5);
-        cluster([c[0] + n[0] * proud, c[1] + n[1] * proud, c[2] + n[2] * proud], n, L, false, fold);
-      }
-      for (let i = 0; i < 320; i++) {
-        const [c, n] = onSide(i * 2.399963 + rng() * 0.3);
-        cluster(c, n, L, false, 1);
-      }
-      // Shoots standing up out of the top, leafy, mostly with a head at the
-      // tip, as the scan's do: they break the cushion's skyline.
-      for (let i = 0; i < 18; i++) {
-        const th = i * 2.399963 + rng();
-        const [c0] = onTop(th, 0.1 + 0.8 * Math.sqrt(rng()));
-        const rise = Math.min(h * (0.1 + 0.12 * rng()), h * 0.98 - c0[1]);
-        const lean = 0.2 + 0.3 * rng();
-        const up = nrm([Math.cos(th) * lean, 1, Math.sin(th) * lean]);
-        let c: V3 = c0;
-        for (let k = 1; k <= 4; k++) {
-          const f = ((k / 4) * rise) / up[1];
-          c = [c0[0] + up[0] * f, c0[1] + up[1] * f, c0[2] + up[2] * f];
-          cluster(c, up, L * (1 - 0.08 * k), false, 1);
-        }
-        if (rng() < 0.75) bloom(c, up);
-      }
-      // Shoots reaching out of the sides past the edge, most of them about
-      // halfway up, some trailing low, a head at the end of half of them.
-      for (let i = 0; i < 18; i++) {
-        const th = i * 2.399963 + rng() * 0.5;
-        const ed = edge(th);
-        const out = Math.min(oval(th), ed * (1.05 + 0.12 * rng())) / ed;
-        const side = (rng() - 0.5) * 0.5;
-        const low = rng() < 0.3;
-        const y0 = S(x + Math.cos(th) * ed * 0.8, z + Math.sin(th) * ed * 0.8) * (low ? 0.3 : 0.55 + 0.3 * rng());
-        const droop = low ? 0.22 : 0.06 + 0.06 * rng();
-        const n = nrm([Math.cos(th), 1, Math.sin(th)]);
-        let c: V3 = [x, 0, z];
-        for (let k = 1; k <= 4; k++) {
-          const f = (0.85 + ((out - 0.85) * k) / 4) * ed;
-          const a = th + side * (k / 4);
-          c = [x + Math.cos(a) * f, Math.max(h * 0.03, y0 * (1 - droop * k)), z + Math.sin(a) * f];
-          cluster(c, n, L * 0.9, false, 1);
-        }
-        if (rng() < 0.5) bloom(c, n);
-      }
-      // Heads smothering it, the sides as well as the top.
-      for (let i = 0; i < 200; i++) {
-        const th = rng() * Math.PI * 2;
-        if (rng() < 0.35) {
-          const [c, n] = onSide(th);
-          bloom(c, n);
-        } else {
-          const [c, n] = onTop(th, 0.96 * Math.sqrt(rng()));
-          bloom(c, n);
-        }
-      }
-      // The heart, set in from the skin.
-      const core: V3[] = [];
-      for (let i = 0; i < 16; i++) {
-        const th = (i / 16) * Math.PI * 2;
-        for (const rho of [0.25, 0.5, 0.75]) {
-          const [c] = onTop(th, rho);
-          core.push([c[0], c[1] * 0.85 - h * 0.04, c[2]]);
-        }
-        const r = 0.72 * edge(th);
-        core.push([x + Math.cos(th) * r, 0, z + Math.sin(th) * r]);
-      }
-      // The shaded layer first, a step of tone at a time; the rest as grown.
-      sprigs.sort((a, b) => (a.inner === b.inner ? (a.inner ? a.tone - b.tone : 0) : a.inner ? -1 : 1));
-      return { sprigs, flowers: new Float32Array(flowers), core };
-    }
 
     /** Yellow lantana, after the app's model.
      *
@@ -2954,113 +1924,7 @@ export function LivingBlueprint({
       for (const it of items) it.draw();
     }
 
-    // A hopseed's leaves don't move when the camera does, so they are grown
-    // once per plant and kept: hundreds of sprays of rng and vector maths
-    // every frame was most of what a hedge of them cost.
-    type HopseedSpray = {
-      c: [number, number, number];
-      /** leaf corners, as offsets from c: 5 leaves x 6 corners x xyz */
-      off: Float32Array;
-      inner: boolean;
-      col: string;
-      gold: string;
-    };
     const hopseedGrown = new Map<string, { stems: [number, number, number][][]; sprays: HopseedSpray[] }>();
-
-    function growHopseed(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
-      const rng = rngFor("hopseed:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      // The column, as a radius of its spread at each fraction of its
-      // height: pinched where the stems gather, full and nearly straight-
-      // sided through the middle, rounding off over the top quarter. Rounding
-      // from a third of the way down made an egg; the model is a column.
-      const prof = (u: number) =>
-        (0.42 + 0.58 * smooth(0.05, 0.24, u)) *
-        (u > 0.72 ? Math.pow(Math.max(0, 1 - ((u - 0.72) / 0.28) ** 2), 0.4) : 1);
-
-      const stems: V3[][] = [];
-      for (let k = 0; k < 5; k++) {
-        const a = rot + k * 2.399963 + rng() * 0.5;
-        stems.push([
-          [x + Math.cos(a) * rw * 0.04, 0, z + Math.sin(a) * rw * 0.04],
-          [x + Math.cos(a) * rw * 0.3, h * 0.24, z + Math.sin(a) * rw * 0.3],
-        ]);
-      }
-
-      // Two layers: an inner one in shadow, which is what you see through
-      // the gaps, and the outer skin. Depth from leaves, not from a shape —
-      // a filled hull behind them read as a dark can, however small. Placed
-      // by area (fewer where the column is narrow), with a little lumpiness
-      // round it so the outline is tufted, not turned.
-      const NI = 140;
-      const NS = 240;
-      const s1 = rng() * 6.28;
-      const s2 = rng() * 6.28;
-      const sprays: HopseedSpray[] = [];
-      for (let tries = 0; sprays.length < NS + NI && tries < (NS + NI) * 4; tries++) {
-        const inner = sprays.length < NI;
-        const u = 0.1 + 0.88 * rng();
-        if (rng() > prof(u)) continue;
-        const th = rng() * Math.PI * 2;
-        const tuft = 1 + 0.07 * Math.sin(4 * th + 9 * u + s1) + 0.05 * Math.sin(7 * th - 5 * u + s2);
-        const r = rw * prof(u) * (inner ? 0.5 + 0.3 * rng() : 0.86 + 0.16 * rng()) * tuft;
-        const c: V3 = [x + Math.cos(th) * r, u * h, z + Math.sin(th) * r];
-        const n = nrm([Math.cos(th), (u - 0.45) * 1.2, Math.sin(th)]); // tipped up toward the crown
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.3 + 0.7 * lit) * (0.5 + 0.5 * smooth(0.05, 0.75, u));
-        const fresh = !inner && u > 0.6 && rng() < 0.3;
-        const tone = (pal: typeof HOPSEED_LEAF) => {
-          let col = mix(pal.shade, pal.lit, shade);
-          if (inner) col = mix(pal.core, col, 0.35);
-          else if (fresh) col = mix(col, pal.fresh, 0.55);
-          return rgb(col);
-        };
-        // A spray points up and a little out; its leaves alternate up it and
-        // one finishes it. Each is a lance, widest a third of the way out and
-        // drawn to a point — four corners made a diamond, which is a privet.
-        const tw = nrm([n[0] * 0.35 + (rng() - 0.5) * 0.3, 1, n[2] * 0.35 + (rng() - 0.5) * 0.3]);
-        const side = nrm(crs(tw, n));
-        const L = rw * 0.2 * (0.85 + 0.3 * rng());
-        const twig = rw * 0.32;
-        const w = L * 0.14; // narrow, willow-like
-        const off = new Float32Array(5 * 6 * 3);
-        let o = 0;
-        [0.15, 0.35, 0.55, 0.75, 1].forEach((t, j) => {
-          const sg = j % 2 ? 1 : -1;
-          const a = j === 4 ? 1 : 0.7071;
-          const b = j === 4 ? 0 : 0.7071 * sg;
-          const dir = nrm([
-            tw[0] * a + side[0] * b + n[0] * 0.15,
-            tw[1] * a + side[1] * b + n[1] * 0.15,
-            tw[2] * a + side[2] * b + n[2] * 0.15,
-          ]);
-          const perp = nrm(crs(dir, n));
-          for (const [f, q] of [[0, 0], [0.3, 1], [0.7, 0.5], [1, 0], [0.7, -0.5], [0.3, -1]]) {
-            for (let i = 0; i < 3; i++) off[o++] = tw[i] * twig * t + dir[i] * L * f + perp[i] * w * q;
-          }
-        });
-        sprays.push({ c, off, inner, col: tone(HOPSEED_LEAF), gold: tone(HOPSEED_GOLD) });
-      }
-      return { stems, sprays };
-    }
 
     /** Green hopseed, after the app's model.
      *
@@ -3150,143 +2014,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per plant and kept, as the hopseed is.
-    type SageTuft = {
-      c: [number, number, number];
-      /** leaf corners then spike corners, as offsets from c, xyz */
-      leaves: Float32Array;
-      spikes: Float32Array;
-      inner: boolean;
-      leafCol: [string, string]; // [plain, gold]
-      spikeCol: [string, string];
-    };
     const sageGrown = new Map<string, SageTuft[]>();
-    // The sage's core: its shell set back from the leaves, as points round
-    // the dome, filled as one silhouette each frame.
-    const sageCoreRing = (x: number, z: number, h: number, rw: number): [number, number, number][] => {
-      const out: [number, number, number][] = [];
-      for (let i = 0; i <= 10; i++) {
-        const u = 0.04 + (0.86 * i) / 10;
-        const r = rw * 0.8 * (u < 0.3 ? 0.8 + 0.2 * (u / 0.3) : Math.pow(Math.max(0, 1 - ((u - 0.3) / 0.7) ** 2), 0.42));
-        for (let j = 0; j < 16; j++) {
-          const th = (j / 16) * Math.PI * 2;
-          out.push([x + Math.cos(th) * r, u * h, z + Math.sin(th) * r]);
-        }
-      }
-      return out;
-    };
-
-    function growTexasSage(x: number, z: number, h: number, rw: number, seed: string): SageTuft[] {
-      const rng = rngFor("texassage:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      // A dome sitting on the ground: foliage right down to the soil, widest
-      // a third of the way up, rounding over the top. No stems show.
-      const prof = (u: number) =>
-        u < 0.3 ? 0.8 + 0.2 * smooth(0, 0.3, u) : Math.pow(Math.max(0, 1 - ((u - 0.3) / 0.7) ** 2), 0.42);
-
-      // Corners of a soft oval leaf and of a bloom spike, along (1, 0) with
-      // the width on the second axis: [along, across] fractions.
-      const OVAL: [number, number][] = [[0, 0], [0.2, 0.42], [0.55, 0.5], [0.9, 0.3], [1, 0], [0.9, -0.3], [0.55, -0.5], [0.2, -0.42]];
-      const SPIKE: [number, number][] = [[0, -0.45], [0.3, -1], [0.65, -0.75], [1, 0], [0.65, 0.75], [0.3, 1], [0, 0.45]];
-      const put = (out: number[], base: V3, dir: V3, perp: V3, len: number, wid: number, shape: [number, number][]) => {
-        for (const [f, q] of shape) {
-          for (let i = 0; i < 3; i++) out.push(base[i] + dir[i] * len * f + perp[i] * wid * q);
-        }
-      };
-
-      // The mass: big soft clumps of grey foliage under everything, fill
-      // only. A sage is a dense mound; tufts alone left it mostly air.
-      const NI = 190;
-      const NS = 300;
-      const s1 = rng() * 6.28;
-      const tufts: SageTuft[] = [];
-      for (let tries = 0; tufts.length < NS + NI && tries < (NS + NI) * 4; tries++) {
-        const inner = tufts.length < NI;
-        const u = 0.02 + 0.96 * rng();
-        // By area. Up the straight lower third that follows the radius; over
-        // the dome it doesn't — a sphere has as much skin per foot of height
-        // at the crown as at the waist, and thinning by radius left the top,
-        // the part the camera looks down on, nearly bare.
-        if (u < 0.3 && rng() > prof(u)) continue;
-        const th = rng() * Math.PI * 2;
-        const lump = 1 + 0.05 * Math.sin(5 * th + 7 * u + s1);
-        const r = rw * prof(u) * (inner ? 0.72 + 0.18 * rng() : 0.92 + 0.1 * rng()) * lump;
-        const c: V3 = [x + Math.cos(th) * r, Math.min(u * h, h * 0.97), z + Math.sin(th) * r];
-        const n = nrm([Math.cos(th) * prof(u), (u - 0.25) * 1.6, Math.sin(th) * prof(u)]);
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.3 + 0.7 * lit) * (0.55 + 0.45 * smooth(0, 0.6, u));
-        const side = nrm(crs([0, 1, 0], n[1] > 0.98 ? [1, 0, 0] : n));
-        const leaves: number[] = [];
-        const spikes: number[] = [];
-        // A tuft's woolly leaves, lying along the surface and fanned.
-        const nl = inner ? 3 : 4;
-        const L = rw * (inner ? 0.2 : 0.085) * (0.85 + 0.3 * rng());
-        for (let k = 0; k < nl; k++) {
-          const a = (k / nl) * Math.PI * 2 + rng() * 0.8;
-          const dir = nrm([
-            n[0] * 0.5 + side[0] * Math.cos(a) * 0.8,
-            n[1] * 0.5 + 0.35 + Math.sin(a) * 0.5,
-            n[2] * 0.5 + side[2] * Math.cos(a) * 0.8,
-          ]);
-          const perp = nrm(crs(dir, n));
-          put(leaves, [0, 0, 0], dir, perp, L, L * 0.55, OVAL);
-        }
-        // Bloom spikes: up and a little out, mostly on the upper two thirds.
-        const blooming = !inner && rng() < 0.35 + 0.6 * smooth(0.1, 0.45, u);
-        const pale = rng() < 0.45;
-        if (blooming) {
-          const ns = 3 + Math.floor(rng() * 2);
-          for (let k = 0; k < ns; k++) {
-            const dir = nrm([
-              n[0] * 0.45 + (rng() - 0.5) * 0.35,
-              0.85 + (rng() - 0.5) * 0.2,
-              n[2] * 0.45 + (rng() - 0.5) * 0.35,
-            ]);
-            const perp = nrm(crs(dir, n[1] > 0.98 ? [1, 0, 0] : n));
-            // Slim: a short raceme of small bells, not a petal.
-            const Ls = rw * 0.15 * (0.75 + 0.45 * rng());
-            put(spikes, [(rng() - 0.5) * L * 0.6, 0, (rng() - 0.5) * L * 0.6], dir, perp, Ls, Ls * 0.2, SPIKE);
-          }
-        }
-        const leafTone = (pal: typeof SAGE_COLOURS) => {
-          let col = mix(pal.leafShade, pal.leafLit, inner ? shade * 0.7 : shade);
-          // In flower the upper mass is a lavender haze, not grey: bloom
-          // seen through bloom. The mass also sits a step into shadow.
-          if (inner) col = mix(col, pal.bloomLit, 0.5 * smooth(0.15, 0.6, u)).map((v) => v * 0.9);
-          return rgb(col);
-        };
-        const spikeTone = (pal: typeof SAGE_COLOURS) => {
-          const col = mix(pal.bloomShade, pal.bloomLit, shade);
-          return rgb(pale ? mix(col, pal.bloomPale, 0.5) : col);
-        };
-        tufts.push({
-          c,
-          leaves: new Float32Array(leaves),
-          spikes: new Float32Array(spikes),
-          inner,
-          leafCol: [leafTone(SAGE_COLOURS), leafTone(SAGE_GOLD)],
-          spikeCol: [spikeTone(SAGE_COLOURS), spikeTone(SAGE_GOLD)],
-        });
-      }
-      return tufts;
-    }
 
     /** Texas sage, after the app's model.
      *
@@ -3386,135 +2114,7 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // Grown once per plant and kept, as the hopseed and sage are.
-    type YellowBellsPart = {
-      c: [number, number, number];
-      /** outward normal, to skip outlines on the far side */
-      n: [number, number, number];
-      /** shapes as offsets from c, xyz; `corners` points each */
-      pts: Float32Array;
-      corners: number;
-      kind: "inner" | "leaf" | "bloom";
-      col: [string, string]; // [plain, gold]
-    };
     const yellowBellsGrown = new Map<string, { stems: [number, number, number][][]; parts: YellowBellsPart[] }>();
-
-    function growYellowBells(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
-      const rng = rngFor("yellowbells:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      // An upright oval: bare stems only for the first few inches, the
-      // foliage widening to full by a third of the way up, straight-sided,
-      // then rounding over the top quarter.
-      const prof = (u: number) =>
-        (0.7 + 0.3 * smooth(0.07, 0.32, u)) *
-        (u > 0.72 ? Math.pow(Math.max(0, 1 - ((u - 0.72) / 0.28) ** 2), 0.45) : 1);
-
-      const stems: V3[][] = [];
-      for (let k = 0; k < 6; k++) {
-        const a = rot + k * 2.399963 + rng() * 0.6;
-        const out = rw * (0.22 + 0.16 * rng());
-        stems.push([
-          [x + Math.cos(a) * rw * 0.05, 0, z + Math.sin(a) * rw * 0.05],
-          [x + Math.cos(a) * out, h * (0.28 + 0.1 * rng()), z + Math.sin(a) * out],
-        ]);
-      }
-
-      // Leaflets are broad ovals, toothed in life but too small for it to
-      // show; trumpets flare from a narrow tube to an open mouth.
-      const LEAFLET: [number, number][] = [[0, 0], [0.25, 0.42], [0.65, 0.45], [1, 0], [0.65, -0.45], [0.25, -0.42]];
-      const TRUMPET: [number, number][] = [[0, -0.16], [0.5, -0.24], [0.78, -0.55], [0.96, -0.72], [1.06, 0], [0.96, 0.72], [0.78, 0.55], [0.5, 0.24], [0, 0.16]];
-      const put = (out: number[], base: V3, dir: V3, perp: V3, len: number, wid: number, shape: [number, number][]) => {
-        for (const [f, q] of shape) {
-          for (let i = 0; i < 3; i++) out.push(base[i] + dir[i] * len * f + perp[i] * wid * q);
-        }
-      };
-
-      const parts: YellowBellsPart[] = [];
-      const NI = 190;
-      const NS = 300;
-      const NB = 40;
-      const s1 = rng() * 6.28;
-      for (let tries = 0; parts.length < NI + NS + NB && tries < (NI + NS + NB) * 4; tries++) {
-        const i = parts.length;
-        const kind: YellowBellsPart["kind"] = i < NI ? "inner" : i < NI + NS ? "leaf" : "bloom";
-        // Flowers sit on the upper two thirds, at the tips of the outer shoots.
-        const u = kind === "bloom" ? 0.25 + 0.73 * Math.sqrt(rng()) : 0.07 + 0.91 * rng();
-        // By area: the straight sides follow the radius; the rounded crown,
-        // like the sage's dome, has as much skin per foot at the top.
-        if (u < 0.72 && rng() > prof(u)) continue;
-        const th = rng() * Math.PI * 2;
-        const tuft = 1 + 0.06 * Math.sin(5 * th + 8 * u + s1);
-        const reach = kind === "inner" ? 0.62 + 0.2 * rng() : kind === "leaf" ? 0.9 + 0.12 * rng() : 1.0 + 0.1 * rng();
-        const r = rw * prof(u) * reach * tuft;
-        const c: V3 = [x + Math.cos(th) * r, Math.min(u * h, h * 0.98), z + Math.sin(th) * r];
-        const n = nrm([Math.cos(th) * prof(u), (u - 0.45) * 1.2, Math.sin(th) * prof(u)]);
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.3 + 0.7 * lit) * (0.5 + 0.5 * smooth(0.08, 0.75, u));
-        const side = nrm(crs([0, 1, 0], n[1] > 0.98 ? [1, 0, 0] : n));
-        const pts: number[] = [];
-        if (kind === "bloom") {
-          // A bunch of trumpets hanging together off one tip — out and
-          // down, a little splayed. Fanned all the way round they read as a
-          // propeller, which is nothing yellow bells ever does.
-          // Each trumpet hangs from its own place along a short stalk; all
-          // from one point they overlapped into a single yellow fan.
-          const nt = 4 + Math.floor(rng() * 3);
-          const L = rw * 0.12;
-          const stalk = nrm([n[0] * 0.7, 0.55, n[2] * 0.7]);
-          for (let k = 0; k < nt; k++) {
-            const along = (k / (nt - 1)) * rw * 0.22;
-            const sg = k % 2 ? 1 : -1;
-            const dir = nrm([
-              n[0] * 0.5 + side[0] * sg * (0.45 + 0.3 * rng()),
-              n[1] * 0.4 - 0.6 + (rng() - 0.5) * 0.3,
-              n[2] * 0.5 + side[2] * sg * (0.45 + 0.3 * rng()),
-            ]);
-            const perp = nrm(crs(dir, n[1] > 0.98 ? [1, 0, 0] : n));
-            put(pts, [stalk[0] * along, stalk[1] * along, stalk[2] * along], dir, perp, L * (0.85 + 0.3 * rng()), L * 0.46, TRUMPET);
-          }
-          const tone = (pal: typeof YELLOW_BELLS_COLOURS) => rgb(mix(pal.bloomShade, pal.bloomLit, 0.35 + 0.65 * shade));
-          parts.push({ c, n, pts: new Float32Array(pts), corners: TRUMPET.length, kind, col: [tone(YELLOW_BELLS_COLOURS), tone(YELLOW_BELLS_GOLD)] });
-          continue;
-        }
-        // A compound leaf: a short rachis out and up, two pairs of leaflets
-        // and one at the end.
-        const rach = nrm([n[0] * 0.75 + (rng() - 0.5) * 0.3, 0.45 + (rng() - 0.5) * 0.3, n[2] * 0.75 + (rng() - 0.5) * 0.3]);
-        const rs = nrm(crs(rach, n[1] > 0.98 ? [1, 0, 0] : n));
-        const Ll = rw * (kind === "inner" ? 0.16 : 0.115) * (0.85 + 0.3 * rng());
-        const len = rw * 0.2;
-        [[0.35, 1], [0.35, -1], [0.7, 1], [0.7, -1], [1, 0]].forEach(([t, sg]) => {
-          const base: V3 = [rach[0] * len * t, rach[1] * len * t, rach[2] * len * t];
-          const k = sg === 0 ? 0 : 0.82;
-          const dir = nrm([rach[0] * (1 - k * 0.5) + rs[0] * sg * k, rach[1] * (1 - k * 0.5) + rs[1] * sg * k - 0.1, rach[2] * (1 - k * 0.5) + rs[2] * sg * k]);
-          const perp = nrm(crs(dir, n));
-          put(pts, base, dir, perp, Ll, Ll * 0.48, LEAFLET);
-        });
-        const tone = (pal: typeof YELLOW_BELLS_COLOURS) => {
-          const col = mix(pal.leafShade, pal.leafLit, shade);
-          return rgb(kind === "inner" ? mix(pal.core, col, 0.4) : col);
-        };
-        parts.push({ c, n, pts: new Float32Array(pts), corners: LEAFLET.length, kind, col: [tone(YELLOW_BELLS_COLOURS), tone(YELLOW_BELLS_GOLD)] });
-      }
-      return { stems, parts };
-    }
 
     /** Yellow bells ('Sundance'), after the app's model.
      *
@@ -3611,140 +2211,7 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // Grown once per plant and kept, as the other shrubs are.
-    type RedBirdPart = {
-      c: [number, number, number];
-      /** shapes as offsets from c, xyz; `corners` points each */
-      pts: Float32Array;
-      corners: number;
-      /** for blooms: stamen strokes, pairs of offsets from c */
-      lines?: Float32Array;
-      kind: "inner" | "frond" | "bloom" | "stalk";
-      col: [string, string]; // [plain, gold]
-    };
     const redBirdGrown = new Map<string, { stems: [number, number, number][][]; parts: RedBirdPart[] }>();
-
-    function growRedBird(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
-      const rng = rngFor("redbird:" + seed);
-      const LX = -0.44;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      // An open vase: narrow where the stems leave the ground, opening out
-      // to full spread by a little over half its height and staying there —
-      // the top is flat, tiers of fronds rather than a dome.
-      const prof = (u: number) => (0.12 + 0.88 * smooth(0.04, 0.6, u)) * (u > 0.92 ? 1 - 0.35 * (u - 0.92) / 0.08 : 1);
-
-      const stems: V3[][] = [];
-      for (let k = 0; k < 9; k++) {
-        const a = rot + k * 2.399963 + rng() * 0.5;
-        const reach = rw * (0.3 + 0.3 * rng());
-        stems.push([
-          [x + Math.cos(a) * rw * 0.04, 0, z + Math.sin(a) * rw * 0.04],
-          [x + Math.cos(a) * reach, h * (0.5 + 0.2 * rng()), z + Math.sin(a) * reach],
-        ]);
-      }
-
-      // A frond seen flat: a narrow feathery spray, its outline finely
-      // scalloped by the small round leaflets along it. Broad and coarsely
-      // toothed, the first ones read as a different plant's leaves; the fern
-      // texture is in the fineness. Corners along (1, 0), width on the
-      // second axis.
-      const FROND: [number, number][] = (() => {
-        const out: [number, number][] = [];
-        const S = 15;
-        const w = (i: number) => Math.pow(Math.sin(Math.PI * Math.min(1, (i / S) * 1.04)), 0.5) * (i % 2 ? 1 : 0.5);
-        for (let i = 0; i <= S; i++) out.push([i / S, w(i)]);
-        for (let i = S - 1; i >= 1; i--) out.push([i / S, -w(i)]);
-        return out;
-      })();
-      // A ruffled bloom, face on: five broad rounded petals, not a star.
-      const BLOOM: [number, number][] = Array.from({ length: 15 }, (_, i): [number, number] => {
-        const a = (i / 15) * Math.PI * 2;
-        const r = i % 3 === 0 ? 0.78 : 1;
-        return [0.5 + 0.5 * r * Math.cos(a), 0.5 * r * Math.sin(a) * 2];
-      });
-
-      const parts: RedBirdPart[] = [];
-      const NI = 140;
-      const NF = 320;
-      const NB = 30;
-      for (let tries = 0; parts.length < NI + NF + NB && tries < (NI + NF + NB) * 4; tries++) {
-        const i = parts.length;
-        const kind = i < NI ? "inner" : i < NI + NF ? "frond" : "bloom";
-        if (kind !== "bloom") {
-          // Fronds sit in tiers from a third of the way up to the top,
-          // weighted to the broad upper canopy.
-          const u = 0.3 + 0.68 * Math.sqrt(rng());
-          const th = rng() * Math.PI * 2;
-          const reach = kind === "inner" ? 0.25 + 0.4 * rng() : 0.55 + 0.45 * rng();
-          const r = rw * prof(u) * reach;
-          const c: V3 = [x + Math.cos(th) * r, u * h, z + Math.sin(th) * r];
-          // Held out nearly level, along the way it grows, the tip dipping.
-          const a = th + (rng() - 0.5) * 0.9;
-          const dir: V3 = [Math.cos(a), -0.12 - 0.12 * rng(), Math.sin(a)];
-          const dl = Math.hypot(...dir);
-          const d: V3 = [dir[0] / dl, dir[1] / dl, dir[2] / dl];
-          const perp: V3 = [-Math.sin(a), 0, Math.cos(a)];
-          const L = rw * 0.24 * (0.8 + 0.4 * rng()) * (kind === "inner" ? 0.85 : 1);
-          const W = L * 0.12;
-          const pts: number[] = [];
-          for (const [f, q] of FROND) {
-            for (let k = 0; k < 3; k++) pts.push(d[k] * L * (f - 0.35) + perp[k] * W * q);
-          }
-          // Lit from the light's side, darker low and toward the middle.
-          const side = Math.max(0, Math.cos(th) * -LX + Math.sin(th) * -LZ);
-          const shade = (0.45 + 0.35 * (1 - side) + 0.2 * rng()) * (0.55 + 0.45 * smooth(0.3, 0.95, u)) * (0.75 + 0.25 * reach);
-          const tone = (pal: typeof RED_BIRD_COLOURS) =>
-            rgb(kind === "inner" ? mix(pal.deep, pal.leafShade, 0.5 * shade) : mix(pal.leafShade, pal.leafLit, Math.min(1, shade)));
-          parts.push({ c, pts: new Float32Array(pts), corners: FROND.length, kind, col: [tone(RED_BIRD_COLOURS), tone(RED_BIRD_GOLD)] });
-          continue;
-        }
-        // A flower stalk rising out of the canopy, carrying its blooms up
-        // it, each with a few long stamens arching out of it.
-        const th = rng() * Math.PI * 2;
-        const r = rw * (0.25 + 0.7 * Math.sqrt(rng()));
-        // Mostly rising out of the top; some from the canopy's edge.
-        const base: V3 = [x + Math.cos(th) * r, h * (r > rw * 0.75 ? 0.55 + 0.2 * rng() : 0.72 + 0.2 * rng()), z + Math.sin(th) * r];
-        const up = h * (0.12 + 0.12 * rng());
-        const lean = 0.25 * (rng() - 0.5);
-        const tip: V3 = [base[0] + Math.cos(th) * up * 0.25 + lean, base[1] + up, base[2] + Math.sin(th) * up * 0.25];
-        parts.push({
-          c: base,
-          pts: new Float32Array([0, 0, 0, tip[0] - base[0], tip[1] - base[1], tip[2] - base[2]]),
-          corners: 2,
-          kind: "stalk",
-          col: [RED_BIRD_COLOURS.stem, RED_BIRD_GOLD.stem],
-        });
-        const nb = 3 + Math.floor(rng() * 3);
-        for (let b = 0; b < nb; b++) {
-          const t = 0.35 + (0.6 * b) / Math.max(1, nb - 1);
-          const c: V3 = [base[0] + (tip[0] - base[0]) * t, base[1] + (tip[1] - base[1]) * t, base[2] + (tip[2] - base[2]) * t];
-          const fa = th + (rng() - 0.5) * 2.4; // which way the bloom faces
-          const face: V3 = [Math.cos(fa), 0.3, Math.sin(fa)];
-          const across: V3 = [-Math.sin(fa), 0, Math.cos(fa)];
-          const s = rw * 0.055 * (0.8 + 0.4 * rng());
-          const pts: number[] = [];
-          for (const [f, q] of BLOOM) {
-            for (let k = 0; k < 3; k++) pts.push(across[k] * s * (f - 0.5) * 2 + [0, 1, 0][k] * s * q * 0.9 + face[k] * s * 0.1);
-          }
-          const lines: number[] = [];
-          for (let k = 0; k < 3; k++) {
-            const sa = fa + (k - 1) * 0.35;
-            const len = s * (2.2 + 0.8 * rng());
-            lines.push(0, 0, 0, Math.cos(sa) * len, len * (0.35 + 0.3 * rng()), Math.sin(sa) * len);
-          }
-          const tone = (pal: typeof RED_BIRD_COLOURS) => rgb(mix(pal.bloomShade, pal.bloomLit, 0.5 + 0.5 * rng()));
-          parts.push({ c, pts: new Float32Array(pts), corners: BLOOM.length, lines: new Float32Array(lines), kind: "bloom", col: [tone(RED_BIRD_COLOURS), tone(RED_BIRD_GOLD)] });
-        }
-      }
-      return { stems, parts };
-    }
 
     /** Red bird of paradise, after the app's model.
      *
@@ -3864,164 +2331,7 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // Grown once per plant and kept, as the shrubs before it are.
-    type JojobaSprig = {
-      c: [number, number, number];
-      /** outward normal, to skip outlines on the far side */
-      n: [number, number, number];
-      /** the twig's tip, as an offset from c */
-      tip: [number, number, number];
-      /** leaf corners as offsets from c, xyz; JOJOBA_LEAF.length each */
-      leaves: Float32Array;
-      inner: boolean;
-      col: [string, string]; // [plain, gold]
-    };
-    // The mound: foliage down to the soil, near-straight sides from a foot
-    // up, a broad rounded crown. Radius (a fraction of rw) by height, the
-    // mass's own height being 0.88 of the plant's — twigs make up the rest.
-    const jojobaProf = (u: number) => {
-      const t = Math.min(1, u / 0.15);
-      const base = 0.78 + 0.22 * t * t * (3 - 2 * t);
-      return u > 0.6 ? base * Math.sqrt(Math.max(0, 1 - ((u - 0.6) / 0.36) ** 2)) : base;
-    };
-    // A blunt oval, half as wide as it is long.
-    const JOJOBA_LEAF: [number, number][] = [[0, 0], [0.3, 0.48], [0.75, 0.42], [1, 0], [0.75, -0.42], [0.3, -0.48]];
     const jojobaGrown = new Map<string, { stems: [number, number, number][][]; sprigs: JojobaSprig[] }>();
-    // Its core: the mound set back from the leaves, filled as one silhouette.
-    const jojobaCoreRing = (x: number, z: number, h: number, rw: number): [number, number, number][] => {
-      const out: [number, number, number][] = [];
-      for (let i = 0; i <= 8; i++) {
-        const u = 0.06 + (0.86 * i) / 8;
-        const r = rw * 0.7 * jojobaProf(u);
-        for (let j = 0; j < 12; j++) {
-          const th = (j / 12) * Math.PI * 2;
-          out.push([x + Math.cos(th) * r, u * h * 0.88, z + Math.sin(th) * r]);
-        }
-      }
-      return out;
-    };
-
-    function growJojoba(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
-      const rng = rngFor("jojoba:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-
-      // Many stems from the root crown, fanning up and out into the mound:
-      // the dark lines seen through it low down.
-      const stems: V3[][] = [];
-      for (let k = 0; k < 9; k++) {
-        const a = rot + k * 2.399963 + rng() * 0.5;
-        const out = rw * (0.35 + 0.2 * rng());
-        stems.push([
-          [x + Math.cos(a) * rw * 0.06, 0, z + Math.sin(a) * rw * 0.06],
-          [x + Math.cos(a) * out, h * (0.25 + 0.15 * rng()), z + Math.sin(a) * out],
-        ]);
-      }
-
-      const sprigs: JojobaSprig[] = [];
-      const NI = 140;
-      const NS = 340;
-      const s1 = rng() * 6.28;
-      const s2 = rng() * 6.28;
-      for (let tries = 0; sprigs.length < NI + NS && tries < (NI + NS) * 4; tries++) {
-        const inner = sprigs.length < NI;
-        const u = 0.02 + 0.94 * rng();
-        // By area, as the sage: the sides follow the radius, the crown
-        // doesn't.
-        if (u < 0.6 && rng() > jojobaProf(u)) continue;
-        const th = rng() * Math.PI * 2;
-        // A few broad lobes round it and over the top — the model's mound
-        // is lumpy, not a dome.
-        const lobe = Math.sin(3 * th + s1);
-        const lump = 1 + 0.06 * lobe + 0.04 * Math.sin(5 * th + 3 * u + s2);
-        const pr = jojobaProf(u);
-        const r = rw * pr * (inner ? 0.66 + 0.2 * rng() : 0.93 + 0.1 * rng()) * lump;
-        const c: V3 = [x + Math.cos(th) * r, u * h * 0.88 * (1 + 0.04 * lobe), z + Math.sin(th) * r];
-        const ny = u > 0.55 ? ((u - 0.55) / 0.41) * 2.5 : u < 0.12 ? -(0.12 - u) * 4 : 0;
-        const n = nrm([Math.cos(th) * pr, ny, Math.sin(th) * pr]);
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        const shade = (0.38 + 0.62 * lit) * (0.6 + 0.4 * smooth(0, 0.6, u));
-
-        // A twig mostly up, leaning out and to either side — jojoba's twigs
-        // are upright, and pointing straight out they were end-on to the
-        // camera, each a small rosette with the core showing round it. At
-        // the foot they flare out over the soil. A third of those up the
-        // sides and over the top stand proud of the mound — the model's
-        // ragged, twiggy outline.
-        const up = 0.15 + 0.55 * smooth(0, 0.15, u) + 0.3 * smooth(0.2, 0.7, u);
-        const tw = (rng() - 0.5) * 0.9;
-        const d = nrm([
-          n[0] * 0.6 - Math.sin(th) * tw,
-          up + n[1] * 0.3 + (rng() - 0.5) * 0.3,
-          n[2] * 0.6 + Math.cos(th) * tw,
-        ]);
-        const proud = !inner && rng() < (u > 0.3 ? 0.35 : 0.15);
-        const Ls = rw * (inner ? 0.24 : 0.17) * (0.8 + 0.4 * rng()) * (proud ? 1.9 : 1);
-        const s0 = nrm(crs([0, 1, 0], Math.abs(d[1]) > 0.98 ? [Math.cos(th), 0, Math.sin(th)] : d));
-        const b = nrm(crs(d, s0));
-        // Drawn larger than life, as every shrub here is: at true size the
-        // leaves covered under half the mound and it read as a dark ball.
-        const L = rw * (inner ? 0.14 : 0.095) * (0.85 + 0.3 * rng());
-        const pts: number[] = [];
-        const put = (base: V3, dir: V3, len: number, flat: boolean) => {
-          const dy = dir[1];
-          const perp: V3 = flat || Math.abs(dy) > 0.95 ? s0 : nrm([-dir[0] * dy, 1 - dy * dy, -dir[2] * dy]);
-          for (const [f, q] of JOJOBA_LEAF) {
-            for (let i = 0; i < 3; i++) pts.push(base[i] + dir[i] * len * f + perp[i] * len * 0.52 * q);
-          }
-        };
-        // Opposite pairs up the twig, each pair a quarter turn from the
-        // last, and a young leaf at the tip. The pairs out to the sides
-        // stand on edge, as jojoba holds its leaves to the sun; the pairs
-        // above and below the twig lie across it — on edge too, they lay in
-        // the twig's own upright plane, end-on to anyone looking at the
-        // shrub, and the mound went thin.
-        [0.35, 0.62, 0.86].forEach((t, k) => {
-          const s = k % 2 ? b : s0;
-          const base: V3 = [d[0] * Ls * t, d[1] * Ls * t, d[2] * Ls * t];
-          for (const sg of [1, -1]) {
-            const a = 0.85 + (rng() - 0.5) * 0.3;
-            const ca = Math.cos(a);
-            const sa = Math.sin(a) * sg;
-            put(base, nrm([d[0] * ca + s[0] * sa, d[1] * ca + s[1] * sa, d[2] * ca + s[2] * sa]), L, k % 2 === 1);
-          }
-        });
-        put([d[0] * Ls * 0.9, d[1] * Ls * 0.9, d[2] * Ls * 0.9], d, L * 0.75, true);
-
-        // Mottled, as the scan is: every sprig a shade lighter or darker.
-        const mottle = 0.92 + 0.16 * rng();
-        const tone = (pal: typeof JOJOBA_COLOURS) => {
-          const col = mix(pal.leafShade, pal.leafLit, shade).map((v) => Math.min(255, v * mottle));
-          return rgb(inner ? mix(pal.core, col, 0.6) : col);
-        };
-        sprigs.push({
-          c,
-          n,
-          tip: [d[0] * Ls, d[1] * Ls, d[2] * Ls],
-          leaves: new Float32Array(pts),
-          inner,
-          col: [tone(JOJOBA_COLOURS), tone(JOJOBA_GOLD)],
-        });
-      }
-      return { stems, sprigs };
-    }
 
     /** Jojoba, after the app's model.
      *
@@ -4134,159 +2444,7 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // Grown once per plant and kept, as the shrubs before it are.
-    type BottlebrushPart = {
-      c: [number, number, number];
-      /** outward normal, to skip outlines on the far side */
-      n: [number, number, number];
-      /** leaf corners as offsets from c, xyz; BOTTLEBRUSH_LEAF.length each.
-       *  For a brush, its axis — two points, offsets from c — then a
-       *  [place along it, lean, side] triple per stamen. */
-      pts: Float32Array;
-      kind: "inner" | "leaf" | "tip" | "brush";
-      col: [string, string]; // [plain, gold]
-    };
-    // A needle: narrow, pointed both ends.
-    const BOTTLEBRUSH_LEAF: [number, number][] = [[0, 0], [0.45, 0.5], [1, 0], [0.45, -0.5]];
     const bottlebrushGrown = new Map<string, { arms: [number, number, number][][]; parts: BottlebrushPart[] }>();
-    // The heart of the mound, set back behind the inner needles.
-    const bottlebrushCoreRing = (x: number, z: number, h: number, rw: number): [number, number, number][] => {
-      const out: [number, number, number][] = [];
-      for (let i = 0; i <= 6; i++) {
-        const a = -Math.PI / 2 + (Math.PI * i) / 6;
-        const r = rw * 0.38 * Math.cos(a);
-        const y = h * (0.3 + 0.18 * Math.sin(a));
-        for (let j = 0; j < 12; j++) {
-          const th = (j / 12) * Math.PI * 2;
-          out.push([x + Math.cos(th) * r, y, z + Math.sin(th) * r]);
-        }
-      }
-      return out;
-    };
-
-    function growBottlebrush(x: number, z: number, h: number, rw: number, rot: number, seed: string) {
-      const rng = rngFor("bottlebrush:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const rgb = (c: number[]) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;
-      const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i] - v) * t);
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const crs = (a: V3, b: V3): V3 => [
-        a[1] * b[2] - a[2] * b[1],
-        a[2] * b[0] - a[0] * b[2],
-        a[0] * b[1] - a[1] * b[0],
-      ];
-      const outward = (c: V3): V3 => nrm([c[0] - x, ((c[1] - h * 0.25) * rw) / h, c[2] - z]);
-      const shadeAt = (c: V3, n: V3) => {
-        const lit = Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-        return (0.35 + 0.65 * lit) * (0.6 + 0.4 * smooth(0, 0.8, c[1] / h));
-      };
-      const parts: BottlebrushPart[] = [];
-      // A whorl of needles round a stretch of shoot, swept forward along it.
-      const whorl = (c: V3, dir: V3, k: number, L: number, sweep: number, spin: number) => {
-        const s0 = nrm(crs(dir, Math.abs(dir[1]) > 0.95 ? [1, 0, 0] : [0, 1, 0]));
-        const s1 = crs(dir, s0);
-        const pts: number[] = [];
-        const cs = Math.cos(sweep);
-        const sn = Math.sin(sweep);
-        for (let i = 0; i < k; i++) {
-          const a = spin + (i / k) * Math.PI * 2;
-          const rad: V3 = [s0[0] * Math.cos(a) + s1[0] * Math.sin(a), s0[1] * Math.cos(a) + s1[1] * Math.sin(a), s0[2] * Math.cos(a) + s1[2] * Math.sin(a)];
-          const d: V3 = [dir[0] * cs + rad[0] * sn, dir[1] * cs + rad[1] * sn, dir[2] * cs + rad[2] * sn];
-          // The blade's width lies round the shoot, so a whorl reads as a
-          // bristling cylinder from any side.
-          const w: V3 = crs(d, rad);
-          for (const [f, q] of BOTTLEBRUSH_LEAF) {
-            for (let j = 0; j < 3; j++) pts.push(d[j] * L * f + w[j] * L * 0.28 * q);
-          }
-        }
-        return new Float32Array(pts);
-      };
-
-      // Arms: stiff shoots fanning out of a tight base, the long ones low and
-      // reaching the rim halfway up, the short ones nearly upright to the
-      // top — the model's fan, widest at mid-height, not a dome. A little
-      // shorter across the plant's yaw than along it, as the model is.
-      const arms: V3[][] = [];
-      const NA = 24;
-      for (let k = 0; k < NA; k++) {
-        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.4;
-        const reach = (0.3 + 0.75 * Math.sqrt(rng())) * (1 - 0.19 * Math.sin(a - rot) ** 2);
-        const rt = rw * Math.min(1.02, reach);
-        const yt = h * Math.min(1, (1 - 0.48 * (rt / rw) ** 2) * (0.88 + 0.14 * rng()));
-        const p0: V3 = [x + Math.cos(a) * rw * 0.06, h * 0.06, z + Math.sin(a) * rw * 0.06];
-        // Nearly straight out of the base, curling up a little at the end.
-        const p1: V3 = [x + Math.cos(a) * rt * 0.55, yt * 0.44, z + Math.sin(a) * rt * 0.55];
-        const p2: V3 = [x + Math.cos(a) * rt, yt, z + Math.sin(a) * rt];
-        const at = (t: number): V3 => {
-          const u = 1 - t;
-          return [0, 1, 2].map((i) => u * u * p0[i] + 2 * u * t * p1[i] + t * t * p2[i]) as V3;
-        };
-        const path: V3[] = [];
-        for (let i = 0; i <= 8; i++) path.push(at(i / 8));
-        arms.push(path);
-        // Needles from a quarter of the way out — inside that the shoot is in
-        // the mound — in close whorls, so each shoot is a thick bristling
-        // cylinder as the model's are (sparse, they read as rosemary), to a
-        // clubbed tip of paler new growth.
-        const len = Math.hypot(p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]);
-        const nW = Math.max(5, Math.round(len / (rw * 0.06)));
-        const L = rw * 0.16 * (0.9 + 0.2 * rng());
-        for (let i = 0; i < nW; i++) {
-          const t = 0.25 + (0.75 * (i + 0.5)) / nW;
-          const c = at(t);
-          const c2 = at(Math.min(1, t + 0.02));
-          const dir = nrm([c2[0] - c[0], c2[1] - c[1], c2[2] - c[2]]);
-          const tip = t > 0.88;
-          const n = outward(c);
-          const shade = shadeAt(c, n);
-          const pts = whorl(c, dir, 9, L * (tip ? 0.8 : 1), tip ? 0.45 : 0.85, rng() * 6.28);
-          const tone = (pal: typeof BOTTLEBRUSH_COLOURS) => {
-            const col = mix(pal.leafShade, pal.leafLit, shade);
-            return rgb(tip ? mix(col, pal.tip, 0.65) : col);
-          };
-          parts.push({ c, n, pts, kind: tip ? "tip" : "leaf", col: [tone(BOTTLEBRUSH_COLOURS), tone(BOTTLEBRUSH_GOLD)] });
-        }
-        // A crimson brush on some shoots, just behind the leafy tip — the
-        // shoot grows on through the flower, as a bottlebrush's does.
-        if (rng() < 0.38) {
-          const t0 = 0.66 + 0.08 * rng();
-          const a0 = at(t0);
-          const a1 = at(t0 + 0.17);
-          const c: V3 = [(a0[0] + a1[0]) / 2, (a0[1] + a1[1]) / 2, (a0[2] + a1[2]) / 2];
-          const pts = [a0[0] - c[0], a0[1] - c[1], a0[2] - c[2], a1[0] - c[0], a1[1] - c[1], a1[2] - c[2]];
-          for (let i = 0; i < 32; i++) pts.push((i + 0.5) / 32, (rng() - 0.5) * 0.9, i % 2 ? 1 : -1);
-          parts.push({ c, n: outward(c), pts: new Float32Array(pts), kind: "brush", col: ["", ""] });
-        }
-      }
-
-      // The mound's heart: big whorls in shade round the base of the arms,
-      // fill only.
-      for (let i = 0; i < 140; i++) {
-        const th = rng() * Math.PI * 2;
-        const v = rng() * 2 - 1;
-        const r = rw * 0.46 * Math.sqrt(1 - v * v) * (0.85 + 0.2 * rng());
-        const c: V3 = [x + Math.cos(th) * r, h * (0.3 + 0.22 * v), z + Math.sin(th) * r];
-        const n = outward(c);
-        const dir = nrm([n[0] * 0.6 + (rng() - 0.5) * 0.6, 0.7, n[2] * 0.6 + (rng() - 0.5) * 0.6]);
-        const shade = shadeAt(c, n);
-        // Smaller than the shoots' own needles would suggest: big, they
-        // read as agave spikes at the foot of the plant.
-        const pts = whorl(c, dir, 7, rw * 0.13, 0.75, rng() * 6.28);
-        const tone = (pal: typeof BOTTLEBRUSH_COLOURS) => rgb(mix(pal.core, mix(pal.leafShade, pal.leafLit, shade), 0.55));
-        parts.push({ c, n, pts, kind: "inner", col: [tone(BOTTLEBRUSH_COLOURS), tone(BOTTLEBRUSH_GOLD)] });
-      }
-      return { arms, parts };
-    }
 
     /** Little John bottlebrush, after the app's model.
      *
@@ -4438,168 +2596,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per plant and kept, as the shrubs are.
-    type PaloVerdeTree = {
-      /** limbs by order — trunk, main limbs, branches, twigs, fine twigs — as segments */
-      limbs: [number, number, number][][][];
-      /** canopy lobes: centre, then its two radii (across, up) */
-      lobes: { c: [number, number, number]; rx: number; ry: number; col: [string, string] }[];
-      /** leaf flecks, grouped by tone — 0 (deep shade) to PV_LEVELS - 1,
-       *  then the flowers — each as the lobe it sits in, its offset from
-       *  that lobe's centre (xyz), and its slant */
-      fleckLobe: Uint16Array;
-      fleckOff: Float32Array;
-      fleckSlant: Float32Array;
-      /** where each tone's flecks start; the flowers' group is PV_LEVELS */
-      groupStart: Int32Array;
-    };
-    // Flecks take one of a few tones, so all of one tone fill in a single
-    // pass — a canopy is a thousand of them.
-    const PV_LEVELS = 8;
-    const pvTones = (pal: typeof PALO_VERDE_COLOURS) =>
-      Array.from({ length: PV_LEVELS }, (_, i) => {
-        const t = i / (PV_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      });
-    const PV_TONES = [pvTones(PALO_VERDE_COLOURS), pvTones(PALO_VERDE_GOLD)];
     const paloVerdeGrown = new Map<string, PaloVerdeTree>();
-
-    function growPaloVerde(x: number, z: number, h: number, rw: number, rot: number, seed: string): PaloVerdeTree {
-      const rng = rngFor("paloverde:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-      // The canopy's skin: a broad dome on a drooping rim — widest a little
-      // above halfway, its edge down to a third of the height, as the model.
-      const y0 = h * 0.55;
-      const shell = (th: number, ph: number): V3 => [
-        x + rw * Math.cos(ph) * Math.cos(th),
-        y0 + Math.sin(ph) * (ph > 0 ? h * 0.45 : h * 0.6),
-        z + rw * Math.cos(ph) * Math.sin(th),
-      ];
-      const outward = (c: V3): V3 => nrm([(c[0] - x) / rw, ((c[1] - y0) / h) * 1.4, (c[2] - z) / rw]);
-
-      // One trunk, forking a fifth of the way up into a vase of limbs, each
-      // forking twice more out to the canopy's skin, every twig ending in a
-      // fan of fine ones.
-      const trunk: V3[][] = [];
-      const mains: V3[][] = [];
-      const branches: V3[][] = [];
-      const twigs: V3[][] = [];
-      const fine: V3[][] = [];
-      const clusters: V3[][] = []; // each branch's twig ends
-      const lean = rng() * 6.28;
-      const F: V3 = [x + Math.cos(lean) * rw * 0.03, h * 0.2, z + Math.sin(lean) * rw * 0.03];
-      trunk.push([[x, 0, z], F]);
-      const NM = 7;
-      for (let k = 0; k < NM; k++) {
-        const a = rot + (k / NM) * Math.PI * 2 + (rng() - 0.5) * 0.5;
-        const o1 = rw * (0.24 + 0.12 * rng());
-        const P1: V3 = [F[0] + Math.cos(a) * o1, h * (0.38 + 0.08 * rng()), F[2] + Math.sin(a) * o1];
-        mains.push([F, P1]);
-        for (let j = 0; j < 3; j++) {
-          const a2 = a + (j - 1) * 0.45 + (rng() - 0.5) * 0.3;
-          const out = rw * (j === 1 ? 0.16 : 0.24) * (0.8 + 0.4 * rng());
-          const P2: V3 = [P1[0] + Math.cos(a2) * out, h * (j === 1 ? 0.64 : 0.54) * (0.95 + 0.1 * rng()), P1[2] + Math.sin(a2) * out];
-          branches.push([P1, P2]);
-          const ends: V3[] = [];
-          for (let i = 0; i < 3; i++) {
-            const th = a2 + (rng() - 0.5) * 0.7;
-            // Out to the skin, anywhere from the drooping rim to the crown;
-            // the middle branch of each fork reaches higher.
-            const ph = -0.35 + (Math.PI / 2 + 0.35) * Math.pow(rng(), j === 1 ? 0.6 : 1.3) * 0.95;
-            const P3 = lerp(P2, shell(th, ph), 0.88 + 0.1 * rng());
-            twigs.push([P2, P3]);
-            ends.push(P3);
-            const td = nrm([P3[0] - P2[0], P3[1] - P2[1], P3[2] - P2[2]]);
-            for (let f = 0; f < 5; f++) {
-              const A = lerp(P2, P3, 0.35 + 0.65 * rng());
-              const fd = nrm([td[0] * 0.6 + (rng() - 0.5) * 0.9, td[1] * 0.6 + 0.45 + (rng() - 0.5) * 0.4, td[2] * 0.6 + (rng() - 0.5) * 0.9]);
-              const fl = rw * 0.12 * (0.6 + 0.6 * rng());
-              fine.push([A, [A[0] + fd[0] * fl, A[1] + fd[1] * fl, A[2] + fd[2] * fl]]);
-            }
-          }
-          clusters.push([P2, ...ends]);
-        }
-      }
-
-      // A lobe of foliage round each branch's spray of twigs, drawn
-      // translucent: where lobes overlap the crown thickens, at its edges
-      // it thins to air, and the limbs show through it dimmed — as the
-      // model's mist does.
-      // Two to a branch, one in and one out, so they run together into one
-      // lumpy dome; none hangs below the drooping rim, or the crown grows a
-      // skirt round the trunk.
-      const lobes: PaloVerdeTree["lobes"] = [];
-      // Each lobe is itself three overlapping puffs, fainter, so its edge is
-      // lumpy as foliage is — one clean ellipse apiece made cartoon clouds.
-      const alpha = 0.23;
-      for (const [P2, ...ends] of clusters) {
-        const m: V3 = [0, 0, 0];
-        for (const e of ends) for (let i = 0; i < 3; i++) m[i] += e[i] / ends.length;
-        for (const t of [0.55, 0.95]) {
-          const c = lerp(P2, m, t);
-          c[0] += (rng() - 0.5) * rw * 0.06;
-          c[2] += (rng() - 0.5) * rw * 0.06;
-          let spread = 0;
-          for (const e of ends) spread = Math.max(spread, Math.hypot(e[0] - c[0], e[2] - c[2]));
-          const rx = Math.max(rw * 0.22, spread * 0.9) * (0.85 + 0.25 * rng());
-          const ry = Math.max(rx * 0.3, Math.min(rx * 0.6, c[1] - h * 0.32));
-          for (let k = 0; k < 3; k++) {
-            const pc: V3 = [c[0] + (rng() - 0.5) * rx * 0.8, c[1] + (rng() - 0.5) * ry * 0.6, c[2] + (rng() - 0.5) * rx * 0.8];
-            const s = (0.45 + 0.55 * lightOf(outward(pc))) * 0.85 + 0.15;
-            const tone = (pal: typeof PALO_VERDE_COLOURS) =>
-              `rgba(${pal.shade.map((v, i) => (v + (pal.lit[i] - v) * s) | 0).join(",")},${alpha})`;
-            lobes.push({ c: pc, rx: rx * (0.6 + 0.15 * rng()), ry: ry * (0.65 + 0.15 * rng()), col: [tone(PALO_VERDE_COLOURS), tone(PALO_VERDE_GOLD)] });
-          }
-        }
-      }
-
-      // Flecks of tiny leaves through the lobes, thickest toward their
-      // skins; a few, out at the canopy's edge, yellow bloom. Each is kept
-      // as an offset in its lobe, so it's placed by the lobe's projection
-      // rather than projected itself — a thousand projections a tree was
-      // most of what a small tree cost.
-      const NF = 1500;
-      const raw: { li: number; o: V3; slant: number; group: number }[] = [];
-      for (let i = 0; i < NF; i++) {
-        const li = Math.floor(rng() * lobes.length);
-        const L = lobes[li];
-        const v = nrm([rng() - 0.5, rng() - 0.5, rng() - 0.5]);
-        const r = Math.pow(rng(), 0.4);
-        const o: V3 = [v[0] * L.rx * r, v[1] * L.ry * r, v[2] * L.rx * r];
-        const c: V3 = [L.c[0] + o[0], L.c[1] + o[1], L.c[2] + o[2]];
-        const n = outward(c);
-        const e = Math.hypot((c[0] - x) / rw, (c[1] - y0) / (h * 0.5), (c[2] - z) / rw);
-        const shade = (0.3 + 0.7 * lightOf(nrm([n[0] + v[0], n[1] + v[1], n[2] + v[2]]))) * (0.55 + 0.45 * smooth(0.4, 1, e)) * (0.9 + 0.2 * rng());
-        const level = Math.max(0, Math.min(PV_LEVELS - 1, Math.round(shade * (PV_LEVELS - 1))));
-        raw.push({ li, o, slant: rng() * Math.PI, group: e > 0.8 && rng() < 0.12 ? PV_LEVELS : level });
-      }
-      raw.sort((a, b) => a.group - b.group);
-      const fleckLobe = new Uint16Array(NF);
-      const fleckOff = new Float32Array(NF * 3);
-      const fleckSlant = new Float32Array(NF);
-      const groupStart = new Int32Array(PV_LEVELS + 2).fill(NF);
-      raw.forEach((f, i) => {
-        fleckLobe[i] = f.li;
-        fleckOff.set(f.o, i * 3);
-        fleckSlant[i] = f.slant;
-        if (groupStart[f.group] === NF) groupStart[f.group] = i;
-      });
-      // A group with no flecks starts where the next one does.
-      for (let gi = PV_LEVELS; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
-      return { limbs: [trunk, mains, branches, twigs, fine], lobes, fleckLobe, fleckOff, fleckSlant, groupStart };
-    }
 
     /** Blue palo verde, after the app's model.
      *
@@ -4721,184 +2718,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per tree and kept, as the palo verde is.
-    type MesquiteTree = {
-      /** limbs by order — trunk, main limbs, branches, twigs — as segments */
-      limbs: [number, number, number][][][];
-      /** canopy puffs: centre, its two radii (across, up), and tone */
-      lobes: { c: [number, number, number]; rx: number; ry: number; col: [string, string] }[];
-      /** weeping strands: polylines of three points hanging off the canopy */
-      strands: [number, number, number][][];
-      /** leaf flecks and catkins, grouped by tone — 0 (deep shade) to
-       *  MQ_LEVELS - 1, then the catkins — each as the puff it hangs from,
-       *  its offset from that puff's centre (xyz), and its slant */
-      fleckLobe: Uint16Array;
-      fleckOff: Float32Array;
-      fleckSlant: Float32Array;
-      groupStart: Int32Array;
-    };
-    const MQ_LEVELS = 8;
-    const mqTones = (pal: typeof MESQUITE_COLOURS) =>
-      Array.from({ length: MQ_LEVELS }, (_, i) => {
-        const t = i / (MQ_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      });
-    const MQ_TONES = [mqTones(MESQUITE_COLOURS), mqTones(MESQUITE_GOLD)];
     const mesquiteGrown = new Map<string, MesquiteTree>();
-
-    function growMesquite(x: number, z: number, h: number, rw: number, rot: number, seed: string): MesquiteTree {
-      const rng = rngFor("mesquite:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-      // The crown: a broad, low dome — widest a third of the way up, where
-      // the limbs spread — with a lobe or two standing above it, and its
-      // edge weeping toward the ground.
-      const y0 = h * 0.5;
-      const shell = (th: number, ph: number): V3 => [
-        x + rw * Math.cos(ph) * Math.cos(th),
-        y0 + Math.sin(ph) * (ph > 0 ? h * 0.42 : h * 0.3),
-        z + rw * Math.cos(ph) * Math.sin(th),
-      ];
-      const outward = (c: V3): V3 => nrm([(c[0] - x) / rw, ((c[1] - y0) / h) * 1.4, (c[2] - z) / rw]);
-
-      // A short, stout trunk with a lean, forking low into a few big limbs
-      // that run out nearly level and crook upward — a mesquite's limbs zig
-      // and zag — then branch and twig out to the crown.
-      const trunk: V3[][] = [];
-      const mains: V3[][] = [];
-      const branches: V3[][] = [];
-      const twigs: V3[][] = [];
-      const clusters: V3[][] = [];
-      const lean = rng() * 6.28;
-      const F: V3 = [x + Math.cos(lean) * rw * 0.06, h * 0.22, z + Math.sin(lean) * rw * 0.06];
-      trunk.push([[x, 0, z], F]);
-      const NM = 5;
-      for (let k = 0; k < NM; k++) {
-        const a = rot + (k / NM) * Math.PI * 2 + (rng() - 0.5) * 0.7;
-        // Out nearly level, then a crook up.
-        const K: V3 = [F[0] + Math.cos(a) * rw * (0.2 + 0.1 * rng()), h * (0.28 + 0.06 * rng()), F[2] + Math.sin(a) * rw * (0.2 + 0.1 * rng())];
-        const ak = a + (rng() - 0.5) * 0.5;
-        const P1: V3 = [K[0] + Math.cos(ak) * rw * (0.14 + 0.08 * rng()), h * (0.42 + 0.08 * rng()), K[2] + Math.sin(ak) * rw * (0.14 + 0.08 * rng())];
-        mains.push([F, K], [K, P1]);
-        for (let j = 0; j < 3; j++) {
-          const a2 = ak + (j - 1) * 0.55 + (rng() - 0.5) * 0.3;
-          const out = rw * (j === 1 ? 0.14 : 0.24) * (0.8 + 0.4 * rng());
-          const P2: V3 = [P1[0] + Math.cos(a2) * out, h * (j === 1 ? 0.66 : 0.52) * (0.95 + 0.1 * rng()), P1[2] + Math.sin(a2) * out];
-          branches.push([P1, P2]);
-          const ends: V3[] = [];
-          for (let i = 0; i < 3; i++) {
-            const th = a2 + (rng() - 0.5) * 0.8;
-            const ph = -0.5 + (Math.PI / 2 + 0.5) * Math.pow(rng(), j === 1 ? 0.55 : 1.2) * 0.95;
-            // Ending inside the foliage: bare, they poked out of the crown
-            // like straws.
-            const P3 = lerp(P2, shell(th, ph), 0.76 + 0.1 * rng());
-            twigs.push([P2, P3]);
-            ends.push(P3);
-          }
-          clusters.push([P2, ...ends]);
-        }
-      }
-
-      // Puffs of foliage round each branch's twigs — denser than the palo
-      // verde's mist, as the model is: you see into this crown, not
-      // through it — three to a lobe, two lobes to a branch.
-      const lobes: MesquiteTree["lobes"] = [];
-      const alpha = 0.3;
-      for (const [P2, ...ends] of clusters) {
-        const m: V3 = [0, 0, 0];
-        for (const e of ends) for (let i = 0; i < 3; i++) m[i] += e[i] / ends.length;
-        for (const t of [0.5, 0.92]) {
-          const c = lerp(P2, m, t);
-          let spread = 0;
-          for (const e of ends) spread = Math.max(spread, Math.hypot(e[0] - c[0], e[2] - c[2]));
-          const rx = Math.max(rw * 0.24, spread * 0.95) * (0.85 + 0.25 * rng());
-          const ry = Math.max(rx * 0.35, Math.min(rx * 0.62, c[1] - h * 0.28));
-          for (let k = 0; k < 3; k++) {
-            const pc: V3 = [c[0] + (rng() - 0.5) * rx * 0.8, c[1] + (rng() - 0.5) * ry * 0.6, c[2] + (rng() - 0.5) * rx * 0.8];
-            const sh = (0.4 + 0.6 * lightOf(outward(pc))) * 0.85 + 0.15;
-            const tone = (pal: typeof MESQUITE_COLOURS) =>
-              `rgba(${pal.shade.map((v, i) => (v + (pal.lit[i] - v) * sh) | 0).join(",")},${alpha})`;
-            lobes.push({ c: pc, rx: rx * (0.6 + 0.15 * rng()), ry: ry * (0.65 + 0.15 * rng()), col: [tone(MESQUITE_COLOURS), tone(MESQUITE_GOLD)] });
-          }
-        }
-      }
-
-      // Weeping strands off the outer puffs: the drooping branchlets hang a
-      // fifth of the height below the crown's edge, curving out then down.
-      const strands: V3[][] = [];
-      const strandOf: number[] = [];
-      lobes.forEach((L, li) => {
-        const out = Math.hypot(L.c[0] - x, L.c[2] - z) / rw;
-        if (out < 0.45) return;
-        const n = 1 + Math.floor(rng() * 3);
-        for (let k = 0; k < n; k++) {
-          const a = rng() * 6.28;
-          const A: V3 = [L.c[0] + Math.cos(a) * L.rx * 0.7, L.c[1] - L.ry * 0.4, L.c[2] + Math.sin(a) * L.rx * 0.7];
-          const drop = h * (0.1 + 0.12 * rng()) * out;
-          const ox = (A[0] - x) / (rw * out);
-          const oz = (A[2] - z) / (rw * out);
-          const B: V3 = [A[0] + ox * rw * 0.04, A[1] - drop * 0.5, A[2] + oz * rw * 0.04];
-          const C: V3 = [B[0] + ox * rw * 0.015, Math.max(h * 0.12, A[1] - drop), B[2] + oz * rw * 0.015];
-          strands.push([A, B, C]);
-          strandOf.push(li);
-        }
-      });
-
-      // Flecks: the leaflets, hanging — a mesquite's feathery leaves droop,
-      // so the dashes mostly fall near-vertical — through the puffs and
-      // down the strands; and pale catkins hanging among them. Each kept as
-      // an offset in its puff, placed by the puff's projection.
-      const raw: { li: number; o: V3; slant: number; group: number }[] = [];
-      const fleckAt = (li: number, c: V3, v: V3, catkin: boolean) => {
-        const L = lobes[li];
-        const n = outward(c);
-        const e = Math.hypot((c[0] - x) / rw, (c[1] - y0) / (h * 0.45), (c[2] - z) / rw);
-        const sh = (0.3 + 0.7 * lightOf(nrm([n[0] + v[0], n[1] + v[1], n[2] + v[2]]))) * (0.55 + 0.45 * smooth(0.35, 1, e)) * (0.9 + 0.2 * rng());
-        const level = Math.max(0, Math.min(MQ_LEVELS - 1, Math.round(sh * (MQ_LEVELS - 1))));
-        raw.push({ li, o: [c[0] - L.c[0], c[1] - L.c[1], c[2] - L.c[2]], slant: Math.PI / 2 + (rng() - 0.5) * (catkin ? 0.25 : 0.9), group: catkin ? MQ_LEVELS : level });
-      };
-      for (let i = 0; i < 1000; i++) {
-        const li = Math.floor(rng() * lobes.length);
-        const L = lobes[li];
-        const v = nrm([rng() - 0.5, rng() - 0.5, rng() - 0.5]);
-        const r = Math.pow(rng(), 0.45);
-        const c: V3 = [L.c[0] + v[0] * L.rx * r, L.c[1] + v[1] * L.ry * r, L.c[2] + v[2] * L.rx * r];
-        const e = Math.hypot((c[0] - x) / rw, (c[1] - y0) / (h * 0.45), (c[2] - z) / rw);
-        fleckAt(li, c, v, e > 0.7 && rng() < 0.06);
-      }
-      strands.forEach(([A, B, C], si) => {
-        for (let k = 0; k < 3; k++) {
-          const t = rng();
-          const c = t < 0.5 ? lerp(A, B, t * 2) : lerp(B, C, t * 2 - 1);
-          fleckAt(strandOf[si], c, nrm([c[0] - x, 0, c[2] - z]), false);
-        }
-      });
-      raw.sort((a, b) => a.group - b.group);
-      const NF = raw.length;
-      const fleckLobe = new Uint16Array(NF);
-      const fleckOff = new Float32Array(NF * 3);
-      const fleckSlant = new Float32Array(NF);
-      const groupStart = new Int32Array(MQ_LEVELS + 2).fill(NF);
-      raw.forEach((f, i) => {
-        fleckLobe[i] = f.li;
-        fleckOff.set(f.o, i * 3);
-        fleckSlant[i] = f.slant;
-        if (groupStart[f.group] === NF) groupStart[f.group] = i;
-      });
-      for (let gi = MQ_LEVELS; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
-      return { limbs: [trunk, mains, branches, twigs], lobes, strands, fleckLobe, fleckOff, fleckSlant, groupStart };
-    }
 
     /** Honey mesquite, after the app's model.
      *
@@ -5030,146 +2850,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per tree and kept, as the other trees are.
-    type EbonyTree = {
-      /** trunk and the limbs it forks into, as segments */
-      limbs: [number, number, number][][][];
-      /** the crown's set-back shell, filled as one silhouette */
-      coreRing: [number, number, number][];
-      /** puffs over the crown's skin: centre, radii (across, up), outward
-       *  normal, tone, and how far out its outline reaches at each of
-       *  EB_PUFF points round it */
-      puffs: { c: [number, number, number]; rx: number; ry: number; n: [number, number, number]; level: number; jit: Float32Array }[];
-      /** leaflet flecks, grouped by tone — 0 to EB_LEVELS - 1, then the pods —
-       *  each as its puff, its offset from that puff's centre, and its slant */
-      fleckPuff: Uint16Array;
-      fleckOff: Float32Array;
-      fleckSlant: Float32Array;
-      groupStart: Int32Array;
-    };
-    const EB_LEVELS = 6;
-    const EB_PUFF = 9;
-    const ebTones = (pal: typeof EBONY_COLOURS) =>
-      Array.from({ length: EB_LEVELS }, (_, i) => {
-        const t = i / (EB_LEVELS - 1);
-        return `rgb(${pal.fleckShade.map((v, k) => (v + (pal.fleckLit[k] - v) * t) | 0).join(",")})`;
-      });
-    const EB_TONES = [ebTones(EBONY_COLOURS), ebTones(EBONY_GOLD)];
-    // Puffs take one of a few tones too, so a band of them at one depth
-    // fills a tone at a time — a crown is three hundred of them.
-    const ebPuffTones = (pal: typeof EBONY_COLOURS) =>
-      Array.from({ length: EB_LEVELS }, (_, i) => {
-        const t = i / (EB_LEVELS - 1);
-        return `rgba(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")},0.92)`;
-      });
-    const EB_PUFF_TONES = [ebPuffTones(EBONY_COLOURS), ebPuffTones(EBONY_GOLD)];
     const ebonyGrown = new Map<string, EbonyTree>();
-    // The crown's radius (a fraction of rw) by height (a fraction of h): an
-    // upright egg from a seventh of the way up, widest at three fifths, as
-    // the model's is.
-    const ebonyProf = (u: number) => {
-      if (u < 0.13 || u > 1) return 0;
-      if (u < 0.6) {
-        const t = (u - 0.13) / 0.47;
-        return 0.62 + 0.38 * Math.sin((t * Math.PI) / 2);
-      }
-      return Math.sqrt(Math.max(0, 1 - ((u - 0.6) / 0.4) ** 2));
-    };
-
-    function growEbony(x: number, z: number, h: number, rw: number, rot: number, seed: string): EbonyTree {
-      const rng = rngFor("ebony:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-      // Slightly longer one way than the other, as the model's crown is.
-      const squash = (th: number) => 1 - 0.12 * Math.sin(th - rot) ** 2;
-      const skinNormal = (th: number, u: number): V3 => {
-        const d = (ebonyProf(Math.min(1, u + 0.02)) - ebonyProf(Math.max(0.13, u - 0.02))) / 0.04;
-        return nrm([Math.cos(th) * h, -d * rw, Math.sin(th) * h].map((v, i) => (i === 1 ? v : v / h)) as V3);
-      };
-
-      // A short, stout, pale trunk forking a seventh of the way up into three
-      // thick limbs that rise into the crown.
-      const F: V3 = [x, h * 0.13, z];
-      const trunk: V3[][] = [[[x, 0, z], F]];
-      const mains: V3[][] = [];
-      for (let k = 0; k < 3; k++) {
-        const a = rot + (k / 3) * Math.PI * 2 + (rng() - 0.5) * 0.6;
-        const r = rw * (0.18 + 0.1 * rng());
-        mains.push([F, [x + Math.cos(a) * r, h * (0.32 + 0.08 * rng()), z + Math.sin(a) * r]]);
-      }
-
-      // Tapered at the foot, so its bottom edge stays inside the puffs.
-      const coreRing: V3[] = [];
-      for (let i = 0; i <= 8; i++) {
-        const u = 0.2 + (0.76 * i) / 8;
-        for (let j = 0; j < 12; j++) {
-          const th = (j / 12) * Math.PI * 2;
-          const r = rw * 0.8 * ebonyProf(u) * squash(th) * (0.7 + 0.3 * smooth(0.2, 0.32, u));
-          coreRing.push([x + Math.cos(th) * r, u * h, z + Math.sin(th) * r]);
-        }
-      }
-
-      // Puffs over the crown's skin, by area: they make its lumpy outline and
-      // its light and shade; the core behind them means no sand shows
-      // through a crown this dense.
-      // Many small ones, of varied size and ragged outline: big, they read
-      // as broccoli; round and alike, as cauliflower.
-      const puffs: EbonyTree["puffs"] = [];
-      const push = (c: V3, n: V3, u: number) => {
-        const rx = rw * (0.1 + 0.08 * rng());
-        const jit = new Float32Array(EB_PUFF);
-        for (let k = 0; k < EB_PUFF; k++) jit[k] = 0.78 + 0.32 * rng();
-        const sh = (0.3 + 0.7 * lightOf(n)) * (0.6 + 0.4 * smooth(0.15, 0.7, u)) * (0.9 + 0.2 * rng());
-        const level = Math.max(0, Math.min(EB_LEVELS - 1, Math.round(sh * (EB_LEVELS - 1))));
-        puffs.push({ c, rx, ry: rx * 0.8, n, level, jit });
-      };
-      for (let tries = 0; puffs.length < 300 && tries < 2000; tries++) {
-        const u = 0.15 + 0.85 * rng();
-        if (rng() > ebonyProf(u) && u < 0.6) continue;
-        const th = rng() * Math.PI * 2;
-        const r = rw * ebonyProf(u) * squash(th) * (0.86 + 0.1 * rng());
-        push([x + Math.cos(th) * r, Math.min(u * h, h * 0.95), z + Math.sin(th) * r], skinNormal(th, u), u);
-      }
-
-      // Leaflet flecks on the puffs' outer faces — the model's bright green
-      // speckle, brightest where the light falls — and a few brown pods.
-      const raw: { pi: number; o: V3; slant: number; group: number }[] = [];
-      for (let i = 0; i < 1200; i++) {
-        const pi = Math.floor(rng() * puffs.length);
-        const P0 = puffs[pi];
-        const v = nrm([P0.n[0] + (rng() - 0.5) * 1.6, P0.n[1] + (rng() - 0.5) * 1.6, P0.n[2] + (rng() - 0.5) * 1.6]);
-        const r = 0.55 + 0.45 * rng();
-        const o: V3 = [v[0] * P0.rx * r, v[1] * P0.ry * r, v[2] * P0.rx * r];
-        const lit = lightOf(nrm([P0.n[0] + v[0], P0.n[1] + v[1], P0.n[2] + v[2]]));
-        const sh = (0.25 + 0.75 * lit) * (0.85 + 0.3 * rng());
-        const level = Math.max(0, Math.min(EB_LEVELS - 1, Math.round(sh * (EB_LEVELS - 1))));
-        raw.push({ pi, o, slant: rng() * Math.PI, group: rng() < 0.04 ? EB_LEVELS : level });
-      }
-      raw.sort((a, b) => a.group - b.group);
-      const NF = raw.length;
-      const fleckPuff = new Uint16Array(NF);
-      const fleckOff = new Float32Array(NF * 3);
-      const fleckSlant = new Float32Array(NF);
-      const groupStart = new Int32Array(EB_LEVELS + 2).fill(NF);
-      raw.forEach((f, i) => {
-        fleckPuff[i] = f.pi;
-        fleckOff.set(f.o, i * 3);
-        fleckSlant[i] = f.group === EB_LEVELS ? Math.PI / 2 + (f.slant - Math.PI / 2) * 0.3 : f.slant;
-        if (groupStart[f.group] === NF) groupStart[f.group] = i;
-      });
-      for (let gi = EB_LEVELS; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
-      return { limbs: [trunk, mains], coreRing, puffs, fleckPuff, fleckOff, fleckSlant, groupStart };
-    }
 
     /** Texas ebony, after the app's model.
      *
@@ -5340,148 +3021,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per tree and kept, as the other trees are.
-    type MulgaTree = {
-      /** limbs by order — trunk, leader, branches, twigs — as segments */
-      limbs: [number, number, number][][][];
-      /** canopy puffs: centre, radii (across, up), tone */
-      lobes: { c: [number, number, number]; rx: number; ry: number; col: [string, string] }[];
-      /** phyllode flecks, grouped by tone, each as its puff, its offset from
-       *  that puff's centre, and its slant */
-      fleckLobe: Uint16Array;
-      fleckOff: Float32Array;
-      fleckSlant: Float32Array;
-      groupStart: Int32Array;
-    };
-    const MU_LEVELS = 7;
-    const muTones = (pal: typeof MULGA_COLOURS) =>
-      Array.from({ length: MU_LEVELS }, (_, i) => {
-        const t = i / (MU_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      });
-    const MU_TONES = [muTones(MULGA_COLOURS), muTones(MULGA_GOLD)];
     const mulgaGrown = new Map<string, MulgaTree>();
-    // The crown's radius (a fraction of rw) by height: widest low, where
-    // the lower limbs spread, then tapering to a point — a narrow upright
-    // cone over an oval, as the model is.
-    const mulgaProf = (u: number) => {
-      if (u < 0.2 || u > 1) return 0;
-      if (u < 0.32) return 0.65 + 0.35 * Math.sin(((u - 0.2) / 0.12) * (Math.PI / 2));
-      if (u < 0.5) return 1 - 0.22 * ((u - 0.32) / 0.18);
-      return 0.78 * Math.sqrt(Math.max(0, 1 - ((u - 0.5) / 0.5) ** 1.6));
-    };
-
-    function growMulga(x: number, z: number, h: number, rw: number, rot: number, seed: string): MulgaTree {
-      const rng = rngFor("mulga:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-      const outward = (c: V3): V3 => nrm([(c[0] - x) / rw, ((c[1] - h * 0.5) / h) * 1.2, (c[2] - z) / rw]);
-
-      // One leader all the way up — a mulga doesn't fork into a vase as the
-      // palo verde does — with branches rising off it at a steep angle, the
-      // low ones longest, out to the crown's skin.
-      const lean = rng() * 6.28;
-      const top: V3 = [x + Math.cos(lean) * rw * 0.06, h * 0.88, z + Math.sin(lean) * rw * 0.06];
-      const F: V3 = lerp([x, 0, z], top, 0.22 / 0.88);
-      const trunk: V3[][] = [[[x, 0, z], F]];
-      const leader: V3[][] = [[F, top]];
-      const branches: V3[][] = [];
-      const twigs: V3[][] = [];
-      const clusters: V3[][] = [];
-      const NB = 13;
-      for (let k = 0; k < NB; k++) {
-        const t = 0.22 + (0.62 * (k + rng() * 0.6)) / NB;
-        const A = lerp([x, 0, z], top, t / 0.88);
-        const a = rot + k * 2.399963 + (rng() - 0.5) * 0.4;
-        // Up at forty to sixty degrees, to the skin a little higher up; the
-        // lowest ones flatter, spreading the crown wide just above the trunk.
-        const low = 1 - smooth(0.22, 0.4, t);
-        const ut = Math.min(0.96, t + (0.1 + 0.08 * rng()) * (1 - 0.6 * low));
-        const r = rw * mulgaProf(ut) * (0.85 + 0.15 * rng());
-        const B: V3 = [x + Math.cos(a) * r, ut * h, z + Math.sin(a) * r];
-        branches.push([A, B]);
-        const ends: V3[] = [B];
-        for (let j = 0; j < 2; j++) {
-          const S = lerp(A, B, 0.45 + 0.3 * rng());
-          const aj = a + (j ? 0.6 : -0.6) * (0.6 + 0.6 * rng());
-          const uj = Math.min(0.98, S[1] / h + 0.08 + 0.08 * rng());
-          const rj = rw * mulgaProf(uj) * (0.8 + 0.2 * rng());
-          const E: V3 = [x + Math.cos(aj) * rj, uj * h, z + Math.sin(aj) * rj];
-          twigs.push([S, E]);
-          ends.push(E);
-        }
-        clusters.push([A, ...ends]);
-      }
-
-      // Faint silver puffs along the outer half of every branch and twig:
-      // a mulga's crown is as see-through as the palo verde's, its limbs
-      // showing through it.
-      const lobes: MulgaTree["lobes"] = [];
-      const alpha = 0.17;
-      for (const [A, ...ends] of clusters) {
-        for (const E of ends) {
-          for (const t of [0.8]) {
-            const c = lerp(A, E, t);
-            const rx = rw * (0.22 + 0.08 * rng());
-            for (let k = 0; k < 3; k++) {
-              const pc: V3 = [c[0] + (rng() - 0.5) * rx * 0.9, c[1] + (rng() - 0.5) * rx * 1.2, c[2] + (rng() - 0.5) * rx * 0.9];
-              // None hangs below the crown's floor, or the bare trunk wears a
-              // bubble.
-              pc[1] = Math.max(pc[1], h * 0.26 + rx * 0.6);
-              const sh = (0.45 + 0.55 * lightOf(outward(pc))) * 0.85 + 0.15;
-              const tone = (pal: typeof MULGA_COLOURS) =>
-                `rgba(${pal.shade.map((v, i) => (v + (pal.lit[i] - v) * sh) | 0).join(",")},${alpha})`;
-              // Taller than wide: the phyllodes stand up off upright shoots.
-              const prx = rx * (0.55 + 0.15 * rng());
-              lobes.push({ c: pc, rx: prx, ry: prx * 1.15, col: [tone(MULGA_COLOURS), tone(MULGA_GOLD)] });
-            }
-          }
-        }
-      }
-
-      // Phyllodes: thin silver needles, slanting up — the fine, misty
-      // texture the catalog sells it on.
-      const raw: { li: number; o: V3; slant: number; group: number }[] = [];
-      for (let i = 0; i < 1100; i++) {
-        const li = Math.floor(rng() * lobes.length);
-        const L = lobes[li];
-        const v = nrm([rng() - 0.5, rng() - 0.5, rng() - 0.5]);
-        const r = Math.pow(rng(), 0.45);
-        const o: V3 = [v[0] * L.rx * r, v[1] * L.ry * r, v[2] * L.rx * r];
-        const c: V3 = [L.c[0] + o[0], L.c[1] + o[1], L.c[2] + o[2]];
-        const n = outward(c);
-        const e = Math.hypot((c[0] - x) / (rw * Math.max(0.3, mulgaProf(c[1] / h))), 0, (c[2] - z) / (rw * Math.max(0.3, mulgaProf(c[1] / h))));
-        const sh = (0.3 + 0.7 * lightOf(nrm([n[0] + v[0], n[1] + v[1], n[2] + v[2]]))) * (0.6 + 0.4 * smooth(0.3, 1, e)) * (0.9 + 0.2 * rng());
-        const level = Math.max(0, Math.min(MU_LEVELS - 1, Math.round(sh * (MU_LEVELS - 1))));
-        // Up and to either side, never flat: screen angle from -π/2 (up).
-        raw.push({ li, o, slant: -Math.PI / 2 + (rng() - 0.5) * 1.6, group: level });
-      }
-      raw.sort((a, b) => a.group - b.group);
-      const NF = raw.length;
-      const fleckLobe = new Uint16Array(NF);
-      const fleckOff = new Float32Array(NF * 3);
-      const fleckSlant = new Float32Array(NF);
-      const groupStart = new Int32Array(MU_LEVELS + 1).fill(NF);
-      raw.forEach((f, i) => {
-        fleckLobe[i] = f.li;
-        fleckOff.set(f.o, i * 3);
-        fleckSlant[i] = f.slant;
-        if (groupStart[f.group] === NF) groupStart[f.group] = i;
-      });
-      for (let gi = MU_LEVELS - 1; gi >= 0; gi--) groupStart[gi] = Math.min(groupStart[gi], groupStart[gi + 1]);
-      return { limbs: [trunk, leader, branches, twigs], lobes, fleckLobe, fleckOff, fleckSlant, groupStart };
-    }
 
     /** Mulga, after the app's mature model.
      *
@@ -5596,236 +3136,7 @@ export function LivingBlueprint({
     }
 
     // Grown once per tree and kept, as the other trees are.
-    type ChasteTree = {
-      /** limbs by order — trunks, branches, twigs — as segments */
-      limbs: [number, number, number][][][];
-      /** masses of foliage over the crown's skin: centre, radii (across,
-       *  up), the way its leaves face, tone */
-      lobes: { c: [number, number, number]; rx: number; ry: number; n: [number, number, number]; col: [string, string] }[];
-      /** palmate leaves, grouped by tone, each as its lobe, its offset from
-       *  that lobe's centre, and the way it hangs */
-      leafLobe: Uint16Array;
-      leafOff: Float32Array;
-      leafSlant: Float32Array;
-      leafStart: Int32Array;
-      /** flower spikes, grouped by tone, each as its lobe, its foot's
-       *  offset from that lobe's centre, and its length and lean */
-      spikeLobe: Uint16Array;
-      spikeOff: Float32Array;
-      spikeDir: Float32Array;
-      spikeStart: Int32Array;
-    };
-    const CT_LEVELS = 6;
-    const CT_SPIKE_LEVELS = 4;
-    const ctRamp = (from: number[], to: number[], n: number) =>
-      Array.from({ length: n }, (_, i) => {
-        const t = i / (n - 1);
-        return `rgb(${from.map((v, k) => (v + (to[k] - v) * t) | 0).join(",")})`;
-      });
-    const CT_LEAF_TONES = [CHASTE_COLOURS, CHASTE_GOLD].map((p) => ctRamp(p.leafShade, p.leafLit, CT_LEVELS));
-    const CT_SPIKE_TONES = [CHASTE_COLOURS, CHASTE_GOLD].map((p) => ctRamp(p.spikeShade, p.spikeLit, CT_SPIKE_LEVELS));
-    // A palmate leaf's five fingers: their turn off the leaf's line, and
-    // their length — the middle one longest.
-    const CT_FINGERS = [
-      [-0.95, 0.6],
-      [-0.48, 0.85],
-      [0, 1],
-      [0.48, 0.85],
-      [0.95, 0.6],
-    ];
     const chasteGrown = new Map<string, ChasteTree>();
-    // The crown's radius (a fraction of rw) by height: a broad dome on a
-    // drooping rim — its edge hanging to a third of the way up, widest just
-    // under three fifths, the leaves topping out short of the spikes — as
-    // the model's is.
-    const chasteProf = (u: number) => {
-      if (u < 0.34 || u > 0.93) return 0;
-      if (u < 0.59) return 0.74 + 0.26 * Math.sin(((u - 0.34) / 0.25) * (Math.PI / 2));
-      return Math.sqrt(Math.max(0, 1 - ((u - 0.59) / 0.34) ** 2));
-    };
-
-    function growChaste(x: number, z: number, h: number, rw: number, rot: number, seed: string): ChasteTree {
-      const rng = rngFor("chaste:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const smooth = (e0: number, e1: number, v: number) => {
-        const t = Math.min(1, Math.max(0, (v - e0) / (e1 - e0)));
-        return t * t * (3 - 2 * t);
-      };
-      type V3 = [number, number, number];
-      const nrm = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const lerp = (a: V3, b: V3, t: number): V3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-      const lightOf = (n: V3) => Math.max(0, n[0] * LX + n[1] * LY + n[2] * LZ);
-      // Not quite round: a little longer one way, and lopsided, as the
-      // model's crown is — each tree its own.
-      const a1 = rng() * Math.PI * 2;
-      const a2 = rng() * Math.PI * 2;
-      // And the rim droops further on two sides than the other two, so from
-      // some sides the trunks show under it.
-      const a3 = rng() * Math.PI * 2;
-      const rimU = (th: number) => 0.35 + 0.12 * (0.5 + 0.5 * Math.cos(2 * (th - a3)));
-      const edge = (th: number) =>
-        (1 - 0.08 * Math.sin(th - rot) ** 2) * (1 + 0.07 * Math.cos(th - a1) + 0.05 * Math.cos(2 * (th - a2)));
-      const skinNormal = (th: number, u: number): V3 => {
-        const lo = Math.max(0.34, u - 0.02);
-        const hi = Math.min(0.93, u + 0.02);
-        const d = (chasteProf(hi) - chasteProf(lo)) / (hi - lo);
-        return nrm([Math.cos(th) * h, -d * rw, Math.sin(th) * h]);
-      };
-      // The way the leaves face: out from low in the crown. Under the
-      // bulge the skin itself faces the ground, but the leaves hang on its
-      // outside, seen from above as much as from the side.
-      const leafward = (c: V3): V3 => nrm([(c[0] - x) / rw ** 2, (c[1] - h * 0.45) / (h * 0.5) ** 2, (c[2] - z) / rw ** 2]);
-
-      // Four or five slim trunks from one foot, splaying into a vase and
-      // kinking as they rise, each forking three ways where it meets the
-      // crown.
-      const trunks: V3[][] = [];
-      const branches: V3[][] = [];
-      const forks: V3[] = [];
-      const NT = rng() < 0.5 ? 4 : 5;
-      for (let k = 0; k < NT; k++) {
-        const a = rot + (k / NT) * Math.PI * 2 + (rng() - 0.5) * 0.7;
-        const foot: V3 = [x + Math.cos(a) * rw * 0.025, 0, z + Math.sin(a) * rw * 0.025];
-        const am = a + (rng() - 0.5) * 0.6;
-        const rm = rw * (0.07 + 0.07 * rng());
-        const mid: V3 = [x + Math.cos(am) * rm, h * (0.18 + 0.08 * rng()), z + Math.sin(am) * rm];
-        const rt = rw * (0.22 + 0.14 * rng());
-        const top: V3 = [x + Math.cos(a) * rt, h * (0.42 + 0.08 * rng()), z + Math.sin(a) * rt];
-        trunks.push([foot, mid], [mid, top]);
-        for (let j = 0; j < 3; j++) {
-          const ab = a + (j - 1) * 0.55 + (rng() - 0.5) * 0.3;
-          const ub = 0.58 + 0.14 * rng();
-          const rb = rw * chasteProf(ub) * (0.55 + 0.2 * rng());
-          const B: V3 = [x + Math.cos(ab) * rb, ub * h, z + Math.sin(ab) * rb];
-          branches.push([top, B]);
-          forks.push(B);
-        }
-      }
-
-      // Masses of foliage over the skin by area — a quarter on the
-      // drooping sides, the rest over the broad top — drawn translucent:
-      // where they pile up the crown is full, low down it thins enough for
-      // the trunks to show through, as the model's does.
-      const lobes: ChasteTree["lobes"] = [];
-      const twigs: V3[][] = [];
-      const alpha = 0.6;
-      // Spread evenly — a spiral down the crown, a quarter on the sides —
-      // so no stretch of it goes bare by chance.
-      const NL = 140;
-      for (let i = 0; i < NL; i++) {
-        const f = (i + 0.2 + 0.6 * rng()) / NL;
-        const th = rot + i * 2.399963 + (rng() - 0.5) * 0.5;
-        const u0 = rimU(th);
-        const u = f < 0.25 ? u0 + (0.59 - u0) * (f / 0.25) : 0.59 + 0.32 * Math.pow((f - 0.25) / 0.75, 0.9);
-        const r = rw * chasteProf(u) * edge(th) * (0.78 + 0.1 * rng());
-        const c: V3 = [x + Math.cos(th) * r, u * h, z + Math.sin(th) * r];
-        const n = leafward(c);
-        // Smaller on the rim, so the leaves hanging off it make its edge.
-        const rx = rw * (0.17 + 0.07 * rng()) * (u < 0.59 ? 0.85 : 1);
-        // Shaded by the skin, so the underside of the bulge is in shadow.
-        const sh = (0.35 + 0.65 * lightOf(skinNormal(th, u))) * (0.6 + 0.4 * smooth(0.36, 0.8, u)) * (0.92 + 0.16 * rng());
-        const tone = (pal: typeof CHASTE_COLOURS) =>
-          `rgba(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * sh) | 0).join(",")},${alpha})`;
-        lobes.push({ c, rx, ry: rx * 0.75, n, col: [tone(CHASTE_COLOURS), tone(CHASTE_GOLD)] });
-        // Fed by a twig from the nearest fork.
-        let best = forks[0];
-        let bd = Infinity;
-        for (const F of forks) {
-          const d = (F[0] - c[0]) ** 2 + (F[1] - c[1]) ** 2 + (F[2] - c[2]) ** 2;
-          if (d < bd) {
-            bd = d;
-            best = F;
-          }
-        }
-        twigs.push([best, lerp(best, c, 0.9)]);
-      }
-
-      // Palmate leaves on the lobes' outer faces, hanging; the ones on the
-      // rim hang below it, for its ragged edge.
-      const leaves: { li: number; o: V3; slant: number; group: number }[] = [];
-      for (let i = 0; i < 1100; i++) {
-        const li = i % NL;
-        const L = lobes[li];
-        const v = nrm([L.n[0] + (rng() - 0.5) * 1.6, L.n[1] + (rng() - 0.5) * 1.6, L.n[2] + (rng() - 0.5) * 1.6]);
-        // Out to the mass's edge and past it, so its outline is leaves.
-        const r = 0.55 + 0.75 * rng();
-        const o: V3 = [v[0] * L.rx * r, v[1] * L.ry * r, v[2] * L.rx * r];
-        if (L.c[1] < h * 0.48) o[1] -= L.ry * 0.5 * rng();
-        const lit = lightOf(nrm([L.n[0] + v[0], L.n[1] + v[1], L.n[2] + v[2]]));
-        const sh = (0.25 + 0.75 * lit) * (0.85 + 0.3 * rng());
-        const level = Math.max(0, Math.min(CT_LEVELS - 1, Math.round(sh * (CT_LEVELS - 1))));
-        // Screen angle from π/2 (down), tipped either way.
-        leaves.push({ li, o, slant: Math.PI / 2 + (rng() - 0.5) * 1.4, group: level });
-      }
-      leaves.sort((a, b) => a.group - b.group);
-      const NF = leaves.length;
-      const leafLobe = new Uint16Array(NF);
-      const leafOff = new Float32Array(NF * 3);
-      const leafSlant = new Float32Array(NF);
-      const leafStart = new Int32Array(CT_LEVELS + 1).fill(NF);
-      leaves.forEach((f, i) => {
-        leafLobe[i] = f.li;
-        leafOff.set(f.o, i * 3);
-        leafSlant[i] = f.slant;
-        if (leafStart[f.group] === NF) leafStart[f.group] = i;
-      });
-      for (let gi = CT_LEVELS - 1; gi >= 0; gi--) leafStart[gi] = Math.min(leafStart[gi], leafStart[gi + 1]);
-
-      // Flower spikes standing up out of all but the lowest of the crown,
-      // leaning out a little: the lavender the tree is planted for.
-      const upper: number[] = [];
-      lobes.forEach((L, i) => {
-        if (L.c[1] > h * 0.45) upper.push(i);
-      });
-      const spikes: { li: number; o: V3; d: V3; group: number }[] = [];
-      for (let i = 0; i < 380 && upper.length; i++) {
-        const li = upper[i % upper.length];
-        const L = lobes[li];
-        const o: V3 = [
-          L.n[0] * L.rx * 0.55 + (rng() - 0.5) * L.rx * 1.1,
-          L.n[1] * L.ry * 0.55 + (rng() - 0.5) * L.ry * 0.6,
-          L.n[2] * L.rx * 0.55 + (rng() - 0.5) * L.rx * 1.1,
-        ];
-        const len = 0.9 + 0.6 * rng();
-        const lean = 0.1 + 0.4 * rng();
-        const az = Math.atan2(L.c[2] - z, L.c[0] - x) + (rng() - 0.5) * 1.4;
-        const d: V3 = [Math.sin(lean) * Math.cos(az) * len, Math.cos(lean) * len, Math.sin(lean) * Math.sin(az) * len];
-        const sh = (0.35 + 0.65 * lightOf(L.n)) * (0.85 + 0.3 * rng());
-        const level = Math.max(0, Math.min(CT_SPIKE_LEVELS - 1, Math.round(sh * (CT_SPIKE_LEVELS - 1))));
-        spikes.push({ li, o, d, group: level });
-      }
-      spikes.sort((a, b) => a.group - b.group);
-      const NS = spikes.length;
-      const spikeLobe = new Uint16Array(NS);
-      const spikeOff = new Float32Array(NS * 3);
-      const spikeDir = new Float32Array(NS * 3);
-      const spikeStart = new Int32Array(CT_SPIKE_LEVELS + 1).fill(NS);
-      spikes.forEach((f, i) => {
-        spikeLobe[i] = f.li;
-        spikeOff.set(f.o, i * 3);
-        spikeDir.set(f.d, i * 3);
-        if (spikeStart[f.group] === NS) spikeStart[f.group] = i;
-      });
-      for (let gi = CT_SPIKE_LEVELS - 1; gi >= 0; gi--) spikeStart[gi] = Math.min(spikeStart[gi], spikeStart[gi + 1]);
-
-      return {
-        limbs: [trunks, branches, twigs],
-        lobes,
-        leafLobe,
-        leafOff,
-        leafSlant,
-        leafStart,
-        spikeLobe,
-        spikeOff,
-        spikeDir,
-        spikeStart,
-      };
-    }
 
     /** Chaste tree, after the app's model.
      *
@@ -6012,113 +3323,10 @@ export function LivingBlueprint({
     }
 
     // Grown once per clump and kept, as the trees are.
-    type FencePostClump = {
-      stems: {
-        /** where it stands, and the heights of its foot, its shoulder, two
-         *  rings up its dome, and its apex */
-        sx: number;
-        sz: number;
-        ys: number[];
-        /** each ring's twelve points — crest, valley, crest… — as offsets
-         *  (x, z) from the stem's axis, ring by ring */
-        ring: Float32Array;
-        /** each face's outward normal and tone, band by band (the shaft, two
-         *  bands of dome, the cap), twelve to a band */
-        faceN: Float32Array;
-        faceTone: Uint8Array;
-        /** whether each crest's felt is in the light */
-        crestLit: Uint8Array;
-      }[];
-    };
-    const FP_LEVELS = 8;
-    const FP_RIBS = 6;
-    const FP_TONES = [FENCE_POST_COLOURS, FENCE_POST_GOLD].map((pal) =>
-      Array.from({ length: FP_LEVELS }, (_, i) => {
-        const t = i / (FP_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      }),
-    );
-    // The model's four stems in its own measure (its height = 1): where each
-    // stands, how tall it is, how thick.
-    const FP_STEMS = [
-      [0.002, -0.039, 0.98, 0.067],
-      [0.094, 0.027, 0.7, 0.066],
-      [-0.105, -0.035, 0.566, 0.06],
-      [-0.03, 0.051, 0.384, 0.05],
-    ];
     const fencePostGrown = new Map<string, FencePostClump>();
     // Scratch for one stem's projected points, reused stem to stem.
     const fpScreen = new Float32Array(4 * 12 * 2);
     const fpSeen = new Float32Array(4 * 12);
-
-    function growFencePost(x: number, z: number, h: number, rot: number): FencePostClump {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      // Wrapped light, so the shaded side of a column still turns.
-      const shadeOf = (n: V3) => Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5);
-      const toneOf = (n: V3) => Math.max(0, Math.min(FP_LEVELS - 1, Math.round(shadeOf(n) * (FP_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const stems = FP_STEMS.map(([mx, mz, mh, mr], si) => {
-        const r = mr * h;
-        const top = mh * h;
-        // A blunt dome, a little lower than the stem is wide.
-        const rd = r * 0.9;
-        const y0 = top - rd;
-        const ys = [0, y0, y0 + rd * Math.sin(0.55), y0 + rd * Math.sin(1.1), top];
-        const across = [1, 1, Math.cos(0.55), Math.cos(1.1)];
-        // Each stem's ribs turned its own way.
-        const phase = rot + si * 0.9;
-        const ring = new Float32Array(4 * 12 * 2);
-        for (let l = 0; l < 4; l++) {
-          for (let j = 0; j < 12; j++) {
-            const a = phase + (j * Math.PI) / FP_RIBS;
-            const rr = r * across[l] * (j % 2 ? 0.84 : 1);
-            ring[(l * 12 + j) * 2] = Math.cos(a) * rr;
-            ring[(l * 12 + j) * 2 + 1] = Math.sin(a) * rr;
-          }
-        }
-        const pt = (l: number, j: number): V3 =>
-          l === 4 ? [0, ys[4], 0] : [ring[(l * 12 + (j % 12)) * 2], ys[l], ring[(l * 12 + (j % 12)) * 2 + 1]];
-        const faceN = new Float32Array(4 * 12 * 3);
-        const faceTone = new Uint8Array(4 * 12);
-        for (let b = 0; b < 4; b++) {
-          for (let j = 0; j < 12; j++) {
-            const A = pt(b, j);
-            const B = pt(b, j + 1);
-            const C = pt(b + 1, j + (b === 3 ? 0 : 1));
-            const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
-            const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-            let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            const l = Math.hypot(n[0], n[1], n[2]) || 1;
-            n = [n[0] / l, n[1] / l, n[2] / l];
-            // Outward: away from the axis, and up on the dome.
-            const ox = (A[0] + B[0]) / 2;
-            const oz = (A[2] + B[2]) / 2;
-            if (n[0] * ox + n[2] * oz + (b ? n[1] * r : 0) < 0) n = [-n[0], -n[1], -n[2]];
-            faceN.set(n, (b * 12 + j) * 3);
-            faceTone[b * 12 + j] = toneOf(n);
-          }
-        }
-        const crestLit = new Uint8Array(FP_RIBS);
-        for (let k = 0; k < FP_RIBS; k++) {
-          const a = phase + (2 * k * Math.PI) / FP_RIBS;
-          crestLit[k] = shadeOf([Math.cos(a), 0, Math.sin(a)]) > 0.45 ? 1 : 0;
-        }
-        return {
-          sx: x + (mx * cr - mz * sr) * h,
-          sz: z + (mx * sr + mz * cr) * h,
-          ys,
-          ring,
-          faceN,
-          faceTone,
-          crestLit,
-        };
-      });
-      return { stems };
-    }
 
     /** Mexican fence post, after the app's model.
      *
@@ -6251,124 +3459,11 @@ export function LivingBlueprint({
     }
 
     // Grown once per clump and kept, as the trees are.
-    type OrganPipeClump = {
-      stems: {
-        /** its radius */
-        r: number;
-        /** the centre of each ring — foot, halfway, shoulder, two up the
-         *  tip — and the apex, as (x, y, z) */
-        axis: Float32Array;
-        /** each ring's points — crest, groove, crest… — as offsets (x, z)
-         *  from its centre */
-        ring: Float32Array;
-        /** each face's outward normal and tone, band by band */
-        faceN: Float32Array;
-        faceTone: Uint8Array;
-      }[];
-    };
-    const OP_LEVELS = 8;
-    const OP_RIBS = 14;
-    const OP_PTS = OP_RIBS * 2;
-    const OP_BANDS = 5;
-    // Two ramps a palette: the stem, and its paler tip.
-    const OP_TONES = [ORGAN_PIPE_COLOURS, ORGAN_PIPE_GOLD].map((pal) =>
-      [pal.lit, pal.tip].flatMap((hi, ramp) =>
-        Array.from({ length: OP_LEVELS }, (_, i) => {
-          const t = i / (OP_LEVELS - 1);
-          const lo = ramp ? pal.shade.map((v, k) => v + (pal.tip[k] - v) * 0.35) : pal.shade;
-          return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-        }),
-      ),
-    );
-    // The model's six stems in its own measure (its height = 1): foot,
-    // halfway and top as (x, z), how tall each grows, and its radius —
-    // three tall ones leaning a little apart, three short ones round them.
-    const OP_STEMS = [
-      [-0.069, 0.144, -0.103, 0.144, -0.12, 0.127, 1.0, 0.043],
-      [0.069, 0.137, 0.072, 0.144, 0.084, 0.151, 0.93, 0.045],
-      [-0.01, -0.058, -0.024, -0.045, -0.041, -0.041, 0.74, 0.043],
-      [0.076, 0.086, 0.069, 0.069, 0.062, 0.052, 0.46, 0.041],
-      [0.107, -0.141, 0.118, -0.153, 0.122, -0.152, 0.28, 0.038],
-      [-0.108, -0.056, -0.1, -0.041, -0.1, -0.041, 0.18, 0.034],
-    ];
     const organPipeGrown = new Map<string, OrganPipeClump>();
     // Scratch for one stem's projected points, reused stem to stem.
     const opScreen = new Float32Array(5 * OP_PTS * 2);
     const opSeen = new Float32Array(OP_BANDS * OP_PTS);
     const opBuckets: number[][] = Array.from({ length: OP_LEVELS * 2 }, () => []);
-
-    function growOrganPipe(x: number, z: number, h: number, rot: number): OrganPipeClump {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const shadeOf = (n: V3) => Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5);
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (mx: number, mz: number) => [x + (mx * cr - mz * sr) * h, z + (mx * sr + mz * cr) * h];
-      const stems = OP_STEMS.map(([bx, bz, , , tx, tz, mh, mr], si) => {
-        const r = mr * h;
-        const top = mh * h;
-        // A rounded tip, a little longer than the stem is wide.
-        const rd = r * 1.1;
-        const [fx, fz] = turn(bx, bz);
-        const [ux, uz] = turn(tx, tz);
-        // Straight from foot to top, leaning as the model's does — its
-        // halfway point is within an inch of the line, and a kink there
-        // reads as a joint.
-        const at = (f: number): [number, number] => [fx + (ux - fx) * f, fz + (uz - fz) * f];
-        const ys = [0, top * 0.5, top - rd, top - rd + rd * Math.sin(0.6), top - rd + rd * Math.sin(1.15), top];
-        // One width up the shaft, narrowing a little into the tip.
-        const across = [1, 1, 0.92, 0.92 * Math.cos(0.6), 0.92 * Math.cos(1.15)];
-        const axis = new Float32Array(6 * 3);
-        ys.forEach((y, l) => {
-          const [cx, cz] = at(Math.min(1, y / top));
-          axis.set([cx, y, cz], l * 3);
-        });
-        const phase = rot + si * 1.3;
-        const ring = new Float32Array(5 * OP_PTS * 2);
-        for (let l = 0; l < 5; l++) {
-          for (let j = 0; j < OP_PTS; j++) {
-            const a = phase + (j * Math.PI) / OP_RIBS;
-            const rr = r * across[l] * (j % 2 ? 0.86 : 1);
-            ring[(l * OP_PTS + j) * 2] = Math.cos(a) * rr;
-            ring[(l * OP_PTS + j) * 2 + 1] = Math.sin(a) * rr;
-          }
-        }
-        const pt = (l: number, j: number): V3 =>
-          l === 5
-            ? [axis[15], axis[16], axis[17]]
-            : [
-                axis[l * 3] + ring[(l * OP_PTS + (j % OP_PTS)) * 2],
-                axis[l * 3 + 1],
-                axis[l * 3 + 2] + ring[(l * OP_PTS + (j % OP_PTS)) * 2 + 1],
-              ];
-        const faceN = new Float32Array(OP_BANDS * OP_PTS * 3);
-        const faceTone = new Uint8Array(OP_BANDS * OP_PTS);
-        for (let b = 0; b < OP_BANDS; b++) {
-          for (let j = 0; j < OP_PTS; j++) {
-            const A = pt(b, j);
-            const B = pt(b, j + 1);
-            const C = pt(b + 1, j + (b === OP_BANDS - 1 ? 0 : 1));
-            const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
-            const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-            let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            const ln = Math.hypot(n[0], n[1], n[2]) || 1;
-            n = [n[0] / ln, n[1] / ln, n[2] / ln];
-            // Outward: away from the axis, and up on the tip.
-            const ox = (A[0] + B[0]) / 2 - axis[b * 3];
-            const oz = (A[2] + B[2]) / 2 - axis[b * 3 + 2];
-            if (n[0] * ox + n[2] * oz + (b >= 2 ? n[1] * r : 0) < 0) n = [-n[0], -n[1], -n[2]];
-            faceN.set(n, (b * OP_PTS + j) * 3);
-            const level = Math.max(0, Math.min(OP_LEVELS - 1, Math.round(shadeOf(n) * (OP_LEVELS - 1))));
-            // The tip pales with new growth.
-            faceTone[b * OP_PTS + j] = (b >= 3 ? OP_LEVELS : 0) + level;
-          }
-        }
-        return { r, axis, ring, faceN, faceTone };
-      });
-      return { stems };
-    }
 
     /** Organ pipe cactus, after the app's model.
      *
@@ -6506,139 +3601,11 @@ export function LivingBlueprint({
     }
 
     // Grown once per plant and kept, as the trees are.
-    type ToothpickPlant = {
-      limbs: {
-        /** its radius */
-        r: number;
-        /** ring centres along the limb, then its apex, as (x, y, z) */
-        c: Float32Array;
-        /** each ring's points — crest, groove, crest… — as offsets
-         *  (x, y, z) from its centre */
-        o: Float32Array;
-        rings: number;
-        /** rings along its length before the tip's */
-        shaft: number;
-        /** each face's outward normal and tone, band by band; the last
-         *  band closes the tip on the apex */
-        faceN: Float32Array;
-        faceTone: Uint8Array;
-        /** the runs of bands drawn as one piece: each straight enough
-         *  that it never hides part of itself */
-        pieces: [number, number][];
-        /** the way the tip points, for its crown of spines */
-        tip: [number, number, number];
-      }[];
-    };
-    const TP_LEVELS = 8;
-    const TP_RIBS = 8;
-    const TP_PTS = TP_RIBS * 2;
-    const TP_TONES = [TOOTHPICK_COLOURS, TOOTHPICK_GOLD].map((pal) =>
-      Array.from({ length: TP_LEVELS }, (_, i) => {
-        const t = i / (TP_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      }),
-    );
-    // The model's trunk and two arms in its own measure (its height = 1),
-    // all in one plane: the line each follows, its radius, and where an
-    // arm's elbow ends and its upright begins.
-    const TP_LIMBS: { path: [number, number][]; r: number; split: number }[] = [
-      { path: [[0, 0], [0, 0.47], [0, 0.94]], r: 0.04, split: 0 },
-      // Out of the trunk a quarter of the way up, dipping, then up.
-      { path: [[-0.02, 0.27], [-0.075, 0.245], [-0.125, 0.258], [-0.145, 0.31], [-0.145, 0.585]], r: 0.034, split: 2 },
-      // Higher, shorter in reach, taller.
-      { path: [[0.02, 0.405], [0.06, 0.39], [0.092, 0.41], [0.1, 0.46], [0.1, 0.69]], r: 0.03, split: 2 },
-    ];
     const toothpickGrown = new Map<string, ToothpickPlant>();
     // Scratch for one limb's projected points, reused limb to limb.
     const tpScreen = new Float32Array(8 * TP_PTS * 2);
     const tpSeen = new Float32Array(8 * TP_PTS);
     const tpBuckets: number[][] = Array.from({ length: TP_LEVELS }, () => []);
-
-    function growToothpick(x: number, z: number, h: number, rot: number): ToothpickPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const shadeOf = (n: V3) => Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5);
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      // The model's plane turned with the plant: its x, its depth, and up.
-      const place = (px: number, py: number, pz: number): V3 => [
-        x + (px * cr - pz * sr) * h,
-        py * h,
-        z + (px * sr + pz * cr) * h,
-      ];
-      const dir = (px: number, py: number, pz: number): V3 => [px * cr - pz * sr, py, px * sr + pz * cr];
-      const limbs = TP_LIMBS.map(({ path, r: mr, split }, li) => {
-        const r = mr * h;
-        const nP = path.length;
-        // Tangents along the path, in the model's plane.
-        const tan = path.map((_, i) => {
-          const a = path[Math.max(0, i - 1)];
-          const b = path[Math.min(nP - 1, i + 1)];
-          const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-          return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
-        });
-        // Each ring: centre, the way across it in the plane, its size.
-        const rings: { c: [number, number]; t: number[]; f: number }[] = path.map((c, i) => ({ c, t: tan[i], f: 1 }));
-        // A blunt tip as long as the limb is wide.
-        const [lx, ly] = path[nP - 1];
-        const [tx, ty] = tan[nP - 1];
-        for (const sv of [0.6, 1.15]) {
-          rings.push({ c: [lx + tx * mr * Math.sin(sv), ly + ty * mr * Math.sin(sv)], t: tan[nP - 1], f: 0.92 * Math.cos(sv) });
-        }
-        const nR = rings.length;
-        const c = new Float32Array((nR + 1) * 3);
-        const o = new Float32Array(nR * TP_PTS * 3);
-        const phase = rot + li * 0.4;
-        rings.forEach((ring, k) => {
-          c.set(place(ring.c[0], ring.c[1], 0), k * 3);
-          // Across the limb: in the plane (perpendicular to its line), and
-          // through the plane.
-          const e2 = dir(ring.t[1], -ring.t[0], 0);
-          const e1 = dir(0, 0, 1);
-          for (let j = 0; j < TP_PTS; j++) {
-            const a = phase + (j * Math.PI) / TP_RIBS;
-            const rr = r * ring.f * (j % 2 ? 0.88 : 1);
-            o.set(
-              [0, 1, 2].map((q) => rr * (Math.cos(a) * e2[q] + Math.sin(a) * e1[q])),
-              (k * TP_PTS + j) * 3,
-            );
-          }
-        });
-        c.set(place(lx + tx * mr, ly + ty * mr, 0), nR * 3);
-        const pt = (k: number, j: number): V3 =>
-          k === nR
-            ? [c[nR * 3], c[nR * 3 + 1], c[nR * 3 + 2]]
-            : [0, 1, 2].map((q) => c[k * 3 + q] + o[(k * TP_PTS + (j % TP_PTS)) * 3 + q]) as V3;
-        const faceN = new Float32Array(nR * TP_PTS * 3);
-        const faceTone = new Uint8Array(nR * TP_PTS);
-        for (let b = 0; b < nR; b++) {
-          for (let j = 0; j < TP_PTS; j++) {
-            const A = pt(b, j);
-            const B = pt(b, j + 1);
-            const C = pt(b + 1, j + (b === nR - 1 ? 0 : 1));
-            const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]];
-            const v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
-            let n: V3 = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
-            const ln = Math.hypot(n[0], n[1], n[2]) || 1;
-            n = [n[0] / ln, n[1] / ln, n[2] / ln];
-            // Outward: away from the limb's line (the last path ring, for
-            // the tip).
-            const k0 = Math.min(b, nP - 1);
-            const mx = (A[0] + B[0]) / 2 - c[k0 * 3];
-            const my = (A[1] + B[1]) / 2 - c[k0 * 3 + 1];
-            const mz = (A[2] + B[2]) / 2 - c[k0 * 3 + 2];
-            if (n[0] * mx + n[1] * my + n[2] * mz < 0) n = [-n[0], -n[1], -n[2]];
-            faceN.set(n, (b * TP_PTS + j) * 3);
-            faceTone[b * TP_PTS + j] = Math.max(0, Math.min(TP_LEVELS - 1, Math.round(shadeOf(n) * (TP_LEVELS - 1))));
-          }
-        }
-        const pieces: [number, number][] = split ? [[0, split], [split, nR]] : [[0, nR]];
-        return { r, c, o, rings: nR, shaft: nP, faceN, faceTone, pieces, tip: dir(tx, ty, 0) };
-      });
-      return { limbs };
-    }
 
     /** Argentine toothpick, after the app's model.
      *
@@ -6824,179 +3791,12 @@ export function LivingBlueprint({
     }
 
     // Grown once per plant and kept, as the trees are.
-    type TotemPlant = {
-      /** the core's rings, foot to shoulder — centre (x, y, z) and radius —
-       *  then its apex */
-      core: Float32Array;
-      /** each knob's centre, then its three half-axes as (x, y, z) vectors:
-       *  across, along its drip, and out */
-      k: Float32Array;
-      /** each knob's outward normal across the ground, and whether it's on
-       *  the top, where it always shows */
-      out: Float32Array;
-      top: Uint8Array;
-      /** each knob's tones: its face, its shoulder */
-      tone: Uint8Array;
-      /** the point on each knob that faces the light, as an (x, y, z) shift
-       *  from its centre — its shoulder is drawn toward it */
-      lift: Float32Array;
-    };
-    const TT_LEVELS = 8;
-    const TT_TONES = [TOTEM_COLOURS, TOTEM_GOLD].map((pal) =>
-      Array.from({ length: TT_LEVELS }, (_, i) => {
-        const t = i / (TT_LEVELS - 1);
-        return `rgb(${pal.shade.map((v, k) => (v + (pal.lit[k] - v) * t) | 0).join(",")})`;
-      }),
-    );
-    // The model in its own measure (its height = 1). The stem leans a
-    // little from foot to top, and its knobs reach this far out at each
-    // height — widest low down, where it's oldest, rounding over on top.
-    const TT_FOOT = [-0.03, 0.04];
-    const TT_TOP = [0.02, -0.02];
-    const TT_REACH = [
-      [0, 0.15],
-      [0.3, 0.145],
-      [0.6, 0.135],
-      [0.86, 0.135],
-    ];
-    const ttReach = (y: number) => {
-      if (y >= 0.86) return 0.135 * Math.sqrt(Math.max(0, 1 - ((y - 0.86) / 0.14) ** 2));
-      let i = 0;
-      while (y > TT_REACH[i + 1][0]) i++;
-      const [y0, r0] = TT_REACH[i];
-      const [y1, r1] = TT_REACH[i + 1];
-      return r0 + ((r1 - r0) * (y - y0)) / (y1 - y0);
-    };
-    // Its knobs, the same on every plant as they are in the headset. Five
-    // ribs run up the stem, a little twisted, each a chain of long knobs
-    // like drips of wax, every one swelling out at its foot over the next;
-    // smaller ones sit deeper in the grooves between. On top, five lobes
-    // on the ribs lie out over the shoulder — the star the model shows
-    // from above, wider than the stem — round a small dome.
-    // Each is [height, angle, half-width, half-length, depth, droop, kind,
-    // a tone up or down, how far in it sits, a sideways tilt]: kind 0 a
-    // knob, 1 a crown lobe, 2 the dome.
-    const TT_KNOBS: number[][] = (() => {
-      const rng = rngFor("totem-pole");
-      const out: number[][] = [];
-      const shift = () => [-1, 0, 0, 1][(rng() * 4) | 0];
-      for (let rib = 0; rib < 10; rib++) {
-        const groove = rib % 2;
-        let y = 0.05 + rng() * 0.05 + groove * 0.06;
-        while (y < (groove ? 0.74 : 0.8)) {
-          const s = 0.65 + rng() * 0.7;
-          const long = 1.5 + rng() * 1.1;
-          out.push([
-            y,
-            0.3 + (rib / 10) * Math.PI * 2 + y * 0.15 + (rng() - 0.5) * (groove ? 0.5 : 0.3),
-            (groove ? 0.036 : 0.05) * s,
-            (groove ? 0.036 : 0.05) * s * long,
-            groove ? 0.026 : 0.04,
-            0.35,
-            0,
-            shift() - groove,
-            groove ? 0.045 : 0,
-            (rng() - 0.5) * 0.8,
-          ]);
-          y += (groove ? 0.14 : 0.13) * (0.75 + rng() * 0.5);
-        }
-      }
-      for (let i = 0; i < 5; i++) {
-        out.push([0.86, 0.3 + (i / 5) * Math.PI * 2 + 0.13, 0.06, 0.085, 0.05, 1.8, 1, shift() - 1, 0, 0]);
-      }
-      out.push([0.92, 0, 0.05, 0.04, 0.05, 0, 2, -1, 0, 0]);
-      return out;
-    })();
-    const TT_N = TT_KNOBS.length;
     const totemGrown = new Map<string, TotemPlant>();
     // Scratch, reused plant to plant: each knob's place on screen, depth,
     // and the order they're drawn in.
     const ttScreen = new Float32Array(TT_N * 2);
     const ttDepth = new Float32Array(TT_N);
     const ttOrder: number[] = [];
-
-    function growTotem(x: number, z: number, h: number, rot: number): TotemPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const level = (n: V3) =>
-        Math.max(0, Math.min(TT_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TT_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (mx: number, mz: number): [number, number] => [mx * cr - mz * sr, mx * sr + mz * cr];
-      const axisAt = (y: number): V3 => {
-        const [ax, az] = turn(TT_FOOT[0] + (TT_TOP[0] - TT_FOOT[0]) * y, TT_FOOT[1] + (TT_TOP[1] - TT_FOOT[1]) * y);
-        return [x + ax * h, y * h, z + az * h];
-      };
-
-      const core = new Float32Array(5 * 4);
-      [0.02, 0.3, 0.6, 0.84].forEach((y, i) => {
-        core.set([...axisAt(y), (ttReach(y) - 0.04) * h], i * 4);
-      });
-      core.set([...axisAt(0.96), 0], 16);
-
-      const k = new Float32Array(TT_N * 12);
-      const out = new Float32Array(TT_N * 2);
-      const top = new Uint8Array(TT_N);
-      const tone = new Uint8Array(TT_N * 2);
-      const lift = new Float32Array(TT_N * 3);
-      TT_KNOBS.forEach(([y, ang, a, b, c, droop, kind, jog, sunk, tilt], i) => {
-        const [nx, nz] = turn(Math.cos(ang), Math.sin(ang));
-        const t: V3 = [-nz, 0, nx];
-        let face: V3;
-        let centre: V3;
-        if (kind === 2) {
-          face = [0, 1, 0];
-          centre = axisAt(y);
-          const A: V3[] = [
-            [a, 0, 0],
-            [0, b, 0],
-            [0, 0, c],
-          ];
-          k.set([...centre, ...A[0].map((v) => v * h), ...A[1].map((v) => v * h), ...A[2].map((v) => v * h)], i * 12);
-        } else {
-          // Along the drip, its foot swung out; a crown lobe lies out over
-          // the shoulder, its tip dipping.
-          let along = unit([-droop * nx + tilt * t[0], 1, -droop * nz + tilt * t[2]]);
-          if (kind === 1) along = [-along[0], -along[1], -along[2]];
-          // Square to the drip, out of the stem.
-          const dn = along[0] * nx + along[2] * nz;
-          let out3 = unit([nx - dn * along[0], -dn * along[1], nz - dn * along[2]]);
-          if (kind === 1) out3 = unit([nx * 0.3, 1, nz * 0.3]);
-          face = kind === 1 ? unit([nx * 0.6, 1, nz * 0.6]) : out3;
-          const r = kind === 1 ? 0.085 : ttReach(y) - c * 0.9 - sunk;
-          const ax = axisAt(y);
-          centre = [ax[0] + nx * r * h, ax[1], ax[2] + nz * r * h];
-          k.set(
-            [
-              ...centre,
-              t[0] * a * h, 0, t[2] * a * h,
-              along[0] * b * h, along[1] * b * h, along[2] * b * h,
-              out3[0] * c * h, out3[1] * c * h, out3[2] * c * h,
-            ],
-            i * 12,
-          );
-        }
-        out[i * 2] = nx;
-        out[i * 2 + 1] = nz;
-        top[i] = kind ? 1 : 0;
-        const mid = Math.max(0, Math.min(TT_LEVELS - 1, level(face) + jog));
-        tone[i * 2] = mid;
-        tone[i * 2 + 1] = Math.min(TT_LEVELS - 1, mid + 1);
-        // The point on the knob facing the light: through its half-axes,
-        // as a sphere's would be.
-        const M = [k.subarray(i * 12 + 3, i * 12 + 6), k.subarray(i * 12 + 6, i * 12 + 9), k.subarray(i * 12 + 9, i * 12 + 12)];
-        const w = M.map((m) => m[0] * LX + m[1] * LY + m[2] * LZ);
-        const wl = Math.hypot(w[0], w[1], w[2]) || 1;
-        for (let d = 0; d < 3; d++) lift[i * 3 + d] = (M[0][d] * w[0] + M[1][d] * w[1] + M[2][d] * w[2]) / wl;
-      });
-      return { core, k, out, top, tone, lift };
-    }
 
     /** Totem pole cactus, after the app's model.
      *
@@ -8132,163 +4932,10 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The tropical agave's leaves, the same on every plant as in the
-    // headset, in the model's measure (its height = 1): forty-eight straight
-    // out of the ground on the golden angle. The oldest are splayed flat
-    // across it; then a few held low; most rise at 45–65° in an open vase,
-    // the youngest stand up in the middle. Every leaf arches back toward its
-    // tip. A leaf is a strap, widest past its middle, soft and a little
-    // twisted, so each is its centre line and the half-width across it,
-    // station by station, as (x, y, z) pairs.
-    const TA_LEAVES = 48;
-    const TA_ALONG = [0, 0.12, 0.28, 0.46, 0.64, 0.82, 1];
-    const TA_WIDE = [0.55, 0.85, 1, 1, 0.9, 0.6, 0];
-    const TA_PTS = TA_ALONG.length;
-    const TA_STRIPE = 0.6; // the green stripe, of the leaf's width
-    const TA_LEVELS = 8;
-    const taRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: TA_LEVELS }, (_, i) => {
-        const t = i / (TA_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Cream, green stripe, under — the sheet's and gold.
-    const TA_TONES = [TROPICAL_AGAVE_COLOURS, TROPICAL_AGAVE_GOLD].map((pal) => [
-      ...taRamp(pal.cream[0], pal.cream[1]),
-      ...taRamp(pal.green[0], pal.green[1]),
-      ...taRamp(pal.under[0], pal.under[1]),
-    ]);
-    // The scan's leaves by how steeply they leave the ground, oldest first:
-    // where along the list (0–1) each elevation is reached, in degrees.
-    const TA_RISE = [
-      [0, -12],
-      [0.22, 5],
-      [0.4, 18],
-      [0.55, 40],
-      [0.6, 48],
-      [0.88, 62],
-      [1, 82],
-    ];
-    const TA_LEAF = (() => {
-      const rng = rngFor("tropical-agave");
-      const deg = Math.PI / 180;
-      const out = new Float32Array(TA_LEAVES * TA_PTS * 6);
-      let top = 0;
-      for (let i = 0; i < TA_LEAVES; i++) {
-        const t = i / (TA_LEAVES - 1);
-        let k = 0;
-        while (k < TA_RISE.length - 2 && TA_RISE[k + 1][0] < t) k++;
-        const f = (t - TA_RISE[k][0]) / (TA_RISE[k + 1][0] - TA_RISE[k][0]);
-        const chord = TA_RISE[k][1] + (TA_RISE[k + 1][1] - TA_RISE[k][1]) * f + (rng() - 0.5) * 8;
-        // Arching back: the steeper the leaf, the more it bends over at the
-        // end; the flat ones lie on the ground already.
-        const bend = (chord < 10 ? 18 : 22 + 14 * Math.sin(Math.min(1, chord / 70) * Math.PI)) * (0.75 + 0.5 * rng()) * deg;
-        const e0 = chord * deg + bend * 0.45;
-        const len = (0.47 + 0.0062 * Math.max(0, chord)) * (0.9 + 0.2 * rng()) * 1.04;
-        const hw = 0.12 * (0.85 + 0.3 * rng()) * (1 - 0.2 * t);
-        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
-        const tw0 = (rng() - 0.5) * 0.5;
-        const tw1 = (rng() - 0.5) * 0.9;
-        const dx = Math.cos(az);
-        const dz = Math.sin(az);
-        let px = dx * 0.04 * (1 - t);
-        let py = 0.02 + 0.08 * t;
-        let pz = dz * 0.04 * (1 - t);
-        let prev = 0;
-        for (let j = 0; j < TA_PTS; j++) {
-          const s = TA_ALONG[j];
-          if (j > 0) {
-            const sm = (prev + s) / 2;
-            const e = e0 - bend * Math.pow(sm, 1.6);
-            const step = (s - prev) * len;
-            px += dx * Math.cos(e) * step;
-            py = Math.max(0.006, py + Math.sin(e) * step);
-            pz += dz * Math.cos(e) * step;
-          }
-          prev = s;
-          // Across the leaf, twisted a little along it about its own line.
-          const e = e0 - bend * Math.pow(s, 1.6);
-          const tw = tw0 + tw1 * s;
-          const w = hw * TA_WIDE[j];
-          const o = (i * TA_PTS + j) * 6;
-          out[o] = px;
-          out[o + 1] = py;
-          out[o + 2] = pz;
-          out[o + 3] = (-dz * Math.cos(tw) - dx * Math.sin(e) * Math.sin(tw)) * w;
-          out[o + 4] = Math.cos(e) * Math.sin(tw) * w;
-          out[o + 5] = (dx * Math.cos(tw) - dz * Math.sin(e) * Math.sin(tw)) * w;
-          top = Math.max(top, py);
-        }
-      }
-      for (let k = 1; k < out.length; k += 3) out[k] /= top;
-      return out;
-    })();
-
-    // Grown once per plant and kept, as the trees are.
-    type TropicalAgavePlant = {
-      /** each leaf's centre line and half-width, turned, scaled and placed;
-       *  its middle; the normal of its upper face; and its tones — margin
-       *  and stripe seen from above, then from below */
-      leaf: Float32Array;
-      mid: Float32Array;
-      leafN: Float32Array;
-      leafTone: Uint8Array;
-      heart: [number, number, number];
-    };
     const tropicalAgaveGrown = new Map<string, TropicalAgavePlant>();
     // Scratch, reused plant to plant.
     const taOrder: number[] = [];
     const taDepth = new Float32Array(TA_LEAVES);
-
-    function growTropicalAgave(x: number, z: number, h: number, rot: number): TropicalAgavePlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const level = (n: V3) =>
-        Math.max(0, Math.min(TA_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TA_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const leaf = new Float32Array(TA_LEAF.length);
-      for (let o = 0; o < leaf.length; o += 6) {
-        const mx = TA_LEAF[o];
-        const mz = TA_LEAF[o + 2];
-        const wx = TA_LEAF[o + 3];
-        const wz = TA_LEAF[o + 5];
-        leaf[o] = x + (mx * cr - mz * sr) * h;
-        leaf[o + 1] = TA_LEAF[o + 1] * h;
-        leaf[o + 2] = z + (mx * sr + mz * cr) * h;
-        leaf[o + 3] = (wx * cr - wz * sr) * h;
-        leaf[o + 4] = TA_LEAF[o + 4] * h;
-        leaf[o + 5] = (wx * sr + wz * cr) * h;
-      }
-      const mid = new Float32Array(TA_LEAVES * 3);
-      const leafN = new Float32Array(TA_LEAVES * 3);
-      const leafTone = new Uint8Array(TA_LEAVES * 4);
-      for (let i = 0; i < TA_LEAVES; i++) {
-        const a = (i * TA_PTS + 2) * 6;
-        const b = (i * TA_PTS + 4) * 6;
-        const m = (i * TA_PTS + 3) * 6;
-        mid.set([leaf[m], leaf[m + 1], leaf[m + 2]], i * 3);
-        // Up off the leaf: across it, crossed with along it.
-        const tx = leaf[b] - leaf[a];
-        const ty = leaf[b + 1] - leaf[a + 1];
-        const tz = leaf[b + 2] - leaf[a + 2];
-        const wx = leaf[m + 3];
-        const wy = leaf[m + 4];
-        const wz = leaf[m + 5];
-        let n: V3 = [wy * tz - wz * ty, wz * tx - wx * tz, wx * ty - wy * tx];
-        const nl = Math.hypot(n[0], n[1], n[2]) || 1;
-        n = [n[0] / nl, n[1] / nl, n[2] / nl];
-        leafN.set(n, i * 3);
-        const down = level([-n[0], -n[1], -n[2]]);
-        leafTone[i * 4] = level(n);
-        leafTone[i * 4 + 1] = TA_LEVELS + level(n);
-        leafTone[i * 4 + 2] = 2 * TA_LEVELS + down;
-        leafTone[i * 4 + 3] = TA_LEVELS + down;
-      }
-      return { leaf, mid, leafN, leafTone, heart: [x, 0.3 * h, z] };
-    }
-
     /** Tropical agave, after the app's model.
      *
      *  A variegated agave in an open vase: forty-eight soft strap leaves
@@ -8385,283 +5032,12 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The americana's leaves, the same on every plant as in the headset, in
-    // the model's measure (its height = 1): twenty-four on the golden angle off a
-    // short stem, rising steeply — the outer ones at 30–40°, most at 50–70°,
-    // the youngest nearly upright — each bending back a little toward its
-    // tip, and some of the old outer ones buckled partway out, as americana's
-    // leaves do. A leaf is a thick folded blade: the fold down its middle,
-    // the two margins raised high above it into a V, the keel beneath; four
-    // faces between those lines. Each station holds fold, left margin, right
-    // margin, keel, as (x, y, z).
-    const AM_LEAVES = 24;
-    const AM_ALONG = [0, 0.12, 0.28, 0.46, 0.64, 0.82, 1];
-    const AM_WIDE = [0.9, 1, 0.95, 0.8, 0.6, 0.34, 0];
-    const AM_PTS = AM_ALONG.length;
-    const AM_FACES = AM_LEAVES * 4;
-    const AM_FACE_LINES = [
-      [0, 1],
-      [0, 2],
-      [1, 3],
-      [2, 3],
-    ];
-    const AM_TEETH = 10; // down each margin
-    const AM_DEAD = 2;
-    const AM_DEAD_PTS = 5;
-    const AM_LEVELS = 8;
-    // The scan's leaves by elevation, oldest first: where along the list
-    // (0–1) each is reached, in degrees.
-    const AM_RISE = [
-      [0, 28],
-      [0.2, 40],
-      [0.5, 54],
-      [0.8, 68],
-      [1, 84],
-    ];
-    const amRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: AM_LEVELS }, (_, i) => {
-        const t = i / (AM_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Upper, under, dusty upper, dusty under, dead — the sheet's and gold.
-    const AM_TONES = [AMERICANA_COLOURS, AMERICANA_GOLD].map((pal) => [
-      ...amRamp(pal.upper[0], pal.upper[1]),
-      ...amRamp(pal.under[0], pal.under[1]),
-      ...amRamp(pal.dustyUpper[0], pal.dustyUpper[1]),
-      ...amRamp(pal.dustyUnder[0], pal.dustyUnder[1]),
-      ...amRamp(pal.dead[0], pal.dead[1]),
-    ]);
-    const AM_MODEL = (() => {
-      const rng = rngFor("agave-americana");
-      const deg = Math.PI / 180;
-      const leaf = new Float32Array(AM_LEAVES * AM_PTS * 12);
-      // Each tooth: where it sits on the margin, then out to its point, then
-      // half its foot along the margin.
-      const teeth = new Float32Array(AM_LEAVES * 2 * AM_TEETH * 9);
-      // Each leaf's tip, and the end of the spine past it.
-      const spine = new Float32Array(AM_LEAVES * 6);
-      const dusty = new Uint8Array(AM_LEAVES);
-      const dead = new Float32Array(AM_DEAD * AM_DEAD_PTS * 6);
-      let top = 0;
-      for (let i = 0; i < AM_LEAVES; i++) {
-        const t = i / (AM_LEAVES - 1); // 0 the oldest, outermost; 1 the youngest
-        let k = 0;
-        while (k < AM_RISE.length - 2 && AM_RISE[k + 1][0] < t) k++;
-        const f = (t - AM_RISE[k][0]) / (AM_RISE[k + 1][0] - AM_RISE[k][0]);
-        const chord = AM_RISE[k][1] + (AM_RISE[k + 1][1] - AM_RISE[k][1]) * f + (rng() - 0.5) * 8;
-        const bend = (8 + 10 * (1 - t) + (rng() - 0.5) * 10) * deg;
-        const e0 = chord * deg + bend * 0.4;
-        // A few old leaves buckle partway out and hang their outer half.
-        const kink = t < 0.4 && rng() < 0.3 ? (25 + rng() * 15) * deg : 0;
-        const len = (0.72 + 0.003 * chord) * (0.92 + 0.16 * rng());
-        const hw = 0.15 * (0.85 + 0.3 * rng()) * (1 - 0.2 * t);
-        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
-        const sway = (rng() - 0.5) * 24 * deg;
-        dusty[i] = t < 0.3 ? 1 : 0;
-        const angle = (s: number) =>
-          e0 - bend * Math.pow(s, 1.5) - kink * Math.max(0, Math.min(1, (s - 0.5) / 0.12));
-        const r0 = 0.05 * (1 - 0.6 * t);
-        let px = Math.cos(az) * r0;
-        let py = 0.03 + 0.1 * t;
-        let pz = Math.sin(az) * r0;
-        let prev = 0;
-        const frame: number[][] = [];
-        for (let j = 0; j < AM_PTS; j++) {
-          const s = AM_ALONG[j];
-          if (j > 0) {
-            const sm = (prev + s) / 2;
-            const e = angle(sm);
-            const ps = az + sway * sm * sm;
-            const step = (s - prev) * len;
-            px += Math.cos(e) * Math.cos(ps) * step;
-            py = Math.max(0.006, py + Math.sin(e) * step);
-            pz += Math.cos(e) * Math.sin(ps) * step;
-          }
-          prev = s;
-          // Along the leaf; across it, level; up off its upper face.
-          const e = angle(s);
-          const ps = az + sway * s * s;
-          const T = [Math.cos(e) * Math.cos(ps), Math.sin(e), Math.cos(e) * Math.sin(ps)];
-          const S = [-Math.sin(ps), 0, Math.cos(ps)];
-          const N = [-Math.cos(ps) * Math.sin(e), Math.cos(e), -Math.sin(ps) * Math.sin(e)];
-          const w = hw * AM_WIDE[j];
-          const fold = 0.3 * w;
-          const keel = 0.32 * w;
-          leaf.set(
-            [
-              px, py, pz,
-              px + S[0] * w + N[0] * fold, py + N[1] * fold, pz + S[2] * w + N[2] * fold,
-              px - S[0] * w + N[0] * fold, py + N[1] * fold, pz - S[2] * w + N[2] * fold,
-              px - N[0] * keel, py - N[1] * keel, pz - N[2] * keel,
-            ],
-            (i * AM_PTS + j) * 12,
-          );
-          frame.push([...T, ...S, ...N]);
-          top = Math.max(top, py);
-        }
-        // The terminal spine: long and dark, on along the last stretch.
-        const T = frame[AM_PTS - 1];
-        const tip = (i * AM_PTS + AM_PTS - 1) * 12;
-        const sl = 0.055 * len;
-        spine.set([leaf[tip], leaf[tip + 1], leaf[tip + 2], leaf[tip] + T[0] * sl, leaf[tip + 1] + T[1] * sl, leaf[tip + 2] + T[2] * sl], i * 6);
-        // Big teeth down both margins, hooked toward the tip, smaller as the
-        // leaf narrows.
-        for (let side = 0; side < 2; side++) {
-          const sg = side === 0 ? 1 : -1;
-          for (let k2 = 0; k2 < AM_TEETH; k2++) {
-            const s = 0.06 + (0.76 * (k2 + 0.3 + rng() * 0.4)) / AM_TEETH;
-            let j = 0;
-            while (j < AM_PTS - 2 && AM_ALONG[j + 1] < s) j++;
-            const fr = (s - AM_ALONG[j]) / (AM_ALONG[j + 1] - AM_ALONG[j]);
-            const a = (i * AM_PTS + j) * 12 + 3 + side * 3;
-            const b = a + 12;
-            const [Tx, Ty, Tz, Sx, , Sz, Nx, Ny, Nz] = frame[j];
-            const size = (hw / 0.15) * (1 - 0.5 * s);
-            const out = 0.018 * size;
-            const foot = 0.009 * size;
-            teeth.set(
-              [
-                leaf[a] + (leaf[b] - leaf[a]) * fr,
-                leaf[a + 1] + (leaf[b + 1] - leaf[a + 1]) * fr,
-                leaf[a + 2] + (leaf[b + 2] - leaf[a + 2]) * fr,
-                (Sx * sg * 0.85 + Nx * 0.25 + Tx * 0.45) * out,
-                (Ny * 0.25 + Ty * 0.45) * out,
-                (Sz * sg * 0.85 + Nz * 0.25 + Tz * 0.45) * out,
-                Tx * foot,
-                Ty * foot,
-                Tz * foot,
-              ],
-              ((i * 2 + side) * AM_TEETH + k2) * 9,
-            );
-          }
-        }
-      }
-      // The dead leaves: brown, lying flat out across the ground.
-      for (let i = 0; i < AM_DEAD; i++) {
-        const az = i * 2.39996 + 0.5 + (rng() - 0.5) * 0.6;
-        const len = 0.22 + rng() * 0.08;
-        const hw = 0.035 * (0.8 + 0.4 * rng());
-        const lift = (rng() - 0.5) * 0.8;
-        for (let j = 0; j < AM_DEAD_PTS; j++) {
-          const s = j / (AM_DEAD_PTS - 1);
-          const r = 0.04 + s * len;
-          const w = hw * (1 - 0.8 * s);
-          const a = az + (rng() - 0.5) * 0.08;
-          dead.set(
-            [Math.cos(a) * r, 0.006 + 0.03 * (1 - s), Math.sin(a) * r, -Math.sin(a) * w, lift * w, Math.cos(a) * w],
-            (i * AM_DEAD_PTS + j) * 6,
-          );
-        }
-      }
-      // The tallest leaf tip to the full height.
-      const ys = 1 / top;
-      for (let k = 1; k < leaf.length; k += 3) leaf[k] *= ys;
-      for (let k = 1; k < teeth.length; k += 3) teeth[k] *= ys;
-      for (let k = 1; k < spine.length; k += 3) spine[k] *= ys;
-      for (let k = 1; k < dead.length; k += 3) dead[k] *= ys;
-      return { leaf, teeth, spine, dusty, dead, core: [0, 0.12 * ys, 0] };
-    })();
-
-    // Grown once per plant and kept, as the trees are.
-    type AmericanaPlant = {
-      /** the leaves' lines, turned, scaled and placed */
-      leaf: Float32Array;
-      /** each face's outward normal, its middle and its tone */
-      faceN: Float32Array;
-      faceMid: Float32Array;
-      faceTone: Uint8Array;
-      teeth: Float32Array;
-      spine: Float32Array;
-      /** the dead leaves as centre and half-width, and their tones seen from
-       *  above and below */
-      dead: Float32Array;
-      deadMid: Float32Array;
-      deadTone: Uint8Array;
-      core: [number, number, number];
-    };
     const americanaGrown = new Map<string, AmericanaPlant>();
     // Scratch, reused plant to plant.
     const amOrder: number[] = [];
     const amDepth = new Float32Array(AM_FACES + AM_DEAD + 1);
     const amVis = new Uint8Array(AM_FACES);
     const amDone = new Uint8Array(AM_FACES);
-
-    function growAmericana(x: number, z: number, h: number, rot: number): AmericanaPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const level = (n: V3) =>
-        Math.max(0, Math.min(AM_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (AM_LEVELS - 1))));
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (src: Float32Array, dst: Float32Array, o: number, offset: boolean) => {
-        const mx = src[o];
-        const mz = src[o + 2];
-        dst[o] = (offset ? x : 0) + (mx * cr - mz * sr) * h;
-        dst[o + 1] = src[o + 1] * h;
-        dst[o + 2] = (offset ? z : 0) + (mx * sr + mz * cr) * h;
-      };
-
-      const leaf = new Float32Array(AM_MODEL.leaf.length);
-      for (let o = 0; o < leaf.length; o += 3) turn(AM_MODEL.leaf, leaf, o, true);
-      const teeth = new Float32Array(AM_MODEL.teeth.length);
-      for (let o = 0; o < teeth.length; o += 9) {
-        turn(AM_MODEL.teeth, teeth, o, true);
-        turn(AM_MODEL.teeth, teeth, o + 3, false);
-        turn(AM_MODEL.teeth, teeth, o + 6, false);
-      }
-      const spine = new Float32Array(AM_MODEL.spine.length);
-      for (let o = 0; o < spine.length; o += 3) turn(AM_MODEL.spine, spine, o, true);
-      // Each face lit by its normal a third of the way out, pointed away
-      // from the middle of the leaf's section. The two halves of the upper
-      // face are shaded apart: the fold, light on one side and dark on the
-      // other, is what makes an agave leaf an agave's.
-      const faceN = new Float32Array(AM_FACES * 3);
-      const faceMid = new Float32Array(AM_FACES * 3);
-      const faceTone = new Uint8Array(AM_FACES);
-      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * AM_PTS + j) * 12 + line * 3 + k];
-      for (let i = 0; i < AM_LEAVES; i++) {
-        const along: V3 = [0, 1, 2].map((k) => pt(i, 3, 0, k) - pt(i, 1, 0, k)) as V3;
-        const middle: V3 = [0, 1, 2].map((k) => pt(i, 2, 0, k) * 0.6 + pt(i, 2, 3, k) * 0.4) as V3;
-        const base = AM_MODEL.dusty[i] ? 2 * AM_LEVELS : 0;
-        for (let f = 0; f < 4; f++) {
-          const [la, lb] = AM_FACE_LINES[f];
-          const a: V3 = [0, 1, 2].map((k) => pt(i, 2, la, k)) as V3;
-          const b: V3 = [0, 1, 2].map((k) => pt(i, 2, lb, k)) as V3;
-          const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-          let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
-          const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
-          if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
-          const fi = i * 4 + f;
-          faceN.set(n, fi * 3);
-          for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (pt(i, 3, la, k) + pt(i, 3, lb, k)) / 2;
-          faceTone[fi] = base + (f < 2 ? 0 : AM_LEVELS) + level(n);
-        }
-      }
-
-      const dead = new Float32Array(AM_MODEL.dead.length);
-      for (let o = 0; o < dead.length; o += 6) {
-        turn(AM_MODEL.dead, dead, o, true);
-        turn(AM_MODEL.dead, dead, o + 3, false);
-      }
-      const deadMid = new Float32Array(AM_DEAD * 3);
-      const deadTone = new Uint8Array(AM_DEAD * 2);
-      for (let i = 0; i < AM_DEAD; i++) {
-        const m = (i * AM_DEAD_PTS + 2) * 6;
-        deadMid.set([dead[m], dead[m + 1], dead[m + 2]], i * 3);
-        // Lying nearly flat: lit from above, shaded beneath.
-        deadTone[i * 2] = 4 * AM_LEVELS + level(unit([dead[m + 3] * 0.3, 1, dead[m + 5] * 0.3]));
-        deadTone[i * 2 + 1] = 4 * AM_LEVELS + 1;
-      }
-      const c = AM_MODEL.core;
-      return { leaf, faceN, faceMid, faceTone, teeth, spine, dead, deadMid, deadTone, core: [x + c[0] * h, c[1] * h, z + c[2] * h] };
-    }
-
     /** Agave americana, after the app's model.
      *
      *  A big upright rosette: twenty-four broad, thick, glaucous blue-grey leaves,
@@ -8823,209 +5199,7 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The truncata's leaves, the same on every plant as in the headset, in
-    // the model's measure (its height = 1): thirty-four on the golden angle
-    // up a short cone, their tips spread evenly over a dome — the oldest out
-    // at the rim a third of the way up, the youngest closed into a bud at
-    // the top. Every leaf leaves the stem flatter than it ends: they curl
-    // up and in, which is what stands the sides up straight and makes the
-    // artichoke. A leaf is a broad, thick spoon: the fold down its middle,
-    // the margins cupped up either side of it, a shallow keel beneath; four
-    // faces between those lines, and every face in two halves — below and
-    // above the leaf's widest — since a leaf that runs out flat and then
-    // stands up shows its back only on the half that stands. Each station
-    // holds fold, left margin, right margin, keel, as (x, y, z).
-    const TC_LEAVES = 34;
-    const TC_ALONG = [0, 0.14, 0.3, 0.46, 0.62, 0.76, 0.87, 0.94, 1];
-    // Narrow where it joins, widest three-quarters out, then rounded off
-    // short to the spine: a paddle, not a blade.
-    const TC_WIDE = [0.4, 0.55, 0.72, 0.88, 0.98, 1, 0.86, 0.56, 0];
-    const TC_PTS = TC_ALONG.length;
-    const TC_SPLIT = 4; // the station the two halves share
-    const TC_FACES = TC_LEAVES * 2 * 4;
-    const TC_FACE_LINES = [
-      [0, 1],
-      [0, 2],
-      [1, 3],
-      [2, 3],
-    ];
-    const TC_TEETH = 8; // down each margin
-    const TC_LEVELS = 8;
-    const tcRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: TC_LEVELS }, (_, i) => {
-        const t = i / (TC_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Upper, then under — the sheet's and gold.
-    const TC_TONES = [TRUNCATA_COLOURS, TRUNCATA_GOLD].map((pal) => [
-      ...tcRamp(pal.upper[0], pal.upper[1]),
-      ...tcRamp(pal.under[0], pal.under[1]),
-    ]);
-    const TC_MODEL = (() => {
-      const rng = rngFor("agave-truncata");
-      const deg = Math.PI / 180;
-      const leaf = new Float32Array(TC_LEAVES * TC_PTS * 12);
-      // Each tooth: where it sits on the margin, then out to its point, then
-      // half its foot along the margin.
-      const teeth = new Float32Array(TC_LEAVES * 2 * TC_TEETH * 9);
-      const toothHalf = new Uint8Array(TC_LEAVES * 2 * TC_TEETH);
-      // Each leaf's tip, and the end of the spine past it.
-      const spine = new Float32Array(TC_LEAVES * 6);
-      let top = 0;
-      for (let i = 0; i < TC_LEAVES; i++) {
-        const t = i / (TC_LEAVES - 1); // 0 the oldest, outermost; 1 the youngest
-        // Where the tip lands on the dome, and where the leaf leaves the stem.
-        const lat = (6 + 76 * t + (rng() - 0.5) * 6) * deg;
-        const tipR = 1.02 * Math.cos(lat);
-        const tipY = 0.28 + 0.72 * Math.sin(lat);
-        // A broad crown: the old leaves come out of it well clear of the
-        // middle, so what shows of them stands up as a wall.
-        const r0 = 0.03 + 0.5 * Math.pow(1 - t, 1.5);
-        const y0 = 0.03 + 0.4 * Math.pow(t, 1.2);
-        // The curl gathers toward the end — the old leaves run out low and
-        // then stand up — and the leaf is aimed and sized so that, curled,
-        // its tip still lands on the dome.
-        const curl = (75 - 66 * t + (rng() - 0.5) * 8) * deg;
-        const angle = (s: number) => e0 + curl * Math.pow(s, 1.8);
-        const reach = () => {
-          let dr = 0;
-          let dy = 0;
-          for (let j = 1; j < TC_PTS; j++) {
-            const e = angle((TC_ALONG[j - 1] + TC_ALONG[j]) / 2);
-            dr += Math.cos(e) * (TC_ALONG[j] - TC_ALONG[j - 1]) * len;
-            dy += Math.sin(e) * (TC_ALONG[j] - TC_ALONG[j - 1]) * len;
-          }
-          return [dr, dy];
-        };
-        const want = Math.atan2(tipY - y0, tipR - r0);
-        const far = Math.hypot(tipR - r0, tipY - y0);
-        let e0 = want;
-        let len = far;
-        for (let k = 0; k < 8; k++) {
-          const [dr, dy] = reach();
-          e0 += want - Math.atan2(dy, dr);
-          len *= far / Math.hypot(dr, dy);
-        }
-        const hw = 0.34 * (1 - 0.45 * t) * (0.9 + 0.2 * rng());
-        const az = i * 2.39996 + (rng() - 0.5) * 0.2;
-        const sway = (rng() - 0.5) * 16 * deg;
-        let px = Math.cos(az) * r0;
-        let py = y0;
-        let pz = Math.sin(az) * r0;
-        let prev = 0;
-        const frame: number[][] = [];
-        for (let j = 0; j < TC_PTS; j++) {
-          const s = TC_ALONG[j];
-          if (j > 0) {
-            const sm = (prev + s) / 2;
-            const e = angle(sm);
-            const ps = az + sway * sm * sm;
-            const step = (s - prev) * len;
-            px += Math.cos(e) * Math.cos(ps) * step;
-            py = Math.max(0.006, py + Math.sin(e) * step);
-            pz += Math.cos(e) * Math.sin(ps) * step;
-          }
-          prev = s;
-          // Along the leaf; across it, level; up off its upper face.
-          const e = angle(s);
-          const ps = az + sway * s * s;
-          const T = [Math.cos(e) * Math.cos(ps), Math.sin(e), Math.cos(e) * Math.sin(ps)];
-          const S = [-Math.sin(ps), 0, Math.cos(ps)];
-          const N = [-Math.cos(ps) * Math.sin(e), Math.cos(e), -Math.sin(ps) * Math.sin(e)];
-          const w = hw * TC_WIDE[j];
-          const cup = 0.24 * w;
-          const keel = 0.14 * w;
-          leaf.set(
-            [
-              px, py, pz,
-              px + S[0] * w + N[0] * cup, py + N[1] * cup, pz + S[2] * w + N[2] * cup,
-              px - S[0] * w + N[0] * cup, py + N[1] * cup, pz - S[2] * w + N[2] * cup,
-              px - N[0] * keel, py - N[1] * keel, pz - N[2] * keel,
-            ],
-            (i * TC_PTS + j) * 12,
-          );
-          frame.push([...T, ...S, ...N]);
-          top = Math.max(top, py);
-        }
-        // The terminal spine: short and stout, straight on from the tip.
-        const T = frame[TC_PTS - 1];
-        const tip = (i * TC_PTS + TC_PTS - 1) * 12;
-        const sl = 0.06;
-        spine.set([leaf[tip], leaf[tip + 1], leaf[tip + 2], leaf[tip] + T[0] * sl, leaf[tip + 1] + T[1] * sl, leaf[tip + 2] + T[2] * sl], i * 6);
-        // Fine teeth down the outer two-thirds of both margins.
-        for (let side = 0; side < 2; side++) {
-          const sg = side === 0 ? 1 : -1;
-          for (let k2 = 0; k2 < TC_TEETH; k2++) {
-            const s = 0.2 + (0.68 * (k2 + 0.3 + rng() * 0.4)) / TC_TEETH;
-            let j = 0;
-            while (j < TC_PTS - 2 && TC_ALONG[j + 1] < s) j++;
-            const fr = (s - TC_ALONG[j]) / (TC_ALONG[j + 1] - TC_ALONG[j]);
-            const a = (i * TC_PTS + j) * 12 + 3 + side * 3;
-            const b = a + 12;
-            const [Tx, Ty, Tz, Sx, , Sz, Nx, Ny, Nz] = frame[j];
-            const size = hw / 0.34;
-            const out = 0.02 * size;
-            const foot = 0.011 * size;
-            teeth.set(
-              [
-                leaf[a] + (leaf[b] - leaf[a]) * fr,
-                leaf[a + 1] + (leaf[b + 1] - leaf[a + 1]) * fr,
-                leaf[a + 2] + (leaf[b + 2] - leaf[a + 2]) * fr,
-                (Sx * sg * 0.8 + Nx * 0.35 + Tx * 0.4) * out,
-                (Ny * 0.35 + Ty * 0.4) * out,
-                (Sz * sg * 0.8 + Nz * 0.35 + Tz * 0.4) * out,
-                Tx * foot,
-                Ty * foot,
-                Tz * foot,
-              ],
-              ((i * 2 + side) * TC_TEETH + k2) * 9,
-            );
-            toothHalf[(i * 2 + side) * TC_TEETH + k2] = s < TC_ALONG[TC_SPLIT] ? 0 : 1;
-          }
-        }
-      }
-      // The tallest leaf tip to the full height.
-      const ys = 1 / top;
-      for (let k = 1; k < leaf.length; k += 3) leaf[k] *= ys;
-      for (let k = 1; k < teeth.length; k += 3) teeth[k] *= ys;
-      for (let k = 1; k < spine.length; k += 3) spine[k] *= ys;
-      return { leaf, teeth, toothHalf, spine, core: [0, 0.36 * ys, 0] };
-    })();
-
-    // Grown once per plant and kept, as the trees are.
-    type TruncataPlant = {
-      /** the leaves' lines, turned, scaled and placed */
-      leaf: Float32Array;
-      /** each face's outward normal, its middle and its tone */
-      faceN: Float32Array;
-      faceMid: Float32Array;
-      faceTone: Uint8Array;
-      teeth: Float32Array;
-      spine: Float32Array;
-      core: [number, number, number];
-    };
     const truncataGrown = new Map<string, TruncataPlant>();
-    // The packed leaf bases inside, as a cone in the model's measure: rings
-    // of (radius, height) round the middle. It stays under the old leaves,
-    // which run out low, and fills what's seen past their tips.
-    const TC_DOME_AROUND = 16;
-    const TC_DOME = (() => {
-      const rings = [
-        [0.52, 0],
-        [0.42, 0.15],
-        [0.3, 0.32],
-        [0.16, 0.5],
-        [0.04, 0.62],
-      ];
-      const pts = new Float32Array(rings.length * TC_DOME_AROUND * 3);
-      rings.forEach(([r, y], k) => {
-        for (let a = 0; a < TC_DOME_AROUND; a++) {
-          const th = (a / TC_DOME_AROUND) * Math.PI * 2;
-          pts.set([Math.cos(th) * r, y, Math.sin(th) * r], (k * TC_DOME_AROUND + a) * 3);
-        }
-      });
-      return pts;
-    })();
     // Scratch, reused plant to plant.
     const tcDomeX = new Float32Array(TC_DOME.length / 3);
     const tcDomeY = new Float32Array(TC_DOME.length / 3);
@@ -9035,68 +5209,6 @@ export function LivingBlueprint({
     const tcDepth = new Float32Array(TC_FACES);
     const tcVis = new Uint8Array(TC_FACES);
     const tcDone = new Uint8Array(TC_FACES);
-
-    function growTruncata(x: number, z: number, h: number, rot: number): TruncataPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const level = (n: V3) =>
-        Math.max(0, Math.min(TC_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (TC_LEVELS - 1))));
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (src: Float32Array, dst: Float32Array, o: number, offset: boolean) => {
-        const mx = src[o];
-        const mz = src[o + 2];
-        dst[o] = (offset ? x : 0) + (mx * cr - mz * sr) * h;
-        dst[o + 1] = src[o + 1] * h;
-        dst[o + 2] = (offset ? z : 0) + (mx * sr + mz * cr) * h;
-      };
-
-      const leaf = new Float32Array(TC_MODEL.leaf.length);
-      for (let o = 0; o < leaf.length; o += 3) turn(TC_MODEL.leaf, leaf, o, true);
-      const teeth = new Float32Array(TC_MODEL.teeth.length);
-      for (let o = 0; o < teeth.length; o += 9) {
-        turn(TC_MODEL.teeth, teeth, o, true);
-        turn(TC_MODEL.teeth, teeth, o + 3, false);
-        turn(TC_MODEL.teeth, teeth, o + 6, false);
-      }
-      const spine = new Float32Array(TC_MODEL.spine.length);
-      for (let o = 0; o < spine.length; o += 3) turn(TC_MODEL.spine, spine, o, true);
-      // Each face lit by its normal halfway along its half, pointed away
-      // from the middle of the leaf's section.
-      const faceN = new Float32Array(TC_FACES * 3);
-      const faceMid = new Float32Array(TC_FACES * 3);
-      const faceTone = new Uint8Array(TC_FACES);
-      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * TC_PTS + j) * 12 + line * 3 + k];
-      for (let i = 0; i < TC_LEAVES; i++) {
-        for (let g = 0; g < 2; g++) {
-          const m = g === 0 ? 2 : 6;
-          const along: V3 = [0, 1, 2].map((k) => pt(i, m + 1, 0, k) - pt(i, m - 1, 0, k)) as V3;
-          const middle: V3 = [0, 1, 2].map((k) => pt(i, m, 0, k) * 0.6 + pt(i, m, 3, k) * 0.4) as V3;
-          for (let f = 0; f < 4; f++) {
-            const [la, lb] = TC_FACE_LINES[f];
-            const a: V3 = [0, 1, 2].map((k) => pt(i, m, la, k)) as V3;
-            const b: V3 = [0, 1, 2].map((k) => pt(i, m, lb, k)) as V3;
-            const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
-            const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
-            if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
-            const fi = (i * 2 + g) * 4 + f;
-            faceN.set(n, fi * 3);
-            for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (a[k] + b[k]) / 2;
-            faceTone[fi] = (f < 2 ? 0 : TC_LEVELS) + level(n);
-          }
-        }
-      }
-      const c = TC_MODEL.core;
-      return { leaf, faceN, faceMid, faceTone, teeth, spine, core: [x + c[0] * h, c[1] * h, z + c[2] * h] };
-    }
-
     /** Agave truncata, the artichoke agave, after the app's model.
      *
      *  A tight, symmetrical dome of thirty-four short, broad, thick leaves of
@@ -10039,39 +6151,7 @@ export function LivingBlueprint({
       }
     }
 
-    // Golden Barrel's profile, from the app's scan: radius (1 = the plant's
-    // half-spread) at heights up it (1 = its height). A drum to half way,
-    // then the dome closing in to the crown.
-    const GB_PROFILE: [number, number][] = [
-      [0, 0.86],
-      [0.12, 0.92],
-      [0.26, 0.94],
-      [0.4, 0.93],
-      [0.52, 0.89],
-      [0.63, 0.82],
-      [0.73, 0.73],
-      [0.82, 0.6],
-      [0.9, 0.42],
-      [0.96, 0.22],
-    ];
-    const GB_RIBS = 27;
-    type BarrelPlant = {
-      /** ridge and groove points, per rib per station, xyz offsets from the
-       *  plant's foot, feet: ridge k at [k][i], groove after it at [k][i] */
-      ridge: Float32Array;
-      groove: Float32Array;
-      /** the flank faces: rib, which side, lower and upper station, then
-       *  the face's normal xyz and how lit it is 0–1 */
-      faces: Float32Array;
-      /** areoles: xyz, normal xyz, then spines' tips, 7 × xyz */
-      areoles: Float32Array;
-      /** spine reach, feet */
-      spine: number;
-      /** areole spacing up a rib, feet */
-      step: number;
-    };
     const barrelGrown = new Map<string, BarrelPlant>();
-    const GB_ST = GB_PROFILE.length;
     // Scratch: one plant's projected ridges and grooves, its faces' depths.
     const gbRx = new Float32Array(GB_RIBS * GB_ST);
     const gbRy = new Float32Array(GB_RIBS * GB_ST);
@@ -10079,125 +6159,6 @@ export function LivingBlueprint({
     const gbGy = new Float32Array(GB_RIBS * GB_ST);
     const gbDepth = new Float32Array(GB_RIBS * 2 * 3);
     const gbOrder = new Int16Array(GB_RIBS * 2 * 3);
-
-    function growGoldenBarrel(h: number, rw: number, rot: number, seed: string): BarrelPlant {
-      const rng = rngFor("goldenbarrel:" + seed);
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      const ridge = new Float32Array(GB_RIBS * GB_ST * 3);
-      const groove = new Float32Array(GB_RIBS * GB_ST * 3);
-      // Rib depth: the grooves sit a seventh in from the ridges.
-      for (let k = 0; k < GB_RIBS; k++) {
-        const a = rot + ((k + (rng() - 0.5) * 0.15) / GB_RIBS) * Math.PI * 2;
-        const g = rot + ((k + 0.5) / GB_RIBS) * Math.PI * 2;
-        for (let i = 0; i < GB_ST; i++) {
-          const [y, r] = GB_PROFILE[i];
-          const o = (k * GB_ST + i) * 3;
-          ridge[o] = Math.cos(a) * r * rw;
-          ridge[o + 1] = y * h;
-          ridge[o + 2] = Math.sin(a) * r * rw;
-          const rg = r * (1 - 0.14 * Math.min(1, (1 - y) * 2.5));
-          groove[o] = Math.cos(g) * rg * rw;
-          groove[o + 1] = y * h;
-          groove[o + 2] = Math.sin(g) * rg * rw;
-        }
-      }
-      // Faces: each rib's two flanks (side 0 toward the groove after it, 1
-      // toward the one before), in three pieces up the plant.
-      const SEG = [0, 3, 6, GB_ST - 1];
-      const faces: number[] = [];
-      for (let k = 0; k < GB_RIBS; k++) {
-        const kp = (k + GB_RIBS - 1) % GB_RIBS;
-        for (let side = 0; side < 2; side++) {
-          for (let s = 0; s < 3; s++) {
-            const i0 = SEG[s];
-            const i1 = SEG[s + 1];
-            const im = (i0 + i1) >> 1;
-            const R = (i: number) => (k * GB_ST + i) * 3;
-            const Gq = (i: number) => ((side ? kp : k) * GB_ST + i) * 3;
-            // up the ridge, and across from the ridge to the groove
-            const tx = ridge[R(i1)] - ridge[R(i0)];
-            const ty = ridge[R(i1) + 1] - ridge[R(i0) + 1];
-            const tz = ridge[R(i1) + 2] - ridge[R(i0) + 2];
-            const cx = groove[Gq(im)] - ridge[R(im)];
-            const cy = groove[Gq(im) + 1] - ridge[R(im) + 1];
-            const cz = groove[Gq(im) + 2] - ridge[R(im) + 2];
-            let nx = ty * cz - tz * cy;
-            let ny = tz * cx - tx * cz;
-            let nz = tx * cy - ty * cx;
-            // outward
-            if (nx * ridge[R(im)] + nz * ridge[R(im) + 2] + ny * (ridge[R(im) + 1] - h * 0.3) < 0) {
-              nx = -nx;
-              ny = -ny;
-              nz = -nz;
-            }
-            const nl = Math.hypot(nx, ny, nz) || 1;
-            nx /= nl;
-            ny /= nl;
-            nz /= nl;
-            const lit = Math.max(0, Math.min(1, 0.5 + 0.5 * (nx * LX + ny * LY + nz * LZ)));
-            faces.push(k, side, i0, i1, nx, ny, nz, lit);
-          }
-        }
-      }
-      // Areoles up every ridge, each a tuft of seven spines lying out over
-      // the body, curving a little off it.
-      const spine = rw * 0.17;
-      const N = 13;
-      const step = (h * 0.9) / N;
-      const ar: number[] = [];
-      for (let k = 0; k < GB_RIBS; k++) {
-        for (let j = 0; j < N; j++) {
-          const u = 0.05 + (0.9 * (j + 0.5 + (rng() - 0.5) * 0.3)) / N;
-          // along the ridge by height
-          let i = 0;
-          while (i < GB_ST - 2 && GB_PROFILE[i + 1][0] < u) i++;
-          const f = (u - GB_PROFILE[i][0]) / (GB_PROFILE[i + 1][0] - GB_PROFILE[i][0]);
-          const o0 = (k * GB_ST + i) * 3;
-          const o1 = o0 + 3;
-          const px = ridge[o0] + (ridge[o1] - ridge[o0]) * f;
-          const py = ridge[o0 + 1] + (ridge[o1 + 1] - ridge[o0 + 1]) * f;
-          const pz = ridge[o0 + 2] + (ridge[o1 + 2] - ridge[o0 + 2]) * f;
-          // the surface's frame there: out, up the rib, across it
-          let ux = ridge[o1] - ridge[o0];
-          let uy = ridge[o1 + 1] - ridge[o0 + 1];
-          let uz = ridge[o1 + 2] - ridge[o0 + 2];
-          const ul = Math.hypot(ux, uy, uz) || 1;
-          ux /= ul;
-          uy /= ul;
-          uz /= ul;
-          const rl = Math.hypot(px, pz) || 1;
-          let ax = -pz / rl;
-          const ay = 0;
-          let az = px / rl;
-          let nx = ay * uz - az * uy;
-          let ny = az * ux - ax * uz;
-          let nz = ax * uy - ay * ux;
-          if (nx * px + nz * pz < 0) {
-            nx = -nx;
-            ny = -ny;
-            nz = -nz;
-            ax = -ax;
-            az = -az;
-          }
-          ar.push(px, py, pz, nx, ny, nz);
-          for (let s = 0; s < 7; s++) {
-            const b = ((s + rng() * 0.6) / 7) * Math.PI * 2;
-            const len = spine * (0.6 + 0.5 * rng()) * (s === 0 ? 1.3 : 1);
-            const cb = Math.cos(b);
-            const sb = Math.sin(b);
-            ar.push(
-              px + (ux * cb + ax * sb + nx * 0.35) * len,
-              py + (uy * cb + ay * sb + ny * 0.35) * len,
-              pz + (uz * cb + az * sb + nz * 0.35) * len,
-            );
-          }
-        }
-      }
-      return { ridge, groove, faces: new Float32Array(faces), areoles: new Float32Array(ar), spine, step };
-    }
-
     const mixRgb = (a: number[], b: number[], t: number) =>
       `rgb(${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)})`;
 
@@ -10385,236 +6346,12 @@ export function LivingBlueprint({
       ctx!.lineJoin = "miter";
     }
 
-    // Blue Glow's leaves, the same on every plant as in the headset, from the
-    // app's scan: sixty-six on the golden angle, oldest outermost. The scan's
-    // tips: the old outer leaves splay low (the oldest dead and brown on the
-    // ground), then a gap, then the rest stand from 35° to near upright —
-    // a vase, widest two-thirds up — round a tight cone of young leaves. A
-    // leaf is a broad lance, stiff and nearly straight, smooth-edged:
-    // channelled down its middle, keeled beneath. Each station holds the
-    // midrib, left margin, right margin, keel, as (x, y, z).
-    const BG_LEAVES = 66;
-    const BG_ALONG = [0, 0.1, 0.24, 0.4, 0.58, 0.78, 1];
-    // Narrower where it leaves the stem, widest two-fifths out, the sides
-    // full almost to the end, then drawn in to the spine.
-    const BG_WIDE = [0.6, 0.85, 0.98, 1, 0.9, 0.62, 0];
-    const BG_PTS = BG_ALONG.length;
-    // Every face in two halves, split two-fifths out: the inner half, deep
-    // in the rosette, in its neighbours' shade.
-    const BG_SPLIT = 3;
-    const BG_FACES = BG_LEAVES * 8;
-    const BG_FACE_LINES = [
-      [0, 1],
-      [0, 2],
-      [1, 3],
-      [2, 3],
-    ];
-    const BG_LEVELS = 8;
-    // By age along the list (0 the oldest, 1 the youngest): the tip's
-    // elevation off the base, degrees, and the leaf's length, metres in the
-    // scan.
-    const BG_RISE = [
-      [0, 2],
-      [0.06, 4],
-      [0.07, 10],
-      [0.4, 32],
-      [0.41, 38],
-      [0.62, 54],
-      [0.8, 82],
-      [1, 88],
-    ];
-    const BG_LEN = [
-      [0, 0.34],
-      [0.06, 0.4],
-      [0.07, 0.62],
-      [0.4, 0.76],
-      [0.41, 0.96],
-      [0.62, 1.02],
-      [0.8, 1],
-      [1, 0.7],
-    ];
-    const BG_DEAD = 0.06;
-    const bgRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: BG_LEVELS }, (_, i) => {
-        const t = i / (BG_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Blue upper, sage upper, under, dead — the sheet's and gold.
-    const BG_TONES = [BLUE_GLOW_COLOURS, BLUE_GLOW_GOLD].map((pal) => [
-      ...bgRamp(pal.blue[0], pal.blue[1]),
-      ...bgRamp(pal.sage[0], pal.sage[1]),
-      ...bgRamp(pal.under[0], pal.under[1]),
-      ...bgRamp(pal.dead[0], pal.dead[1]),
-    ]);
-    const BG_MODEL = (() => {
-      const rng = rngFor("blue-glow-agave");
-      const deg = Math.PI / 180;
-      const at = (table: number[][], t: number) => {
-        let k = 0;
-        while (k < table.length - 2 && table[k + 1][0] < t) k++;
-        const f = (t - table[k][0]) / (table[k + 1][0] - table[k][0]);
-        return table[k][1] + (table[k + 1][1] - table[k][1]) * f;
-      };
-      const leaf = new Float32Array(BG_LEAVES * BG_PTS * 12);
-      // Each leaf's tip, and the end of the spine past it.
-      const spine = new Float32Array(BG_LEAVES * 6);
-      // Which tones its upper face takes: 0 blue, 1 sage, 3 dead.
-      const kind = new Uint8Array(BG_LEAVES);
-      let top = 0;
-      let reach = 0;
-      for (let i = 0; i < BG_LEAVES; i++) {
-        const t = i / (BG_LEAVES - 1);
-        const dead = t < BG_DEAD;
-        const el = (at(BG_RISE, t) + (rng() - 0.5) * (t < 0.4 ? 16 : 8)) * deg;
-        const len = at(BG_LEN, t) * (0.86 + 0.28 * rng());
-        // The old outer leaves arch over a little at their ends; the young
-        // ones stand straight.
-        const bend = dead ? 0 : (4 + 26 * (1 - t) * (1 - t) + rng() * 5) * deg;
-        const e0 = el + bend * 0.38;
-        const hw = (dead ? 0.06 : 0.12 * (1 - 0.2 * t)) * (0.85 + 0.3 * rng());
-        const fold = (0.22 + 0.2 * t) * (dead ? 0.4 : 1);
-        const keel = 0.18;
-        const az = i * 2.39996 + (rng() - 0.5) * (t < 0.4 ? 0.7 : 0.3);
-        const sway = (rng() - 0.5) * (dead ? 30 : 14) * deg;
-        kind[i] = dead ? 3 : rng() < Math.max(0, Math.min(1, (0.7 - t) / 0.4)) ? 1 : 0;
-        // Each blade turned a little about its own length, so some face
-        // the eye and some are edge on.
-        const roll = (rng() - 0.5) * 50 * deg;
-        const cl = Math.cos(roll);
-        const sl0 = Math.sin(roll);
-        const r0 = 0.04 + 0.14 * (1 - t);
-        let px = Math.cos(az) * r0;
-        let py = 0.04 + 0.2 * t;
-        let pz = Math.sin(az) * r0;
-        let prev = 0;
-        let T = [0, 1, 0];
-        for (let j = 0; j < BG_PTS; j++) {
-          const s = BG_ALONG[j];
-          const angle = (u: number) => e0 - bend * Math.pow(u, 1.6);
-          if (j > 0) {
-            const sm = (prev + s) / 2;
-            const e = angle(sm);
-            const ps = az + sway * sm;
-            const step = (s - prev) * len;
-            px += Math.cos(e) * Math.cos(ps) * step;
-            py = Math.max(0.008, py + Math.sin(e) * step);
-            pz += Math.cos(e) * Math.sin(ps) * step;
-          }
-          prev = s;
-          // Along the leaf; across it, level; up off its upper face.
-          const e = angle(s);
-          const ps = az + sway * s;
-          T = [Math.cos(e) * Math.cos(ps), Math.sin(e), Math.cos(e) * Math.sin(ps)];
-          const S0 = [-Math.sin(ps), 0, Math.cos(ps)];
-          const N0 = [-Math.cos(ps) * Math.sin(e), Math.cos(e), -Math.sin(ps) * Math.sin(e)];
-          const S = [S0[0] * cl + N0[0] * sl0, S0[1] * cl + N0[1] * sl0, S0[2] * cl + N0[2] * sl0];
-          const N = [N0[0] * cl - S0[0] * sl0, N0[1] * cl - S0[1] * sl0, N0[2] * cl - S0[2] * sl0];
-          const w = hw * BG_WIDE[j];
-          const fw = fold * w;
-          const kw = keel * w;
-          leaf.set(
-            [
-              px, py, pz,
-              px + S[0] * w + N[0] * fw, py + S[1] * w + N[1] * fw, pz + S[2] * w + N[2] * fw,
-              px - S[0] * w + N[0] * fw, py - S[1] * w + N[1] * fw, pz - S[2] * w + N[2] * fw,
-              px - N[0] * kw, py - N[1] * kw, pz - N[2] * kw,
-            ],
-            (i * BG_PTS + j) * 12,
-          );
-          top = Math.max(top, py);
-          reach = Math.max(reach, Math.hypot(px, pz));
-        }
-        // A short dark spine on along the last stretch.
-        const tip = (i * BG_PTS + BG_PTS - 1) * 12;
-        const sl = 0.035 * len;
-        spine.set([leaf[tip], leaf[tip + 1], leaf[tip + 2], leaf[tip] + T[0] * sl, leaf[tip + 1] + T[1] * sl, leaf[tip + 2] + T[2] * sl], i * 6);
-      }
-      // To the plant's measure: its height 1 up, its half-spread 1 across.
-      for (const a of [leaf, spine]) {
-        for (let k = 0; k < a.length; k += 3) {
-          a[k] /= reach;
-          a[k + 1] /= top;
-          a[k + 2] /= reach;
-        }
-      }
-      return { leaf, spine, kind };
-    })();
-
-    // Grown once per plant and kept: the leaves turned and scaled, every
-    // face's normal, middle and tone.
-    type BlueGlowPlant = {
-      leaf: Float32Array;
-      spine: Float32Array;
-      faceN: Float32Array;
-      faceMid: Float32Array;
-      faceTone: Uint8Array;
-    };
     const blueGlowGrown = new Map<string, BlueGlowPlant>();
     // Scratch, reused plant to plant.
     const bgOrder: number[] = [];
     const bgDepth = new Float32Array(BG_FACES);
     const bgVis = new Uint8Array(BG_FACES);
     const bgDone = new Uint8Array(BG_FACES);
-
-    function growBlueGlow(h: number, rw: number, rot: number): BlueGlowPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const level = (n: V3) =>
-        Math.max(0, Math.min(BG_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (BG_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (src: Float32Array) => {
-        const dst = new Float32Array(src.length);
-        for (let o = 0; o < src.length; o += 3) {
-          dst[o] = (src[o] * cr - src[o + 2] * sr) * rw;
-          dst[o + 1] = src[o + 1] * h;
-          dst[o + 2] = (src[o] * sr + src[o + 2] * cr) * rw;
-        }
-        return dst;
-      };
-      const leaf = turn(BG_MODEL.leaf);
-      const spine = turn(BG_MODEL.spine);
-      // Each half-face lit by its own normal, pointed away from the middle
-      // of the leaf's section; the two halves of the channel shaded apart,
-      // the inner halves two shades down.
-      const faceN = new Float32Array(BG_FACES * 3);
-      const faceMid = new Float32Array(BG_FACES * 3);
-      const faceTone = new Uint8Array(BG_FACES);
-      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * BG_PTS + j) * 12 + line * 3 + k];
-      for (let i = 0; i < BG_LEAVES; i++) {
-        const kind = BG_MODEL.kind[i];
-        for (let half = 0; half < 2; half++) {
-          const j0 = half ? BG_SPLIT : 0;
-          const j1 = half ? BG_PTS - 2 : BG_SPLIT;
-          const jm = half ? BG_SPLIT + 1 : 1;
-          const along: V3 = [0, 1, 2].map((k) => pt(i, j1, 0, k) - pt(i, j0, 0, k)) as V3;
-          const middle: V3 = [0, 1, 2].map((k) => pt(i, jm, 0, k) * 0.6 + pt(i, jm, 3, k) * 0.4) as V3;
-          for (let f = 0; f < 4; f++) {
-            const [la, lb] = BG_FACE_LINES[f];
-            const a: V3 = [0, 1, 2].map((k) => pt(i, jm, la, k)) as V3;
-            const b: V3 = [0, 1, 2].map((k) => pt(i, jm, lb, k)) as V3;
-            const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
-            const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
-            if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
-            const fi = (i * 4 + f) * 2 + half;
-            faceN.set(n, fi * 3);
-            const je = half ? BG_PTS - 1 : BG_SPLIT;
-            for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (pt(i, j0, la, k) + pt(i, j0, lb, k) + pt(i, je, la, k) + pt(i, je, lb, k)) / 4;
-            const family = kind === 3 ? 3 : f < 2 ? kind : 2;
-            faceTone[fi] = family * BG_LEVELS + Math.max(0, level(n) - (half || kind === 3 ? 0 : 2));
-          }
-        }
-      }
-      return { leaf, spine, faceN, faceMid, faceTone };
-    }
-
     /** Blue Glow agave, after the app's scan.
      *
      *  A vase of sixty-odd broad, stiff, smooth-edged lances: the old outer
@@ -10739,201 +6476,12 @@ export function LivingBlueprint({
       ctx!.lineJoin = "miter";
     }
 
-    // Black Tip's leaves, the same on every plant as in the headset, from
-    // the app's scan: a hundred and fifty on the golden angle, their tips
-    // spread evenly up a low dome (the scan's 124 outermost tips run from
-    // flat on the ground to near upright, as many at every height), the
-    // oldest lowest, the youngest closed into a bud on top. A leaf is a
-    // lance, folded down its middle and keeled beneath, from a crown that
-    // rises as the leaves get younger. Each station holds the midrib, left
-    // margin, right margin, keel, as (x, y, z).
-    const BT_LEAVES = 150;
-    const BT_ALONG = [0, 0.12, 0.28, 0.45, 0.62, 0.8, 1];
-    // Broad from the base, widest a third out, then tapering to the spine.
-    const BT_WIDE = [0.7, 0.92, 1, 0.98, 0.82, 0.52, 0];
-    const BT_PTS = BT_ALONG.length;
-    // The two halves of the fold, then the two halves of the back.
-    const BT_FACE_LINES = [
-      [0, 1],
-      [0, 2],
-      [1, 3],
-      [2, 3],
-    ];
-    const BT_LEVELS = 8;
-    // The dome the tips lie on, in metres from the scan's middle: by
-    // elevation off the base, degrees, the tip's distance out.
-    const BT_REACH = [
-      [0, 0.97],
-      [25, 1],
-      [45, 0.92],
-      [65, 0.8],
-      [80, 0.72],
-      [90, 0.5],
-    ];
-    const btRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: BT_LEVELS }, (_, i) => {
-        const t = i / (BT_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Upper, back — the sheet's and gold.
-    const BT_TONES = [BLACK_TIP_COLOURS, BLACK_TIP_GOLD].map((pal) => [
-      ...btRamp(pal.upper[0], pal.upper[1]),
-      ...btRamp(pal.back[0], pal.back[1]),
-    ]);
-    const BT_MODEL = (() => {
-      const rng = rngFor("black-tip-agave");
-      const deg = Math.PI / 180;
-      const at = (table: number[][], v: number) => {
-        let k = 0;
-        while (k < table.length - 2 && table[k + 1][0] < v) k++;
-        const f = (v - table[k][0]) / (table[k + 1][0] - table[k][0]);
-        return table[k][1] + (table[k + 1][1] - table[k][1]) * f;
-      };
-      const n = BT_LEAVES;
-      const leaf = new Float32Array(n * BT_PTS * 12);
-      // Each leaf's tip, and the end of its spine.
-      const spine = new Float32Array(n * 6);
-      let top = 0;
-      let reach = 0;
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1); // 0 the oldest, lowest
-        const az = i * 2.39996 + (rng() - 0.5) * 0.25;
-        // Where it starts: the crown widens and sinks toward the old leaves.
-        const r0 = 0.04 + 0.22 * (1 - t);
-        const y0 = 0.04 + 0.3 * t * t;
-        // Where it ends, on the dome.
-        const el = Math.min(88, 2 + 84 * Math.pow(t, 0.95) + (rng() - 0.5) * 8);
-        const d = at(BT_REACH, el) * (0.92 + 0.14 * rng());
-        const tx = Math.cos(az) * Math.cos(el * deg) * d;
-        const ty = 0.05 + Math.sin(el * deg) * d;
-        const tz = Math.sin(az) * Math.cos(el * deg) * d;
-        const bx = Math.cos(az) * r0;
-        const bz = Math.sin(az) * r0;
-        const cx = tx - bx;
-        const cy = ty - y0;
-        const cz = tz - bz;
-        const len = Math.hypot(cx, cy, cz);
-        // Across the chord, level; up off it.
-        const hl = Math.hypot(cx, cz) || 1;
-        const S = [-cz / hl, 0, cx / hl];
-        const C = [cx / len, cy / len, cz / len];
-        const N = [C[1] * S[2] - C[2] * S[1], C[2] * S[0] - C[0] * S[2], C[0] * S[1] - C[1] * S[0]];
-        if (N[1] < 0) {
-          N[0] = -N[0];
-          N[1] = -N[1];
-          N[2] = -N[2];
-        }
-        // The old leaves arch up a little and back down to their tips; the
-        // young stand straight.
-        const arch = 0.08 * (1 - t) * len;
-        const hw = 0.075 * (1 - 0.25 * t) * (0.85 + 0.3 * rng());
-        const fold = 0.3 + 0.3 * t;
-        const keel = 0.25;
-        for (let j = 0; j < BT_PTS; j++) {
-          const s = BT_ALONG[j];
-          const lift = arch * 4 * s * (1 - s);
-          const px = bx + cx * s + N[0] * lift;
-          const py = y0 + cy * s + N[1] * lift;
-          const pz = bz + cz * s + N[2] * lift;
-          const w = hw * BT_WIDE[j];
-          const fw = fold * w;
-          const kw = keel * w;
-          leaf.set(
-            [
-              px, py, pz,
-              px + S[0] * w + N[0] * fw, py + N[1] * fw, pz + S[2] * w + N[2] * fw,
-              px - S[0] * w + N[0] * fw, py + N[1] * fw, pz - S[2] * w + N[2] * fw,
-              px - N[0] * kw, py - N[1] * kw, pz - N[2] * kw,
-            ],
-            (i * BT_PTS + j) * 12,
-          );
-          top = Math.max(top, py);
-          reach = Math.max(reach, Math.hypot(px, pz));
-        }
-        // The dark spine it is named for, on along the leaf.
-        const tip = (i * BT_PTS + BT_PTS - 1) * 12;
-        const sl = 0.025 * len;
-        spine.set([leaf[tip], leaf[tip + 1], leaf[tip + 2], leaf[tip] + C[0] * sl, leaf[tip + 1] + C[1] * sl, leaf[tip + 2] + C[2] * sl], i * 6);
-      }
-      // To the plant's measure: its height 1 up, its half-spread 1 across.
-      for (const a of [leaf, spine]) {
-        for (let k = 0; k < a.length; k += 3) {
-          a[k] /= reach;
-          a[k + 1] /= top;
-          a[k + 2] /= reach;
-        }
-      }
-      return { leaf, spine };
-    })();
-
-    // Grown once per plant and kept: the leaves turned and scaled, every
-    // face's normal, middle and tone.
-    type BlackTipPlant = {
-      leaf: Float32Array;
-      spine: Float32Array;
-      faceN: Float32Array;
-      faceMid: Float32Array;
-      faceTone: Uint8Array;
-    };
     const blackTipGrown = new Map<string, BlackTipPlant>();
-    const BT_ALL = BT_LEAVES * 4;
     // Scratch, reused plant to plant.
     const btOrder: number[] = [];
     const btDepth = new Float32Array(BT_ALL);
     const btVis = new Uint8Array(BT_ALL);
     const btDone = new Uint8Array(BT_ALL);
-
-    function growBlackTip(h: number, rw: number, rot: number): BlackTipPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const level = (n: V3) =>
-        Math.max(0, Math.min(BT_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (BT_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turn = (src: Float32Array, sx: number, sy: number) => {
-        const dst = new Float32Array(src.length);
-        for (let o = 0; o < src.length; o += 3) {
-          dst[o] = (src[o] * cr - src[o + 2] * sr) * sx;
-          dst[o + 1] = src[o + 1] * sy;
-          dst[o + 2] = (src[o] * sr + src[o + 2] * cr) * sx;
-        }
-        return dst;
-      };
-      const leaf = turn(BT_MODEL.leaf, rw, h);
-      const spine = turn(BT_MODEL.spine, rw, h);
-      // Each half of the fold, and of the back, lit by its own normal,
-      // pointed away from the middle of the leaf's section.
-      const faceN = new Float32Array(BT_ALL * 3);
-      const faceMid = new Float32Array(BT_ALL * 3);
-      const faceTone = new Uint8Array(BT_ALL);
-      const pt = (i: number, j: number, line: number, k: number) => leaf[(i * BT_PTS + j) * 12 + line * 3 + k];
-      for (let i = 0; i < BT_LEAVES; i++) {
-        const along: V3 = [0, 1, 2].map((k) => pt(i, 4, 0, k) - pt(i, 1, 0, k)) as V3;
-        const middle: V3 = [0, 1, 2].map((k) => pt(i, 2, 0, k) * 0.6 + pt(i, 2, 3, k) * 0.4) as V3;
-        for (let f = 0; f < 4; f++) {
-          const [la, lb] = BT_FACE_LINES[f];
-          const a: V3 = [0, 1, 2].map((k) => pt(i, 2, la, k)) as V3;
-          const b: V3 = [0, 1, 2].map((k) => pt(i, 2, lb, k)) as V3;
-          const ac: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-          let n = unit([along[1] * ac[2] - along[2] * ac[1], along[2] * ac[0] - along[0] * ac[2], along[0] * ac[1] - along[1] * ac[0]]);
-          const out = [(a[0] + b[0]) / 2 - middle[0], (a[1] + b[1]) / 2 - middle[1], (a[2] + b[2]) / 2 - middle[2]];
-          if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) n = [-n[0], -n[1], -n[2]];
-          const fi = i * 4 + f;
-          faceN.set(n, fi * 3);
-          for (let k = 0; k < 3; k++) faceMid[fi * 3 + k] = (pt(i, 1, la, k) + pt(i, 1, lb, k) + pt(i, 5, la, k) + pt(i, 5, lb, k)) / 4;
-          const family = f < 2 ? 0 : 1;
-          faceTone[fi] = family * BT_LEVELS + level(n);
-        }
-      }
-      return { leaf, spine, faceN, faceMid, faceTone };
-    }
-
     /** Black Tip agave, after the app's scan.
      *
      *  A low dome of a hundred and fifty pale blue-grey lances, as many
@@ -11630,8 +7178,8 @@ export function LivingBlueprint({
       return out;
     }
 
-    function drawInstance(inst: Instance, g: number, t: number, snap = false) {
-      const { meta } = inst;
+    /** Whether a plant is drawn picked, or hovered. */
+    function picksOf(inst: Instance) {
       const st = stateRef.current;
       // Editing addresses ONE plant; browsing still highlights the species,
       // which is how a designer finds where they put the hopseeds.
@@ -11642,6 +7190,12 @@ export function LivingBlueprint({
       // land on — the hit radius is generous and the symbols crowd. The
       // site plan's designer picks on the click alone, as the headset does.
       const hover = st.editing && !sel && !designerRef.current && hoverRef.current === inst.id;
+      return { sel, hover };
+    }
+
+    function drawInstance(inst: Instance, g: number, t: number, snap = false) {
+      const { meta } = inst;
+      const { sel, hover } = picksOf(inst);
       const grows = !["boulder", "poolPrefab", "light"].includes(meta.kind);
       const gr = grows ? g : 1;
       const stroke = sel || hover ? GOLD : verde(0.85);
@@ -11885,8 +7439,9 @@ export function LivingBlueprint({
           ctx!.stroke();
         }
       };
-      // Nothing to see at no opacity (a plant in the flat plan view).
-      if (bodyA * fade > 0) {
+      // Nothing to see at no opacity (a plant in the flat plan view), nor
+      // here when WebGL drew it.
+      if (bodyA * fade > 0 && !glDrawn.has(inst.id)) {
         const key = `${inst.model}|${x}|${z}|${h}|${rw}|${symRot}|${sel}|${hover}`;
         const reach = meta.kind === "palm" ? Math.max(rw, 4.5 * gr) : meta.kind === "saguaro" ? Math.max(rw, 2.2 * gr) : rw;
         const drawn = snap && snapping && bodyA * fade === 1 && fromSnap(inst.id, key, x, z, h, reach * 1.25 + 0.3, body);
@@ -11939,26 +7494,11 @@ export function LivingBlueprint({
       }
     }
 
-    function render() {
-      updateCam();
-      picked = new Set(stateRef.current.picks ? stateRef.current.picks.split(",") : []);
-      const t = cur.planT;
-      const g = cur.growth;
-      ctx!.clearRect(0, 0, W, H);
+    /** The sand, and the ground with its grid clipped to the boundary (or
+     *  the content's bounds). */
+    function drawGround(groundPts: [number, number][]) {
       ctx!.fillStyle = SAND;
       ctx!.fillRect(0, 0, W, H);
-      hits.length = 0;
-
-      /* ground + grid clipped to boundary (or content bounds) */
-      const groundPts: [number, number][] =
-        scene.boundary.length >= 3
-          ? scene.boundary
-          : [
-              [cx - R, cz - R],
-              [cx + R, cz - R],
-              [cx + R, cz + R],
-              [cx - R, cz + R],
-            ];
       pathPoly(groundPts);
       ctx!.fillStyle = GROUND;
       ctx!.fill();
@@ -11984,25 +7524,79 @@ export function LivingBlueprint({
       }
       ctx!.stroke();
       ctx!.restore();
+    }
+
+    function render() {
+      updateCam();
+      picked = new Set(stateRef.current.picks ? stateRef.current.picks.split(",") : []);
+      const t = cur.planT;
+      const g = cur.growth;
+      ctx!.clearRect(0, 0, W, H);
+      hits.length = 0;
+
+      const groundPts: [number, number][] =
+        scene.boundary.length >= 3
+          ? scene.boundary
+          : [
+              [cx - R, cz - R],
+              [cx + R, cz - R],
+              [cx + R, cz + R],
+              [cx - R, cz + R],
+            ];
+      const drag = dragRef.current;
+      const lifted = drag?.moved ? drag : null;
+      const placed = scene.instances.map((at) => {
+        const from = drag?.from.get(at.id);
+        return from ? { ...at, x: from[0] + drag!.dx, z: from[1] + drag!.dz } : at;
+      });
+
+      // WebGL: the yard and the plants it knows under this canvas, which
+      // then draws only what's over them — labels, marks, and the plants it
+      // doesn't know yet. A plant being carried is still drawn here, raised.
+      const gl = glLayer();
+      const glPlants: GLPlant[] = [];
+      if (gl) {
+        for (const inst of placed) {
+          if (!GL_MODELS.has(inst.model) || lifted?.from.has(inst.id)) continue;
+          const { sel, hover } = picksOf(inst);
+          const { h, rw } = matureOf(inst, g);
+          glPlants.push({
+            id: inst.id,
+            model: inst.model,
+            x: inst.x,
+            z: inst.z,
+            h,
+            rw,
+            rot: (inst.yawDeg * Math.PI) / 180,
+            gold: sel || hover,
+            lw: sel ? 2 : hover ? 1.8 : 1.4,
+          });
+        }
+      }
+      const glDrew = !!gl && gl.draw({ eye, rt, up, fw, focal, W, H }, glYard, glPlants, 1 - t);
+      glDrawn = new Set(glDrew ? glPlants.map((s) => s.id) : []);
+      if (!glDrew) drawGround(groundPts);
 
       /* hardscape areas */
       for (const hs of scene.hardscape) {
-        pathPoly(hs.pts);
-        if (hs.style === "pool") {
-          ctx!.fillStyle = WATER_FILL;
-          ctx!.fill();
-        } else {
-          ctx!.fillStyle = "#e8ddc2";
-          ctx!.fill();
-          if (hs.style === "turf") hatch(hs.pts, verde(0.18), 5);
-          else if (hs.style === "decomposedGranite" || hs.style === "flagstone")
-            dots(hs.pts, verde(0.22), 9);
-          else hatch(hs.pts, verde(0.13), 8);
+        if (!glDrew) {
+          pathPoly(hs.pts);
+          if (hs.style === "pool") {
+            ctx!.fillStyle = WATER_FILL;
+            ctx!.fill();
+          } else {
+            ctx!.fillStyle = "#e8ddc2";
+            ctx!.fill();
+            if (hs.style === "turf") hatch(hs.pts, verde(0.18), 5);
+            else if (hs.style === "decomposedGranite" || hs.style === "flagstone")
+              dots(hs.pts, verde(0.22), 9);
+            else hatch(hs.pts, verde(0.13), 8);
+          }
+          pathPoly(hs.pts);
+          ctx!.strokeStyle = verde(0.4);
+          ctx!.lineWidth = 1;
+          ctx!.stroke();
         }
-        pathPoly(hs.pts);
-        ctx!.strokeStyle = verde(0.4);
-        ctx!.lineWidth = 1;
-        ctx!.stroke();
         if (t > 0.5) {
           const [lx, lz] = centroid(hs.pts);
           const s = P(lx, 0.02, lz);
@@ -12023,7 +7617,9 @@ export function LivingBlueprint({
         (f) => !["House", "Garage", "Shed"].includes(f.kind)
       );
       for (const f of flat) {
-        if (f.kind === "Pool") {
+        if (glDrew) {
+          // WebGL drew it.
+        } else if (f.kind === "Pool") {
           pathPoly(f.pts);
           ctx!.fillStyle = WATER_FILL;
           ctx!.fill();
@@ -12065,7 +7661,7 @@ export function LivingBlueprint({
       }
 
       /* boundary */
-      if (scene.boundary.length >= 3) {
+      if (scene.boundary.length >= 3 && !glDrew) {
         pathPoly(scene.boundary);
         ctx!.strokeStyle = verde(0.85);
         ctx!.lineWidth = 1.6;
@@ -12075,7 +7671,7 @@ export function LivingBlueprint({
       }
 
       /* removal markers */
-      for (const rm of scene.removals) {
+      for (const rm of glDrew ? [] : scene.removals) {
         const s = P(rm.x, 0.02, rm.z);
         ctx!.strokeStyle = CLAY;
         ctx!.lineWidth = 1.4;
@@ -12089,12 +7685,6 @@ export function LivingBlueprint({
       }
 
       /* extruded structures + instances, painter-sorted */
-      const drag = dragRef.current;
-      const lifted = drag?.moved ? drag : null;
-      const placed = scene.instances.map((at) => {
-        const from = drag?.from.get(at.id);
-        return from ? { ...at, x: from[0] + drag!.dx, z: from[1] + drag!.dz } : at;
-      });
       if (snapping) retake = due(placed);
       // What's being carried: a soft shadow on the ground under each, and
       // the ring it grows to — drawn first, so everything stands on them.
@@ -12150,7 +7740,7 @@ export function LivingBlueprint({
         const hFt = f.kind === "Shed" ? 8 : 9;
         items.push({
           d: P(fx, hFt / 2, fz)[2],
-          draw: () => drawExtruded(f.pts, hFt, f.label, t),
+          draw: () => drawExtruded(f.pts, hFt, f.label, t, !glDrew),
         });
       }
       items.sort((a, b) => b.d - a.d);
@@ -12524,6 +8114,7 @@ export function LivingBlueprint({
         cur.az, cur.el, cur.dist, cur.fov, cur.zoom, cur.planT, cur.growth, cur.panX, cur.panZ,
         W, H, st.mode, st.selected, st.editing, st.selectedId, st.picks, hoverRef.current,
         dr?.dx, dr?.dz, dr?.moved, gh?.[0], gh?.[1], designerRef.current?.placing?.model,
+        rendererRef.current,
       ].join();
       const now = performance.now();
       if (W > 0 && H > 0 && showing !== drawn) {
@@ -12576,6 +8167,7 @@ export function LivingBlueprint({
       ref={wrapRef}
       className={embed ? "relative h-full w-full" : "relative min-h-0 flex-1"}
     >
+      {renderer && <canvas ref={glRef} aria-hidden className="absolute inset-0 h-full w-full" />}
       <canvas
         ref={canvasRef}
         className={`absolute inset-0 h-full w-full touch-none ${
