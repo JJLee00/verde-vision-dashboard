@@ -7,7 +7,7 @@
 import { AZ_ROCK_COLOURS, AZ_ROCK_GOLD, AZR_CREASES, AZR_F, AZR_FLECKS, AZR_NF, AZR_TONES, azrFleckFace, azrFleckLight, azrFleckSize, growAzRock } from "../bodies/azBoulder";
 import { growBoulder } from "../bodies/boulder";
 import { symbolFor } from "../symbols";
-import { gold, hull3, overPaper, rgba, verde, type Rgba } from "./geom";
+import { edgesOf, gold, hull3, overPaper, rgba, verde, type Rgba } from "./geom";
 import type { Cam, MeshBuilder } from "./mesh";
 
 type V3 = [number, number, number];
@@ -15,22 +15,6 @@ type Pal = [Rgba, Rgba];
 
 const pal = (c: string, g: string): Pal => [rgba(c), rgba(g)];
 
-/** The edges of triangles (corner indices, three a triangle), each once,
- *  with the one or two triangles it bounds. */
-function edgesOf(tri: ArrayLike<number>) {
-  const sides = new Map<string, [number, number, number[]]>();
-  for (let f = 0; f < tri.length / 3; f++) {
-    for (let k = 0; k < 3; k++) {
-      const a = tri[f * 3 + k];
-      const b = tri[f * 3 + ((k + 1) % 3)];
-      const key = a < b ? `${a},${b}` : `${b},${a}`;
-      const e = sides.get(key);
-      if (e) e[2].push(f);
-      else sides.set(key, [a, b, [f]]);
-    }
-  }
-  return [...sides.values()];
-}
 const AZR_EDGES = edgesOf(AZR_F);
 
 /** The AZ Boulder, as scanned. */

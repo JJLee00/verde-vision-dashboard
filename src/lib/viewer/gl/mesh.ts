@@ -21,8 +21,9 @@ export const VSTRIDE = 52;
  *  the stroke shader); drawn through a local map, the centres its ends are
  *  placed from; two planes, each a normal (signed bytes) and a number,
  *  that say whether it shows (see `Op` strokes' `cull`); a point on each,
- *  whose depth it takes drawn in paint order (see `Placed`); and the
- *  feet-to-pixels it shows between (see `atK`). */
+ *  whose depth it takes drawn in paint order (see `Placed`); the
+ *  feet-to-pixels it shows between (see `atK`); how many of its widths
+ *  it's moved up and left on screen; and pixels added to its width. */
 export const SSTRIDE = 144;
 /** A flower head: its centre, facing normal (w set: cull it on the far
  *  side), radius in feet and the angle its florets turn by, its tone, and
@@ -75,7 +76,13 @@ export type Frame = (cam: Cam) => { show?: boolean; foot?: number; alpha?: numbe
  *  cross; and a stroke at the depth of the nearer of its planes' points
  *  that faces the eye (of both, when neither does), just over the face it
  *  lies on. */
-type Placed = { local?: V3; frame?: Frame; flat?: boolean };
+type Placed = {
+  local?: V3;
+  frame?: Frame;
+  flat?: boolean;
+  /** gold only when the plant is picked, not when it's only hovered */
+  pickedGold?: boolean;
+};
 
 /** What a draw of part of a plant is, in the canvas's order. `once` groups
  *  ink each pixel once between them (the canvas strokes them as one path);
@@ -94,6 +101,8 @@ export type Op =
       offset?: number;
       /** drawn this many feet nearer than it stands (less than 0, farther) */
       bias?: number;
+      /** drawn only when the plant is picked, not when it's only hovered */
+      picked?: boolean;
     } & Placed)
   | { kind: "lines"; first: number; count: number; colour: Rgba; gold: Rgba; cull: boolean; once: number }
   | ({
@@ -107,8 +116,10 @@ export type Op =
       /** 1 shown when the eye is in front of either plane; 2 when the
        *  camera looks into both (dotted with the way it looks, over the
        *  plane's number); 3 when it's in front of one and not the other (an
-       *  edge of a silhouette); 4 when it's in front of both */
-      cull?: 0 | 1 | 2 | 3 | 4;
+       *  edge of a silhouette); 4 when it's in front of both; 5 when the
+       *  way to the eye from `pa` is within its first normal by more than
+       *  `thr` (the cosine) */
+      cull?: 0 | 1 | 2 | 3 | 4 | 5;
       /** drawn this many of its half-widths nearer too (see the stroke
        *  shader) */
       wbias?: number;
@@ -128,8 +139,10 @@ export type Op =
       count: number;
       /** 1 an americana's heart: its first half-axis's x is a radius, and
        *  the ellipse is the canvas's, upright; 2 a circle that radius
-       *  through the map's longest column, a pixel at least */
-      mode?: 0 | 1 | 2;
+       *  through the map's longest column, a pixel at least; 3 a
+       *  Madagascar palm's heart: that radius through the map's x column
+       *  across, and 1.6 times it through its y column up */
+      mode?: 0 | 1 | 2 | 3;
       /** written in depth (the default), so nearer parts go over it */
       depth?: boolean;
     } & Placed)
@@ -197,9 +210,11 @@ export type Op =
     }
   | {
       /** strokes laid out afresh each frame, as the canvas lays them on
-       *  screen: a yucca's trunk */
+       *  screen: a yucca's trunk. In the runs its builder marks with
+       *  `strokeRun` (only their `once` is read), or all as one */
       kind: "dyn";
       build: (cam: Cam, b: MeshBuilder) => void;
+      pickedGold?: boolean;
     };
 
 export type Built = {
@@ -302,7 +317,10 @@ export class MeshBuilder {
     return ++this.onceN;
   }
 
-  vert(x: number, y: number, z: number, col: Rgba, gold: Rgba, n?: V3, c?: V3, at?: V3) {
+  /** A vertex: its colour and gold; with `n`, the plane through `c` (or
+   *  `p`) its face is passed over on the far side of; with `flat`, drawn at
+   *  `c`'s depth; with `local`, placed from `at`. */
+  vert(x: number, y: number, z: number, col: Rgba, gold: Rgba, n?: V3, c?: V3, at?: V3, p?: V3) {
     const o = this.v.add();
     const f = o >> 2;
     const F = this.v.f;
@@ -326,7 +344,8 @@ export class MeshBuilder {
       I[o + 21] = q1;
       I[o + 22] = q2;
       I[o + 23] = 0;
-      F[f + 6] = (q0 * c[0] + q1 * c[1] + q2 * c[2]) / 127;
+      const d = p ?? c;
+      F[f + 6] = (q0 * d[0] + q1 * d[1] + q2 * d[2]) / 127;
     } else {
       put4(this.v.u, o + 20, [0, 0, 0, 0]);
       F[f + 6] = 0;
@@ -399,7 +418,7 @@ export class MeshBuilder {
     col: Rgba,
     gold: Rgba,
     s: [number, number, number, number],
-    x?: { ca?: V3; cb?: V3; na?: V3; nb?: V3; pa?: V3; pb?: V3; thr?: number; win?: [number, number] },
+    x?: { ca?: V3; cb?: V3; na?: V3; nb?: V3; pa?: V3; pb?: V3; thr?: number; win?: [number, number]; shift?: number; add?: number },
   ) {
     const o = this.s.add();
     const f = o >> 2;
@@ -446,8 +465,14 @@ export class MeshBuilder {
     }
     F[f + 32] = x?.win?.[0] ?? 0;
     F[f + 33] = Math.min(x?.win?.[1] ?? 1e30, 1e30);
-    F[f + 34] = 0;
-    F[f + 35] = 0;
+    F[f + 34] = x?.shift ?? 0;
+    F[f + 35] = x?.add ?? 0;
+  }
+
+  /** The canvas's quadratic from `a` to `b` with control point `m`, each
+   *  projected as it is, butt-ended (see the stroke shader's mode 8). */
+  curve(a: V3, m: V3, b: V3, w: [number, number, number], col: Rgba, gold: Rgba, o?: { pa?: V3; add?: number }) {
+    this.strokeMode(a, b, w, 8, col, gold, [0, 0, 0, 0], { ca: m, pa: o?.pa, add: o?.add });
   }
 
   /** A path of strokes through points, round-capped so the joins are
@@ -544,7 +569,7 @@ export class MeshBuilder {
 
   /** Marks where a run of triangles, lines, strokes or flowers ends, as one
    *  draw. Call with where the run began. */
-  tris(first: number, depth: boolean, cull: boolean | 2, o?: Placed & { offset?: number; bias?: number }) {
+  tris(first: number, depth: boolean, cull: boolean | 2, o?: Placed & { offset?: number; bias?: number; picked?: boolean }) {
     if (this.tri.length > first) this.ops.push({ kind: "tris", first, count: this.tri.length - first, depth, cull, ...o });
   }
   lines(first: number, colour: Rgba, gold: Rgba, cull: boolean, once: number) {
@@ -555,11 +580,11 @@ export class MeshBuilder {
     once: number,
     stamen?: [number, number],
     bias?: number,
-    o?: Placed & { cull?: 0 | 1 | 2 | 3 | 4; wbias?: number; solid?: boolean; depth?: boolean; atK?: boolean },
+    o?: Placed & { cull?: 0 | 1 | 2 | 3 | 4 | 5; wbias?: number; solid?: boolean; depth?: boolean; atK?: boolean },
   ) {
     if (this.s.n > first) this.ops.push({ kind: "strokes", first, count: this.s.n - first, once, stamen, bias, ...o });
   }
-  ellipseRun(first: number, o?: Placed & { mode?: 0 | 1 | 2; depth?: boolean }) {
+  ellipseRun(first: number, o?: Placed & { mode?: 0 | 1 | 2 | 3; depth?: boolean }) {
     if (this.el.n > first) this.ops.push({ kind: "ellipses", first, count: this.el.n - first, ...o });
   }
   flowerRun(first: number, style: 0 | 1 | 2, bias: number, cy: number, pal: Float32Array, palGold: Float32Array) {
@@ -575,8 +600,8 @@ export class MeshBuilder {
   bladeRun(first: number, o: Omit<Extract<Op, { kind: "blades" }>, "kind" | "first" | "count">) {
     if (this.bl.n > first) this.ops.push({ kind: "blades", first, count: this.bl.n - first, ...o });
   }
-  dyn(build: (cam: Cam, b: MeshBuilder) => void) {
-    this.ops.push({ kind: "dyn", build });
+  dyn(build: (cam: Cam, b: MeshBuilder) => void, o?: { pickedGold?: boolean }) {
+    this.ops.push({ kind: "dyn", build, ...o });
   }
 
   finish(): Built {

@@ -136,10 +136,15 @@ void main() {
 // bowed by iS.x (a yucca's straw); mode 6 a piece of a ribbon down an
 // axis (see below); mode 7 a ray from its start, the way the local map
 // takes it to its end, as long as iS.x feet or iS.y pixels (an ocotillo's
-// flame). With uSolid it's inked whole or not at all, to be written in
-// depth, its edges left to the card's multisampling. uPass 1 draws only
-// where it covers a pixel whole, 2 only where it doesn't (see `strokes`
-// below).
+// flame); mode 8 the canvas's whole quadratic from end to end, iCA its
+// control point, each pixel inked by how near the curve passes (a palm's
+// frond); mode 9 mode 2 round-capped, so a run of them is a path with
+// round joins (a plain tree's trunk). iX.z moves it up and left that many
+// of its widths (a firestick's lit side); iX.w adds that many pixels to
+// its width. With uSolid it's
+// inked whole or not at all, to be written in depth, its edges left to
+// the card's multisampling. uPass 1 draws only where it covers a pixel
+// whole, 2 only where it doesn't (see `strokes` below).
 const STROKE_VS = `#version 300 es
 precision highp float;
 uniform mat4 uM;
@@ -178,6 +183,8 @@ out vec4 vC;
 out vec2 vL;
 flat out vec3 vG;
 flat out vec3 vD;
+flat out vec4 vQ;
+flat out vec2 vQc;
 ${SCREEN}
 const float NEAR = 1.0;
 vec3 px(vec4 c) {
@@ -193,7 +200,10 @@ void main() {
   float ea = dot(iNA.xyz, uEye) - iND.x;
   float eb = dot(iNB.xyz, uEye) - iND.y;
   bool off = false;
-  if (uCull > 3.5) off = ea <= 0.0 || eb <= 0.0;
+  if (uCull > 4.5) {
+    vec3 v = uEye - iKA;
+    off = dot(iNA.xyz, v) < iND.x * length(v);
+  } else if (uCull > 3.5) off = ea <= 0.0 || eb <= 0.0;
   else if (uCull > 2.5) off = (ea > 0.0) == (eb > 0.0);
   else if (uCull > 1.5) off = dot(iNA.xyz, -uFw) - iND.x <= 0.0 || dot(iNB.xyz, -uFw) - iND.y <= 0.0;
   else if (uCull > 0.5) off = ea <= 0.0 && eb <= 0.0;
@@ -215,6 +225,34 @@ void main() {
   vec3 k = (ea >= 0.0) == (eb >= 0.0) ? (dot(iKA - iKB, uFw) < 0.0 ? iKA : iKB) : (ea >= 0.0 ? iKA : iKB);
   vC = uGold > 0.5 ? iG : iC;
   vD = vec3(0.0);
+  vQ = vec4(0.0);
+  vQc = vec2(0.0);
+  // Line widths under 0: the rest, and that many line widths more.
+  float w = (iW.y < 0.0 ? max(iW.x * foot, iW.z) - iW.y * uLw : max(max(iW.x * foot, iW.y * uLw), iW.z)) + iX.w;
+  if (iW.w > 7.5 && iW.w < 8.5) {
+    // The canvas's quadratic, its ends and control point each projected:
+    // the square on screen round all three, the curve worked out in it
+    // pixel by pixel (see the fragment shader).
+    vec4 cc = uM * vec4(iCA, 1.0);
+    if (min(min(ca.w, cb.w), cc.w) < NEAR) {
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+    vec3 A = px(ca);
+    vec3 B = px(cb);
+    vec3 C = px(cc);
+    float hw = 0.5 * w * uDpr;
+    vec2 lo = min(min(A.xy, B.xy), C.xy) * uDpr - hw - 1.0;
+    vec2 hi = max(max(A.xy, B.xy), C.xy) * uDpr + hw + 1.0;
+    vec2 p = mix(lo, hi, vec2(aQ.x, aQ.y * 0.5 + 0.5));
+    float z = uFlat > 0.5 ? kz(k) : min(min(A.z, B.z), C.z);
+    gl_Position = vec4(p.x / (uView.x * uDpr) * 2.0 - 1.0, 1.0 - p.y / (uView.y * uDpr) * 2.0, z, 1.0);
+    vL = p;
+    vG = vec3(0.0, hw, 5.0);
+    vQ = vec4(A.xy, B.xy) * uDpr;
+    vQc = C.xy * uDpr;
+    return;
+  }
   if (iW.w > 5.5 && iW.w < 6.5) {
     // A piece of a ribbon down an axis (an ocotillo's cane), A to B, each
     // projected: across each as the axis runs there (from the points either
@@ -257,8 +295,6 @@ void main() {
     a = px(ca);
     b = px(cb);
   }
-  // Line widths under 0: the rest, and that many line widths more.
-  float w = iW.y < 0.0 ? max(iW.x * foot, iW.z) - iW.y * uLw : max(max(iW.x * foot, iW.y * uLw), iW.z);
   float bias = uBias + uWBias * 0.5 * w / max(foot, 1e-6);
   if (uFlat > 0.5) {
     a.z = kz(k);
@@ -271,7 +307,12 @@ void main() {
   }
   float round = iS.x;
   vec3 dash = vec3(0.0);
-  if (iW.w > 6.5) {
+  if (iW.w > 8.5) {
+    vec3 s = a;
+    a = vec3(s.xy + iS.xy, s.z);
+    b = vec3(s.xy + iS.zw, s.z);
+    round = 1.0;
+  } else if (iW.w > 6.5) {
     vec2 d = J * (iB - iA);
     float l = length(d);
     b = vec3(a.xy + (l > 0.0 ? d / l : vec2(0.0)) * max(iS.y, iS.x * foot), a.z);
@@ -309,6 +350,8 @@ void main() {
   } else {
     dash = iS.yzw;
   }
+  a.xy -= iX.z * w;
+  b.xy -= iX.z * w;
   vec2 pa = a.xy * uDpr;
   vec2 pb = b.xy * uDpr;
   vec2 d = pb - pa;
@@ -338,15 +381,74 @@ in vec4 vC;
 in vec2 vL;
 flat in vec3 vG;
 flat in vec3 vD;
+flat in vec4 vQ;
+flat in vec2 vQc;
 out vec4 o;
 float span(float lo, float hi, float a, float b) {
   return clamp(min(hi, b) - max(lo, a), 0.0, 1.0);
+}
+// How near p is to the quadratic from a to b with control point m, and
+// how far along it (0 to 1) the nearest point is: the cubic for the
+// nearest point solved outright.
+vec2 bezier(vec2 p, vec2 a, vec2 m, vec2 b) {
+  vec2 e = m - a;
+  vec2 f = a - 2.0 * m + b;
+  vec2 d = a - p;
+  float ff = dot(f, f);
+  if (ff < 0.04) {
+    // Bowed less than a twentieth of a pixel: a straight line.
+    vec2 s = b - a;
+    float t = clamp(dot(p - a, s) / max(dot(s, s), 1e-6), 0.0, 1.0);
+    return vec2(length(d + s * t), t);
+  }
+  vec2 g = e * 2.0;
+  float kx = dot(e, f) / ff;
+  float ky = (2.0 * dot(e, e) + dot(d, f)) / ff / 3.0;
+  float kz = dot(d, e) / ff;
+  float pp = ky - kx * kx;
+  float q = kx * (2.0 * kx * kx - 3.0 * ky) + kz;
+  float h = q * q + 4.0 * pp * pp * pp;
+  float t;
+  float r;
+  if (h >= 0.0) {
+    h = sqrt(h);
+    vec2 x = (vec2(h, -h) - q) * 0.5;
+    vec2 uv = sign(x) * pow(abs(x), vec2(1.0 / 3.0));
+    t = clamp(uv.x + uv.y - kx, 0.0, 1.0);
+    vec2 v = d + (g + f * t) * t;
+    r = dot(v, v);
+  } else {
+    float z = sqrt(-pp);
+    float an = acos(q / (pp * z * 2.0)) / 3.0;
+    float cm = cos(an);
+    float sn = sin(an) * 1.732050808;
+    vec2 tt = clamp(vec2(cm + cm, -sn - cm) * z - kx, 0.0, 1.0);
+    vec2 v0 = d + (g + f * tt.x) * tt.x;
+    vec2 v1 = d + (g + f * tt.y) * tt.y;
+    float r0 = dot(v0, v0);
+    float r1 = dot(v1, v1);
+    t = r0 < r1 ? tt.x : tt.y;
+    r = min(r0, r1);
+  }
+  return vec2(sqrt(r), t);
 }
 void main() {
   float L = vG.x;
   float hw = vG.y;
   float c;
-  if (vG.z > 3.5) {
+  if (vG.z > 4.5) {
+    // A quadratic, butt-ended: within its half-width of the curve, and
+    // short of the square end nearer the nearest point.
+    vec2 a = vQ.xy;
+    vec2 b = vQ.zw;
+    vec2 r = bezier(vL, a, vQc, b);
+    vec2 ta = vQc - a;
+    vec2 tb = b - vQc;
+    if (dot(ta, ta) < 1e-6) ta = b - a;
+    if (dot(tb, tb) < 1e-6) tb = b - a;
+    float along = r.y < 0.5 ? dot(vL - a, normalize(ta)) : dot(b - vL, normalize(tb));
+    c = span(r.x - 0.5, r.x + 0.5, -hw, hw) * span(along - 0.5, along + 0.5, 0.0, 1e9);
+  } else if (vG.z > 3.5) {
     c = 1.0;
   } else if (vG.z > 2.5) {
     c = span(vL.y - 0.5, vL.y + 0.5, -hw, hw) * span(vL.x - 0.5, vL.x + 0.5, -hw, L + hw);
@@ -639,7 +741,10 @@ void main() {
   float ea;
   float eb;
   float ang = 0.0;
-  if (uMode > 1.5) {
+  if (uMode > 2.5) {
+    ea = length(uLJ[0]) * iA1.x;
+    eb = length(uLJ[1]) * iA1.x * 1.6;
+  } else if (uMode > 1.5) {
     ea = max(1.0, iA1.x * max(max(length(uLJ[0]), length(uLJ[1])), length(uLJ[2])));
     eb = ea;
   } else if (uMode > 0.5) {
@@ -704,6 +809,8 @@ out vec4 vC;
 out vec2 vL;
 flat out vec3 vG;
 flat out vec3 vD;
+flat out vec4 vQ;
+flat out vec2 vQc;
 ${SCREEN}
 const int FAN[9] = int[](0, 1, 2, 0, 2, 3, 0, 3, 4);
 const int QUAD[9] = int[](0, 1, 2, 0, 2, 3, 0, 0, 0);
@@ -735,6 +842,8 @@ void main() {
   int k = gl_VertexID % 9;
   vC = uGold > 0.5 ? uGoldCol : uCol;
   vD = vec3(0.0);
+  vQ = vec4(0.0);
+  vQc = vec2(0.0);
   if (uMode > 0.5 && uMode < 1.5) {
     if (dot(n, uSun) < 0.0) n = -n;
     vec2 m = b + u * 0.35;
@@ -1488,12 +1597,16 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
           return { p, k, d: depth(p.x, p.z) };
         })
         .sort((a, b) => b.d - a.d);
-      if (bodyA > 0) {
+      // A plant's body gives way to its plan mark as the view goes flat —
+      // but a pool's, which is its footprint.
+      const alphaOf = (p: GLPlant) => (p.planBody ? 1 : bodyA);
+      if (order.some(({ p }) => alphaOf(p) > 0)) {
         // Each tree's lobes far first, as the canvas sorts them, and the
         // ebony's in bands, a tone at a time: laid out for every tree, then
         // sent to the card at once.
         let lobeN = 0;
         for (const { p, k } of order) {
+          if (!(alphaOf(p) > 0)) continue;
           let m = plants.get(k);
           if (!m) {
             m = upload(buildPlant(p));
@@ -1551,6 +1664,8 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
         }
 
         for (const { k, p, d } of order) {
+          const pa = alphaOf(p);
+          if (!(pa > 0)) continue;
           const card = plants.get(k)!;
           const foot = focal / Math.max(d, 1);
           const marks = new Map<number, number>();
@@ -1567,17 +1682,18 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
             const placed = op as { local?: ArrayLike<number>; frame?: Frame; flat?: boolean };
             const fr = placed.frame?.(cam);
             if (fr?.show === false) return;
-            const opA = bodyA * (fr?.alpha ?? 1);
+            const opA = pa * (fr?.alpha ?? 1);
             const lj = placed.local ? localJ(placed.local) : null;
             const setLocal = (pr: { u: Uniforms }) => {
               gl.uniform1f(pr.u.uLocal, lj ? 1 : 0);
               if (lj) gl.uniformMatrix3x2fv(pr.u.uLJ, false, lj);
             };
             if (op.kind === "tris") {
+              if (op.picked && !p.picked) return;
               bind(fill);
               gl.bindVertexArray(card.vao);
               gl.uniform1f(fill.u.uCull, op.cull === 2 ? 2 : op.cull ? 1 : 0);
-              gl.uniform1f(fill.u.uGold, p.gold ? 1 : 0);
+              gl.uniform1f(fill.u.uGold, (op.pickedGold ? p.picked : p.gold) ? 1 : 0);
               gl.uniform4f(fill.u.uLine, 0, 0, 0, 0);
               gl.uniform1f(fill.u.uA, opA);
               gl.uniform1f(fill.u.uBias, op.bias ?? 0);
@@ -1606,7 +1722,7 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               // one-pixel line at the ink's own strength matches that, and
               // wider than a pixel (a sharp screen) as much darker as it's
               // wider.
-              gl.uniform1f(fill.u.uA, bodyA * Math.max(1, p.lw * 0.45 * dpr));
+              gl.uniform1f(fill.u.uA, pa * Math.max(1, p.lw * 0.45 * dpr));
               if (op.once) once(markOf(op.once));
               gl.drawElements(gl.LINES, op.count, pit, op.first * pib);
               gl.disable(gl.STENCIL_TEST);
@@ -1616,7 +1732,7 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform1f(stroke.u.uFoot, fr?.foot ?? foot);
               gl.uniform1f(stroke.u.uLw, p.lw);
               gl.uniform2f(stroke.u.uStamen, op.stamen?.[0] ?? 0, op.stamen?.[1] ?? 0);
-              gl.uniform1f(stroke.u.uGold, p.gold ? 1 : 0);
+              gl.uniform1f(stroke.u.uGold, (op.pickedGold ? p.picked : p.gold) ? 1 : 0);
               gl.uniform1f(stroke.u.uBias, op.bias ?? 0);
               gl.uniform1f(stroke.u.uCull, op.cull ?? 0);
               gl.uniform1f(stroke.u.uWBias, op.wbias ?? 0);
@@ -1662,24 +1778,31 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
             } else if (op.kind === "dyn") {
               const db = new MeshBuilder();
               op.build(cam, db);
-              const bytes = db.finish().strokes;
+              const built = db.finish();
+              const bytes = built.strokes;
               if (!bytes.byteLength) return;
               bind(stroke);
               gl.bindVertexArray(dynVao);
               gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
               gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.DYNAMIC_DRAW);
-              strokePointers(dynBuf, 0);
               cornerPointer();
               gl.uniform1f(stroke.u.uFoot, 1);
               gl.uniform1f(stroke.u.uLw, p.lw);
-              gl.uniform1f(stroke.u.uGold, p.gold ? 1 : 0);
+              gl.uniform1f(stroke.u.uGold, (op.pickedGold ? p.picked : p.gold) ? 1 : 0);
               gl.uniform1f(stroke.u.uBias, 0);
               gl.uniform1f(stroke.u.uCull, 0);
               gl.uniform1f(stroke.u.uWBias, 0);
               gl.uniform1f(stroke.u.uFlat, 0);
               gl.uniform1f(stroke.u.uLocal, 0);
-              gl.uniform1f(stroke.u.uA, bodyA);
-              strokes(bytes.byteLength / SSTRIDE, 0);
+              gl.uniform1f(stroke.u.uA, pa);
+              // In the runs its builder marked, each inking once if it says
+              // so; with none marked, all of it as one.
+              const runs = built.ops.filter((r) => r.kind === "strokes");
+              if (!runs.length) runs.push({ kind: "strokes", first: 0, count: bytes.byteLength / SSTRIDE, once: 0 });
+              for (const r of runs) {
+                strokePointers(dynBuf, r.first);
+                strokes(r.count, r.once ? nextMark() : 0);
+              }
             } else if (op.kind === "lobes") {
               bind(lobe);
               gl.bindVertexArray(lobeVao);
@@ -1687,7 +1810,7 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform1f(lobe.u.uSeg, seg);
               gl.uniform1f(lobe.u.uRagged, op.ragged ? 1 : 0);
               gl.uniform1f(lobe.u.uGold, p.gold ? 1 : 0);
-              gl.uniform1f(lobe.u.uA, bodyA);
+              gl.uniform1f(lobe.u.uA, pa);
               for (const dr of card.lobeDraws[i] ?? []) {
                 lobePointers(lobeBuf, dr.first);
                 if (dr.once) once(nextMark());
@@ -1717,7 +1840,7 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform3f(fleck.u.uCentre, ctr[0], ctr[1], ctr[2]);
               gl.uniform1f(fleck.u.uSlack, op.slack ?? 0);
               gl.uniform1f(fleck.u.uGold, p.gold ? 1 : 0);
-              gl.uniform1f(fleck.u.uA, bodyA);
+              gl.uniform1f(fleck.u.uA, pa);
               gl.drawArraysInstanced(gl.TRIANGLES, 0, verts, op.count);
             } else {
               bind(flower);
@@ -1734,7 +1857,7 @@ export function createGLLayer(cv: HTMLCanvasElement): GLLayer | null {
               gl.uniform1i(flower.u.uStyle, op.style);
               gl.uniform1f(flower.u.uBias, op.bias);
               gl.uniform4fv(flower.u.uPal, p.gold ? op.palGold : op.pal);
-              gl.uniform1f(flower.u.uA, bodyA);
+              gl.uniform1f(flower.u.uA, pa);
               // Heads hide the ones behind them where they're solid; their
               // soft edges go over after, hiding nothing — written in depth,
               // an edge cut a ring out of the head behind it.

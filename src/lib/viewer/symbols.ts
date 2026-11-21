@@ -1137,19 +1137,12 @@ export function drawPlanSymbol(
         grow(x, z, (i / it.limbs) * Math.PI * 2 + o.rot + (rng() - 0.5) * 0.5, R * 0.4, it.depth, it.spread);
       }
     } else {
-      // A fixed count placed in the symbol's own frame: the same dots in the
-      // same places whatever the zoom, rather than more of them as it grows.
-      const tries = Math.round(it.density * 20);
       ctx.fillStyle = o.detail;
-      for (let i = 0; i < tries; i++) {
-        const a = rng() * Math.PI * 2;
-        const rr = R * Math.sqrt(rng()) * 0.9;
-        if (rr <= R * edgeRadius(sym, a - o.rot) * 0.9) {
-          const s = P(x + Math.cos(a) * rr, z + Math.sin(a) * rr);
-          ctx.beginPath();
-          ctx.arc(s[0], s[1], 0.8, 0, 7);
-          ctx.fill();
-        }
+      for (const [dx, dz] of stipple(sym, it.density, R, o.rot, rng)) {
+        const s = P(x + dx, z + dz);
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 0.8, 0, 7);
+        ctx.fill();
       }
     }
   }
@@ -1185,6 +1178,42 @@ export function drawPlanSymbol(
   ctx.restore();
 }
 
+/** A stipple's dots, as offsets from the symbol's centre in feet: a fixed
+ *  count placed in the symbol's own frame — the same dots in the same
+ *  places whatever the zoom, rather than more of them as it grows. Draws on
+ *  `rng` as `drawPlanSymbol` does. */
+export function stipple(sym: PlanSymbol, density: number, R: number, rot: number, rng: () => number): [number, number][] {
+  const out: [number, number][] = [];
+  const tries = Math.round(density * 20);
+  for (let i = 0; i < tries; i++) {
+    const a = rng() * Math.PI * 2;
+    const rr = R * Math.sqrt(rng()) * 0.9;
+    if (rr <= R * edgeRadius(sym, a - rot) * 0.9) out.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+  }
+  return out;
+}
+
+/** The symbol's outline at a given height: `steps + 1` points round it,
+ *  the last the first again. */
+export function symbolRing(
+  x: number,
+  y: number,
+  z: number,
+  R: number,
+  sym: PlanSymbol | null,
+  rot: number,
+  steps = 72,
+): [number, number, number][] {
+  const flat = sym && (sym.edge === "cluster" || sym.edge === "pads" || sym.edge === "wand");
+  const out: [number, number, number][] = [];
+  for (let k = 0; k <= steps; k++) {
+    const a = (k / steps) * Math.PI * 2;
+    const rr = R * (sym && !flat ? edgeRadius(sym, a - rot) : 1);
+    out.push([x + Math.cos(a) * rr, y, z + Math.sin(a) * rr]);
+  }
+  return out;
+}
+
 /** Build (not stroke) the symbol's outline at a given height, so callers
  *  keep their own fill/stroke. Used for a tree's canopy discs, which then
  *  carry the same edge as the mark on the ground beneath them. */
@@ -1199,15 +1228,12 @@ export function symbolPath3D(
   rot: number,
   steps = 72,
 ): void {
-  const flat = sym && (sym.edge === "cluster" || sym.edge === "pads" || sym.edge === "wand");
   ctx.beginPath();
-  for (let k = 0; k <= steps; k++) {
-    const a = (k / steps) * Math.PI * 2;
-    const rr = R * (sym && !flat ? edgeRadius(sym, a - rot) : 1);
-    const s = project(x + Math.cos(a) * rr, y, z + Math.sin(a) * rr);
+  symbolRing(x, y, z, R, sym, rot, steps).forEach((p, k) => {
+    const s = project(...p);
     if (k) ctx.lineTo(s[0], s[1]);
     else ctx.moveTo(s[0], s[1]);
-  }
+  });
   ctx.closePath();
 }
 

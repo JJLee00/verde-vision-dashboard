@@ -33,6 +33,31 @@ export function overPaper(t: Rgba): Rgba {
   return [c(0), c(1), c(2), Math.round(a * 255)];
 }
 
+/** Convex hull, Andrew's monotone chain. A barrel cactus is a convex body,
+ *  so its outline on screen is the hull of its surface — which stays right
+ *  at any camera angle, where a drawn ellipse is only right from straight
+ *  on and goes wrong the moment the view tips. */
+export function convexHull(pts: [number, number][]): [number, number][] {
+  if (pts.length < 3) return pts;
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (
+    o: [number, number],
+    a: [number, number],
+    b: [number, number],
+  ) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (src: [number, number][]) => {
+    const out: [number, number][] = [];
+    for (const q of src) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0)
+        out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
 /** A simple polygon into triangles by clipping ears: corner indices, three
  *  a triangle. Any winding; small polygons only (it's quadratic). */
 export function earcut(pts: [number, number][]): number[] {
@@ -140,4 +165,21 @@ export function hull3(p: [number, number, number][]): number[] {
     faces = keep;
   }
   return faces.flatMap((f) => [f.a, f.b, f.c]);
+}
+
+/** The edges of triangles (corner indices, three a triangle), each once,
+ *  with the one or two triangles it bounds. */
+export function edgesOf(tri: ArrayLike<number>) {
+  const sides = new Map<string, [number, number, number[]]>();
+  for (let f = 0; f < tri.length / 3; f++) {
+    for (let k = 0; k < 3; k++) {
+      const a = tri[f * 3 + k];
+      const b = tri[f * 3 + ((k + 1) % 3)];
+      const key = a < b ? `${a},${b}` : `${b},${a}`;
+      const e = sides.get(key);
+      if (e) e[2].push(f);
+      else sides.set(key, [a, b, [f]]);
+    }
+  }
+  return [...sides.values()];
 }

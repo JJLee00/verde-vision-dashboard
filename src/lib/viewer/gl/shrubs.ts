@@ -36,6 +36,9 @@ import {
 import { earcut, hull3, rgb3, rgba, type Rgba } from "./geom";
 import { flowerPalette, MeshBuilder, type Built } from "./mesh";
 import { buildSucculent, SUCCULENT_MODELS } from "./succulents";
+import { buildGlyph, GLYPH_MODELS } from "./glyphs";
+import { madagascar } from "./madagascar";
+import { firestick } from "./firestick";
 import { buildTree, TREE_MODELS } from "./trees";
 import { aloeVera } from "./aloe";
 import { beakedYucca } from "./yucca";
@@ -52,11 +55,23 @@ export type GLPlant = {
   rw: number;
   rot: number;
   gold: boolean;
+  /** picked, not only hovered */
+  picked: boolean;
   lw: number;
+  /** how grown it's drawn (1 mature), which a palm's fronds and a
+   *  saguaro's arms reach by */
+  g: number;
+  /** its size as placed, which a pool's footprint is drawn by */
+  scale: number;
+  /** its body still drawn in the plan view: a pool, whose footprint is
+   *  its body */
+  planBody: boolean;
 };
 
 /** The species the layer can draw: these shrubs, the trees, the cacti and
- *  agaves, the aloes, the yuccas, the ocotillo and the boulders. */
+ *  agaves, the aloes, the yuccas, the ocotillo, the boulders, the Madagascar
+ *  palm, the firestick, and the plants drawn as their kind's glyph — and
+ *  the lights and the pool, likewise. */
 export const GL_MODELS = new Set([
   "TexasSage",
   "GreenHopseed",
@@ -76,6 +91,9 @@ export const GL_MODELS = new Set([
   "AZBoulder1",
   "GrayBoulder",
   "FlatBoulder",
+  "MadagascarPalm",
+  "Firestick",
+  ...GLYPH_MODELS,
 ]);
 
 const INK_EDGE = rgba("rgba(28,42,33,0.4)");
@@ -103,7 +121,7 @@ function core(b: MeshBuilder, pts: [number, number, number][], col: Rgba, gold: 
 /** One plant grown and laid out. Its key is everything its leaves depend
  *  on; colours both ways are in it, so a pick or hover doesn't rebuild. */
 export function plantKey(p: GLPlant) {
-  return `${p.model}|${p.id}|${p.x}|${p.z}|${p.h}|${p.rw}|${p.rot}`;
+  return `${p.model}|${p.id}|${p.x}|${p.z}|${p.h}|${p.rw}|${p.rot}|${p.g}|${p.scale}`;
 }
 
 export function buildPlant(p: GLPlant): Built {
@@ -152,8 +170,15 @@ export function buildPlant(p: GLPlant): Built {
     case "FlatBoulder":
       boulder(b, p.model, x, z, h, rw, rot, id);
       break;
+    case "MadagascarPalm":
+      madagascar(b, x, z, h, rot);
+      break;
+    case "Firestick":
+      firestick(b, x, z, h, rot);
+      break;
     default:
       if (SUCCULENT_MODELS.has(p.model)) buildSucculent(b, p.model, x, z, h, rw, rot, id);
+      else if (GLYPH_MODELS.has(p.model)) buildGlyph(b, p.model, x, z, h, rw, rot, p.g, p.scale);
       else buildTree(b, p.model, x, z, h, rw, rot, id);
   }
   return b.finish();

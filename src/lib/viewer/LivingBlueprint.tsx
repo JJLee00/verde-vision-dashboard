@@ -48,14 +48,19 @@ import { FEROX_COLOURS, FEROX_GOLD, AF_PTS, AF_FACES, AF_FACE_LINES, AF_TEETH, A
 import { OCOTILLO_COLOURS, OCOTILLO_GOLD, OC_CANES, type OcotilloPlant, growOcotillo } from "./bodies/ocotillo";
 import { BEAKED_YUCCA_COLOURS, BEAKED_YUCCA_GOLD, type YuccaPlant, BY_R, growBeakedYucca } from "./bodies/yucca";
 import { ALOE_BLOOM, ALOE_BUD, type AloePlant, growAloe } from "./bodies/aloe";
+import { MADAGASCAR_COLOURS, MADAGASCAR_GOLD, MP_LEVELS, MP_SIDES, MP_PTS, MP_LEAVES, MP_SPINES, MP_TONES, MP_RINGS, type MadagascarPlant, growMadagascar } from "./bodies/madagascar";
+import { BARREL_RIBS, barrelAt, barrelCloud, barrelCrown, barrelRib, barrelRibAngle, barrelSpikes } from "./bodies/barrel";
+import { palmFronds, rosetteLeaves, saguaroArms, saguaroR } from "./bodies/glyphs";
+import { FS_N, FS_WIDTHS, FS_BATCH, FS_BATCHES, FS_TONES, growFirestick } from "./bodies/firestick";
 import { type BoulderPlant, growBoulder } from "./bodies/boulder";
 import { AZ_ROCK_COLOURS, AZ_ROCK_GOLD, AZR_F, AZR_NV, AZR_NF, AZR_TONES, AZR_CREASES, AZR_FLECKS, azrFleckFace, azrFleckSize, azrFleckLight, type AzRock, growAzRock } from "./bodies/azBoulder";
+import { trunkLimbs, trunkWidths } from "./bodies/trunk";
 import { createGLLayer, GL_MODELS, type GLLayer, type GLPlant, type GLYard } from "./gl/layer";
+import { convexHull } from "./gl/geom";
 import {
   symbolFor,
   drawPlanSymbol,
   symbolPath3D,
-  rngFor,
   type PlanSymbol,
 } from "./symbols";
 
@@ -164,9 +169,10 @@ export type LivingBlueprintProps = {
   openFrom?: CameraSpot | null;
   /** The way back to 2D (`CameraHandle.flatten`). */
   cameraRef?: React.Ref<CameraHandle>;
-  /** The WebGL pilot (the dev test page only): "webgl" draws the ground and
-   *  Texas Sage on the graphics card, under this canvas. Absent, as
-   *  everywhere else, it's the canvas alone. */
+  /** "webgl", the default, draws the yard and the plants it knows on the
+   *  graphics card, under this canvas — which draws everything itself
+   *  wherever WebGL can't be had, or is lost. "canvas" is the canvas alone
+   *  (the WebGL test page's comparison). */
   renderer?: "canvas" | "webgl";
 };
 
@@ -200,72 +206,6 @@ export type Designer3D = {
   onAnchor?: (at: { x0: number; y0: number; x1: number; y1: number } | null) => void;
 };
 
-
-
-/** Convex hull, Andrew's monotone chain. A barrel cactus is a convex body,
- *  so its outline on screen is the hull of its surface — which stays right
- *  at any camera angle, where a drawn ellipse is only right from straight
- *  on and goes wrong the moment the view tips. */
-function convexHull(pts: [number, number][]): [number, number][] {
-  if (pts.length < 3) return pts;
-  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const cross = (
-    o: [number, number],
-    a: [number, number],
-    b: [number, number],
-  ) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const half = (src: [number, number][]) => {
-    const out: [number, number][] = [];
-    for (const q of src) {
-      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0)
-        out.pop();
-      out.push(q);
-    }
-    out.pop();
-    return out;
-  };
-  return [...half(p), ...half([...p].reverse())];
-}
-
-/** Madagascar palm: long strap leaves, yellow-green on top with a pale
- *  midrib, duller olive beneath, over a grey-brown trunk of pale spines. */
-const MADAGASCAR_COLOURS = {
-  shade: [72, 82, 40],
-  lit: [192, 202, 112],
-  under: [98, 108, 60],
-  underLit: [176, 184, 118],
-  midrib: "rgba(222,226,170,0.7)",
-  heart: "rgb(58,58,36)",
-  bark: [82, 70, 60],
-  barkLit: [182, 164, 140],
-  spine: "rgba(220,216,202,0.6)",
-};
-const MADAGASCAR_GOLD = {
-  shade: [140, 100, 46],
-  lit: [236, 200, 128],
-  under: [126, 90, 42],
-  underLit: [214, 178, 112],
-  midrib: "rgba(255,240,200,0.85)",
-  heart: "rgb(112,78,36)",
-  bark: [126, 88, 40],
-  barkLit: [226, 186, 120],
-  spine: "rgba(255,240,206,0.85)",
-};
-
-/** Firestick: the scan's pencil sticks — the old wood pale grey, the
- *  branches straw-tan, the young growth up top green. Each as its shaded
- *  and lit side. */
-const FIRESTICK_COLOURS = {
-  wood: [[156, 150, 136], [228, 224, 210]],
-  straw: [[160, 140, 106], [230, 214, 178]],
-  young: [[108, 120, 66], [178, 188, 118]],
-};
-const FIRESTICK_GOLD = {
-  wood: [[150, 112, 56], [246, 222, 170]],
-  straw: [[140, 100, 46], [236, 200, 128]],
-  young: [[130, 96, 40], [226, 190, 112]],
-};
-
 export function LivingBlueprint({
   project,
   projectName,
@@ -286,7 +226,7 @@ export function LivingBlueprint({
   designer = null,
   openFrom = null,
   cameraRef,
-  renderer,
+  renderer = "webgl",
 }: LivingBlueprintProps) {
   const scene = useMemo(() => buildScene(project), [project]);
   const rail = useMemo(
@@ -1355,20 +1295,11 @@ export function LivingBlueprint({
       lw: number,
     ) {
       // The plant as a surface of revolution — a sphere squashed to its own
-      // height. t runs 0 at the crown to 1 at the soil.
-      const surf = (t: number, a: number) => {
-        const th = t * Math.PI;
-        const r = rw * Math.sin(th);
-        return P(x + Math.cos(a) * r, (h / 2) * (1 + Math.cos(th)), z + Math.sin(a) * r);
-      };
-
-      const cloud: [number, number][] = [];
-      for (let i = 0; i <= 8; i++)
-        for (let k = 0; k < 18; k++) {
-          const q = surf(i / 8, (k / 18) * Math.PI * 2);
-          cloud.push([q[0], q[1]]);
-        }
-      const hull = convexHull(cloud);
+      // height (see `barrelAt`); its outline on screen is the hull of it.
+      const hull = convexHull(barrelCloud(x, z, h, rw).map((p): [number, number] => {
+        const q = P(...p);
+        return [q[0], q[1]];
+      }));
       if (hull.length < 3) return;
 
       ctx!.beginPath();
@@ -1384,36 +1315,12 @@ export function LivingBlueprint({
       ctx!.lineJoin = "round";
       ctx!.stroke();
 
-      // Spines: short ticks standing off the rim at an even spacing round
-      // the outline, which is what the serrations in the plan mark are.
-      let perim = 0;
-      for (let i = 0; i < hull.length; i++) {
-        const a = hull[i];
-        const b = hull[(i + 1) % hull.length];
-        perim += Math.hypot(b[0] - a[0], b[1] - a[1]);
-      }
-      const cxs = hull.reduce((t, q) => t + q[0], 0) / hull.length;
-      const cys = hull.reduce((t, q) => t + q[1], 0) / hull.length;
-      const spike = Math.max(2, Math.min(perim * 0.018, 9));
-      const step = perim / 26;
-      let carry = 0;
+      // Spines: short ticks standing off the rim.
       ctx!.lineWidth = lw * 0.6;
       ctx!.beginPath();
-      for (let i = 0; i < hull.length; i++) {
-        const a = hull[i];
-        const b = hull[(i + 1) % hull.length];
-        const seg = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-        for (let d = carry; d < seg; d += step) {
-          const u = d / seg;
-          const px = a[0] + (b[0] - a[0]) * u;
-          const py = a[1] + (b[1] - a[1]) * u;
-          const nx = px - cxs;
-          const ny = py - cys;
-          const nl = Math.hypot(nx, ny) || 1;
-          ctx!.moveTo(px, py);
-          ctx!.lineTo(px + (nx / nl) * spike, py + (ny / nl) * spike);
-        }
-        carry = step - ((seg - carry) % step);
+      for (const [x0, y0, x1, y1] of barrelSpikes(hull)) {
+        ctx!.moveTo(x0, y0);
+        ctx!.lineTo(x1, y1);
       }
       ctx!.stroke();
 
@@ -1421,25 +1328,24 @@ export function LivingBlueprint({
       // the far side as well would read as a wireframe.
       const mid = P(x, h / 2, z);
       ctx!.lineWidth = lw * 0.7;
-      for (let k = 0; k < 13; k++) {
-        const a = rot + (k / 13) * Math.PI * 2;
-        if (surf(0.5, a)[2] >= mid[2]) continue;
+      for (let k = 0; k < BARREL_RIBS; k++) {
+        if (P(...barrelAt(x, z, h, rw, 0.5, barrelRibAngle(rot, k)))[2] >= mid[2]) continue;
         ctx!.beginPath();
-        for (let i = 0; i <= 9; i++) {
-          const q = surf(0.08 + (i / 9) * 0.86, a);
+        barrelRib(x, z, h, rw, rot, k).forEach((p, i) => {
+          const q = P(...p);
           if (i) ctx!.lineTo(q[0], q[1]);
           else ctx!.moveTo(q[0], q[1]);
-        }
+        });
         ctx!.stroke();
       }
 
       // The crown: the wool and new spines sit in a tight ring on top.
       ctx!.beginPath();
-      for (let k = 0; k <= 16; k++) {
-        const q = surf(0.17, (k / 16) * Math.PI * 2);
+      barrelCrown(x, z, h, rw).forEach((p, k) => {
+        const q = P(...p);
         if (k) ctx!.lineTo(q[0], q[1]);
         else ctx!.moveTo(q[0], q[1]);
-      }
+      });
       ctx!.closePath();
       ctx!.lineWidth = lw * 0.7;
       ctx!.stroke();
@@ -1455,28 +1361,19 @@ export function LivingBlueprint({
       stroke: string,
       lw: number,
     ) {
-      // Taper in feet, floored in pixels so a tree on an acre plan still has
-      // a visible stem.
-      const limbQuad = (
-        ay: number,
-        by: number,
-        ar: number,
-        br: number,
-        aOut: number,
-        bOut: number,
-        az: number,
-      ) => {
-        const ca = Math.cos(az);
-        const sa = Math.sin(az);
-        const A = P(x + ca * aOut, ay, z + sa * aOut);
-        const B = P(x + ca * bOut, by, z + sa * bOut);
+      // The bole, then the limbs over it (see `trunkLimbs`), each a quad
+      // on screen tapering in feet, floored in pixels.
+      for (const l of trunkLimbs(h, rw, rot)) {
+        const ca = Math.cos(l.az);
+        const sa = Math.sin(l.az);
+        const A = P(x + ca * l.aOut, l.ay, z + sa * l.aOut);
+        const B = P(x + ca * l.bOut, l.by, z + sa * l.bOut);
         const dx = B[0] - A[0];
         const dy = B[1] - A[1];
         const L = Math.hypot(dx, dy) || 1;
         const nx = -dy / L;
         const ny = dx / L;
-        const wa = Math.max(ftPx(x, z, ar), 0.9);
-        const wb = Math.max(ftPx(x, z, br), 0.6);
+        const [wa, wb] = trunkWidths(l, (r) => ftPx(x, z, r));
         ctx!.beginPath();
         ctx!.moveTo(A[0] + nx * wa, A[1] + ny * wa);
         ctx!.lineTo(B[0] + nx * wb, B[1] + ny * wb);
@@ -1491,16 +1388,6 @@ export function LivingBlueprint({
         ctx!.lineWidth = lw * 0.8;
         ctx!.lineJoin = "round";
         ctx!.stroke();
-      };
-
-      const forkY = h * 0.27;
-      const r0 = Math.max(rw * 0.055, 0.16); // half-width at the ground, ft
-      const r1 = r0 * 0.66; // at the fork
-      // Bole first, then the limbs over it, so the joint is covered.
-      limbQuad(0, forkY, r0, r1, 0, 0, 0);
-      for (let k = 0; k < 3; k++) {
-        const az = rot + (k / 3) * Math.PI * 2;
-        limbQuad(forkY, h * (0.56 + 0.1 * (k % 2)), r1 * 0.78, r1 * 0.24, 0, rw * 0.27, az);
       }
     }
 
@@ -3669,216 +3556,12 @@ export function LivingBlueprint({
       }
     }
 
-    // Grown once per plant and kept, as the trees are.
-    type MadagascarPlant = {
-      /** the trunk's ring centres, foot to neck, and its rings' points as
-       *  offsets, and each face's outward normal and tone */
-      axis: Float32Array;
-      ring: Float32Array;
-      faceN: Float32Array;
-      faceTone: Uint8Array;
-      /** spines on the trunk: where each sits, and which way it points */
-      spines: Float32Array;
-      /** the heart of the crown, where the leaves meet */
-      heart: [number, number, number];
-      /** each leaf's centre line and the half-width across it, as (x, y, z)
-       *  pairs, point by point; its middle; the normal of its upper face;
-       *  and its tone seen from above and from below */
-      leaf: Float32Array;
-      mid: Float32Array;
-      leafN: Float32Array;
-      leafTone: Uint8Array;
-    };
-    const MP_LEVELS = 8;
-    const MP_SIDES = 10;
-    const MP_PTS = 7;
-    const MP_LEAVES = 96;
-    const MP_SPINES = 160;
-    const mpRamp = (lo: number[], hi: number[]) =>
-      Array.from({ length: MP_LEVELS }, (_, i) => {
-        const t = i / (MP_LEVELS - 1);
-        return `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`;
-      });
-    // Leaf tones over, then under, then the bark's — the sheet's and gold.
-    const MP_TONES = [MADAGASCAR_COLOURS, MADAGASCAR_GOLD].map((pal) => [
-      ...mpRamp(pal.shade, pal.lit),
-      ...mpRamp(pal.under, pal.underLit),
-      ...mpRamp(pal.bark, pal.barkLit),
-    ]);
-    // The model in its own measure (its height = 1): the trunk leans from
-    // its foot to the neck where the leaves begin, thick and tapering, and
-    // the crown's heart sits just above, over the bounding box's middle.
-    const MP_FOOT = [0.06, 0.055];
-    const MP_NECK = [0.012, 0.02];
-    const MP_RINGS = [
-      [0, 0.05],
-      [0.14, 0.046],
-      [0.28, 0.041],
-      [0.42, 0.037],
-      [0.56, 0.035],
-    ];
-    const MP_HEART = [0.005, 0.56, 0.01];
-    // Where a leaf is along its length, and how wide: a narrow foot, a long
-    // strap, a rounded point.
-    const MP_ALONG = [0, 0.15, 0.35, 0.55, 0.75, 0.9, 1];
-    const MP_WIDE = [0.3, 0.9, 1, 1, 0.95, 0.7, 0.15];
-    // The leaves, the same on every plant as in the headset: a spiral up
-    // the neck, the oldest at the bottom hanging down the trunk, the middle
-    // ones arching out and drooping at the tips, the youngest standing up
-    // out of the top. Each as its centre line and half-width, point by
-    // point, in the model's measure.
-    const MP_LEAF = (() => {
-      const rng = rngFor("madagascar-palm");
-      const out = new Float32Array(MP_LEAVES * MP_PTS * 6);
-      const deg = Math.PI / 180;
-      for (let i = 0; i < MP_LEAVES; i++) {
-        const t = (i + 0.5) / MP_LEAVES;
-        const az = i * 2.39996 + (rng() - 0.5) * 0.3;
-        const dx = Math.cos(az);
-        const dz = Math.sin(az);
-        const sx = -dz;
-        const sz = dx;
-        const rise = (-55 + 135 * Math.pow(t, 0.85) + (rng() - 0.5) * 24) * deg;
-        const bend = (0.55 + 0.8 * (1 - t)) * (0.7 + 0.6 * rng());
-        const tip = Math.max(rise - bend, -85 * deg);
-        // The oldest, hanging, are the shortest left.
-        const len = 0.36 * (0.85 + 0.3 * rng()) * (t < 0.25 ? 0.7 + 1.2 * t : 1);
-        const hw = 0.026 * (0.85 + 0.3 * rng());
-        const tw0 = (rng() - 0.5) * 1.0;
-        const tw1 = (rng() - 0.5) * 0.8;
-        let px = MP_HEART[0] + dx * 0.035;
-        let py = 0.46 + 0.2 * t;
-        let pz = MP_HEART[2] + dz * 0.035;
-        let prev = 0;
-        for (let j = 0; j < MP_PTS; j++) {
-          const sAt = MP_ALONG[j];
-          if (j > 0) {
-            // Along the stretch since the last point, at its middle angle.
-            const sm = (prev + sAt) / 2;
-            const th = rise + (tip - rise) * Math.pow(sm, 1.5);
-            const step = (sAt - prev) * len;
-            px += dx * Math.cos(th) * step;
-            py += Math.sin(th) * step;
-            pz += dz * Math.cos(th) * step;
-          }
-          prev = sAt;
-          const th = rise + (tip - rise) * Math.pow(sAt, 1.5);
-          // Across the leaf, twisted a little along it; up off it, the
-          // normal of its upper face before the twist.
-          const tw = tw0 + tw1 * sAt;
-          const ux = -Math.sin(th) * dx;
-          const uy = Math.cos(th);
-          const uz = -Math.sin(th) * dz;
-          const w = hw * MP_WIDE[j];
-          const o = (i * MP_PTS + j) * 6;
-          out[o] = px;
-          out[o + 1] = py;
-          out[o + 2] = pz;
-          out[o + 3] = (sx * Math.cos(tw) + ux * Math.sin(tw)) * w;
-          out[o + 4] = uy * Math.sin(tw) * w;
-          out[o + 5] = (sz * Math.cos(tw) + uz * Math.sin(tw)) * w;
-        }
-      }
-      return out;
-    })();
-    // Spines up the trunk on a spiral: each one's height and angle.
-    const MP_SPINE_AT = (() => {
-      const rng = rngFor("madagascar-spines");
-      const out = new Float32Array(MP_SPINES * 2);
-      for (let i = 0; i < MP_SPINES; i++) {
-        out[i * 2] = 0.02 + 0.4 * (i / MP_SPINES) + (rng() - 0.5) * 0.01;
-        out[i * 2 + 1] = i * 2.39996 + (rng() - 0.5) * 0.4;
-      }
-      return out;
-    })();
     const madagascarGrown = new Map<string, MadagascarPlant>();
     // Scratch, reused plant to plant.
     const mpScreen = new Float32Array(MP_RINGS.length * MP_SIDES * 2);
     const mpBuckets: number[][] = Array.from({ length: MP_LEVELS }, () => []);
     const mpOrder: number[] = [];
     const mpDepth = new Float32Array(MP_LEAVES + 2);
-
-    function growMadagascar(x: number, z: number, h: number, rot: number): MadagascarPlant {
-      const LX = -0.44;
-      const LY = 0.79;
-      const LZ = -0.43;
-      type V3 = [number, number, number];
-      const level = (n: V3) =>
-        Math.max(0, Math.min(MP_LEVELS - 1, Math.round(Math.pow(0.5 + 0.5 * (n[0] * LX + n[1] * LY + n[2] * LZ), 1.5) * (MP_LEVELS - 1))));
-      const cr = Math.cos(rot);
-      const sr = Math.sin(rot);
-      const turnX = (mx: number, mz: number) => mx * cr - mz * sr;
-      const turnZ = (mx: number, mz: number) => mx * sr + mz * cr;
-      const put = (mx: number, my: number, mz: number): V3 => [x + turnX(mx, mz) * h, my * h, z + turnZ(mx, mz) * h];
-      const vec = (mx: number, my: number, mz: number): V3 => [turnX(mx, mz), my, turnZ(mx, mz)];
-
-      // The trunk: rings up the lean, faces shaded once.
-      const NR = MP_RINGS.length;
-      const axis = new Float32Array(NR * 3);
-      const ring = new Float32Array(NR * MP_SIDES * 2);
-      MP_RINGS.forEach(([y, r], l) => {
-        const f = Math.min(1, y / 0.42);
-        axis.set(put(MP_FOOT[0] + (MP_NECK[0] - MP_FOOT[0]) * f, y, MP_FOOT[1] + (MP_NECK[1] - MP_FOOT[1]) * f), l * 3);
-        for (let j = 0; j < MP_SIDES; j++) {
-          const a = rot + (j * Math.PI * 2) / MP_SIDES;
-          ring[(l * MP_SIDES + j) * 2] = Math.cos(a) * r * h;
-          ring[(l * MP_SIDES + j) * 2 + 1] = Math.sin(a) * r * h;
-        }
-      });
-      const faceN = new Float32Array((NR - 1) * MP_SIDES * 3);
-      const faceTone = new Uint8Array((NR - 1) * MP_SIDES);
-      for (let b = 0; b < NR - 1; b++) {
-        const taper = (MP_RINGS[b][1] - MP_RINGS[b + 1][1]) / (MP_RINGS[b + 1][0] - MP_RINGS[b][0]);
-        for (let j = 0; j < MP_SIDES; j++) {
-          const a = rot + ((j + 0.5) * Math.PI * 2) / MP_SIDES;
-          const l = Math.hypot(1, taper);
-          const n: V3 = [Math.cos(a) / l, taper / l, Math.sin(a) / l];
-          faceN.set(n, (b * MP_SIDES + j) * 3);
-          faceTone[b * MP_SIDES + j] = level(n);
-        }
-      }
-      // Its spines, each standing out of the bark where it sits.
-      const spines = new Float32Array(MP_SPINES * 6);
-      for (let i = 0; i < MP_SPINES; i++) {
-        const y = MP_SPINE_AT[i * 2];
-        const a = MP_SPINE_AT[i * 2 + 1] + rot;
-        const f = Math.min(1, y / 0.42);
-        const r = 0.05 + (0.037 - 0.05) * f;
-        const c = put(MP_FOOT[0] + (MP_NECK[0] - MP_FOOT[0]) * f, y, MP_FOOT[1] + (MP_NECK[1] - MP_FOOT[1]) * f);
-        spines.set([c[0] + Math.cos(a) * r * h, c[1], c[2] + Math.sin(a) * r * h, Math.cos(a), 0.35, Math.sin(a)], i * 6);
-      }
-
-      // The leaves, turned and scaled, each with its upper face's normal.
-      const leaf = new Float32Array(MP_LEAVES * MP_PTS * 6);
-      const mid = new Float32Array(MP_LEAVES * 3);
-      const leafN = new Float32Array(MP_LEAVES * 3);
-      const leafTone = new Uint8Array(MP_LEAVES * 2);
-      for (let i = 0; i < MP_LEAVES; i++) {
-        for (let j = 0; j < MP_PTS; j++) {
-          const o = (i * MP_PTS + j) * 6;
-          leaf.set(put(MP_LEAF[o], MP_LEAF[o + 1], MP_LEAF[o + 2]), o);
-          const w = vec(MP_LEAF[o + 3], MP_LEAF[o + 4], MP_LEAF[o + 5]);
-          leaf.set([w[0] * h, w[1] * h, w[2] * h], o + 3);
-        }
-        const a = (i * MP_PTS + 2) * 6;
-        const b = (i * MP_PTS + 4) * 6;
-        mid.set([leaf[(i * MP_PTS + 3) * 6], leaf[(i * MP_PTS + 3) * 6 + 1], leaf[(i * MP_PTS + 3) * 6 + 2]], i * 3);
-        // Up off the leaf: across it, crossed with along it.
-        const tx = leaf[b] - leaf[a];
-        const ty = leaf[b + 1] - leaf[a + 1];
-        const tz = leaf[b + 2] - leaf[a + 2];
-        const wx = leaf[(i * MP_PTS + 3) * 6 + 3];
-        const wy = leaf[(i * MP_PTS + 3) * 6 + 4];
-        const wz = leaf[(i * MP_PTS + 3) * 6 + 5];
-        let n: V3 = [wy * tz - wz * ty, wz * tx - wx * tz, wx * ty - wy * tx];
-        const nl = Math.hypot(n[0], n[1], n[2]) || 1;
-        n = [n[0] / nl, n[1] / nl, n[2] / nl];
-        leafN.set(n, i * 3);
-        leafTone[i * 2] = level(n);
-        leafTone[i * 2 + 1] = MP_LEVELS + level([-n[0], -n[1], -n[2]]);
-      }
-      return { axis, ring, faceN, faceTone, spines, heart: put(MP_HEART[0], MP_HEART[1], MP_HEART[2]), leaf, mid, leafN, leafTone };
-    }
 
     /** Madagascar palm, after the app's model.
      *
@@ -4064,87 +3747,6 @@ export function LivingBlueprint({
       ctx!.lineWidth = lw;
     }
 
-    // The firestick's sticks, the same on every plant as in the headset,
-    // in the model's measure (its height = 1): a pale leader the whole
-    // height; low down, branches spreading wide and forking, and forking
-    // again, each fork turning further up, into a coral of upturned sticks;
-    // higher, shorter branches held more upright, so the top is narrow.
-    // Each stick is [x0, y0, z0, x1, y1, z1, width, colour], its colour 0
-    // the old wood, 1 straw, 2 the young green.
-    const FS_STICKS: number[][] = (() => {
-      const rng = rngFor("firestick");
-      const out: number[][] = [];
-      const widths = [0.019, 0.015, 0.012, 0.0095, 0.008];
-      type V3 = [number, number, number];
-      const unit = (v: V3): V3 => {
-        const l = Math.hypot(v[0], v[1], v[2]) || 1;
-        return [v[0] / l, v[1] / l, v[2] / l];
-      };
-      const colourAt = (y: number, order: number) =>
-        order === 0 && y < 0.3 ? 0 : rng() < Math.max(0, Math.min(1, (y - 0.5) / 0.35)) * 0.75 ? 2 : 1;
-      const fork = (p: V3, d: V3, len: number, order: number, last: number, lift: number) => {
-        const e: V3 = [p[0] + d[0] * len, p[1] + d[1] * len, p[2] + d[2] * len];
-        out.push([...p, ...e, widths[Math.min(order, 4)], colourAt(e[1], order)]);
-        // Some stop short, as the scan's do.
-        if (order >= last || (order >= 2 && rng() < 0.12)) return;
-        // Two ways on (now and then three), splayed across the stick and
-        // turned up.
-        const side = unit([-d[2], 0, d[0]]);
-        const n = rng() < 0.2 ? 3 : 2;
-        const roll = rng() * Math.PI;
-        for (let k = 0; k < n; k++) {
-          const a = roll + (k * Math.PI * 2) / n;
-          const spread = (0.3 + rng() * 0.45) * (order === 0 ? 1.1 : 0.9);
-          const across: V3 = [side[0] * Math.cos(a), Math.sin(a) * 0.6, side[2] * Math.cos(a)];
-          const nd = unit([d[0] + across[0] * spread, d[1] + across[1] * spread + lift, d[2] + across[2] * spread]);
-          fork(e, nd, len * (0.55 + rng() * 0.35), order + 1, last, lift);
-        }
-      };
-      // The leader, leaning a touch as it climbs, forking at its top.
-      let at: V3 = [0, 0, 0];
-      for (let k = 0; k < 5; k++) {
-        const next: V3 = [at[0] + (rng() - 0.5) * 0.02, (k + 1) * 0.17, at[2] + (rng() - 0.5) * 0.02];
-        out.push([...at, ...next, 0.028 - k * 0.0022, k < 3 ? 0 : 1]);
-        at = next;
-      }
-      fork(at, [0, 1, 0], 0.08, 1, 3, 0.3);
-      const leaderAt = (y: number): V3 => {
-        for (const st of out.slice(0, 5)) {
-          if (y <= st[4]) {
-            const f = (y - st[1]) / (st[4] - st[1]);
-            return [st[0] + (st[3] - st[0]) * f, y, st[2] + (st[5] - st[2]) * f];
-          }
-        }
-        return at;
-      };
-      // The low branches: out nearly flat from the foot, then forking
-      // four deep, each fork turning up.
-      for (let i = 0; i < 16; i++) {
-        const y = 0.03 + (i / 15) * 0.37 + (rng() - 0.5) * 0.03;
-        const az = i * 2.39996 + (rng() - 0.5) * 0.4;
-        const el = (12 + rng() * 22 + (y / 0.4) * 10) * (Math.PI / 180);
-        fork(leaderAt(y), [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)], 0.12 + rng() * 0.05, 0, 4, 0.32);
-      }
-      // The high ones: shorter, steeper, crowding into an upright head.
-      for (let i = 0; i < 16; i++) {
-        const y = 0.42 + (i / 15) * 0.45 + (rng() - 0.5) * 0.03;
-        const az = 1.3 + i * 2.39996 + (rng() - 0.5) * 0.4;
-        const el = (50 + rng() * 20) * (Math.PI / 180);
-        fork(leaderAt(y), [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)], 0.06 + rng() * 0.03, 1, 4, 0.4);
-      }
-      return out;
-    })();
-    const FS_N = FS_STICKS.length;
-    // Every stick's batch: its width (the leader's own five, then the
-    // branches' four), colour and whether it's on the near side.
-    const FS_WIDTHS = [...new Set(FS_STICKS.map((st) => st[6]))].sort((a, b) => b - a);
-    const FS_BATCH = FS_STICKS.map((st) => FS_WIDTHS.indexOf(st[6]) * 3 + st[7]);
-    const FS_BATCHES = FS_WIDTHS.length * 3;
-    const fsTones = [FIRESTICK_COLOURS, FIRESTICK_GOLD].map((pal) =>
-      [pal.wood, pal.straw, pal.young].map(([lo, hi]) =>
-        [0.35, 0.6, 0.9].map((t) => `rgb(${lo.map((v, k) => (v + (hi[k] - v) * t) | 0).join(",")})`),
-      ),
-    );
     const firestickGrown = new Map<string, Float32Array>();
     // Scratch: each stick's ends on screen, and each batch's sticks.
     const fsScreen = new Float32Array(FS_N * 4);
@@ -4170,19 +3772,10 @@ export function LivingBlueprint({
       let grown = firestickGrown.get(key);
       if (!grown) {
         if (firestickGrown.size > 400) firestickGrown.clear(); // growth and edits mint new keys
-        const cr = Math.cos(rot);
-        const sr = Math.sin(rot);
-        grown = new Float32Array(FS_N * 6);
-        FS_STICKS.forEach((st, i) => {
-          for (let e = 0; e < 2; e++) {
-            const mx = st[e * 3];
-            const mz = st[e * 3 + 2];
-            grown!.set([x + (mx * cr - mz * sr) * h, st[e * 3 + 1] * h, z + (mx * sr + mz * cr) * h], i * 6 + e * 3);
-          }
-        });
+        grown = growFirestick(x, z, h, rot);
         firestickGrown.set(key, grown);
       }
-      const tones = fsTones[sel ? 1 : 0];
+      const tones = FS_TONES[sel ? 1 : 0];
 
       const cy = h * 0.5;
       const q = P(x, cy, z);
@@ -6237,7 +5830,7 @@ export function LivingBlueprint({
             ctx!.stroke();
           }
         } else if (meta.kind === "palm") {
-          const top = [x, h, z] as const;
+          const { top, fronds } = palmFronds(x, z, h, gr);
           const tp = P(...top);
           const base = P(x, 0, z);
           ctx!.strokeStyle = verde(0.7);
@@ -6248,18 +5841,9 @@ export function LivingBlueprint({
           ctx!.stroke();
           ctx!.strokeStyle = stroke;
           ctx!.lineWidth = lw;
-          for (let k = 0; k < 7; k++) {
-            const a = (k / 7) * Math.PI * 2 + 0.4;
-            const tip = P(
-              top[0] + Math.cos(a) * 4.2 * gr,
-              top[1] - 1.9 * gr,
-              top[2] + Math.sin(a) * 4.2 * gr
-            );
-            const c = P(
-              top[0] + Math.cos(a) * 1.7 * gr,
-              top[1] + 1.2 * gr,
-              top[2] + Math.sin(a) * 1.7 * gr
-            );
+          for (const [tip3, c3] of fronds) {
+            const tip = P(...tip3);
+            const c = P(...c3);
             ctx!.beginPath();
             ctx!.moveTo(tp[0], tp[1]);
             ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
@@ -6268,7 +5852,7 @@ export function LivingBlueprint({
         } else if (meta.kind === "saguaro" || meta.kind === "columnar") {
           const base = P(x, 0, z);
           const top = P(x, h, z);
-          const bodyR = Math.min(rw, 0.9);
+          const bodyR = saguaroR(rw);
           ctx!.strokeStyle = stroke;
           ctx!.lineCap = "round";
           ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 2, 3);
@@ -6277,18 +5861,16 @@ export function LivingBlueprint({
           ctx!.lineTo(top[0], top[1]);
           ctx!.stroke();
           if (meta.kind === "saguaro") {
+            // Round elbows, whatever the plant drawn before left set.
+            ctx!.lineJoin = "round";
             ctx!.lineWidth = Math.max(ftPx(x, z, bodyR) * 1.2, 2);
-            for (const [dx, y0, y1] of [
-              [1.9, 0.42, 0.74],
-              [-1.9, 0.52, 0.66],
-            ]) {
-              const j0 = P(x, h * y0, z);
-              const j1 = P(x + dx * gr, h * y0, z);
-              const j2 = P(x + dx * gr, h * y1, z);
+            for (const arm of saguaroArms(x, z, h, gr)) {
               ctx!.beginPath();
-              ctx!.moveTo(j0[0], j0[1]);
-              ctx!.lineTo(j1[0], j1[1]);
-              ctx!.lineTo(j2[0], j2[1]);
+              arm.forEach((p, i) => {
+                const q = P(...p);
+                if (i) ctx!.lineTo(q[0], q[1]);
+                else ctx!.moveTo(q[0], q[1]);
+              });
               ctx!.stroke();
             }
           }
@@ -6323,15 +5905,9 @@ export function LivingBlueprint({
           const bp = P(x, 0, z);
           ctx!.strokeStyle = stroke;
           ctx!.lineWidth = Math.max(lw - 0.2, 1.2);
-          for (let k = 0; k < 9; k++) {
-            const a = (k / 9) * Math.PI * 2 + 0.2;
-            const lift = 0.55 + 0.45 * Math.abs(Math.sin(k * 1.7));
-            const tip = P(
-              x + Math.cos(a) * rw,
-              h * lift,
-              z + Math.sin(a) * rw
-            );
-            const c = P(x + Math.cos(a) * rw * 0.25, h * 0.95, z + Math.sin(a) * rw * 0.25);
+          for (const [tip3, c3] of rosetteLeaves(x, z, h, rw)) {
+            const tip = P(...tip3);
+            const c = P(...c3);
             ctx!.beginPath();
             ctx!.moveTo(bp[0], bp[1]);
             ctx!.quadraticCurveTo(c[0], c[1], tip[0], tip[1]);
@@ -6370,6 +5946,8 @@ export function LivingBlueprint({
           ctx!.fill();
           ctx!.strokeStyle = sel ? GOLD : verde(0.5);
           ctx!.lineWidth = lw;
+          // Round corners, whatever the plant drawn before left set.
+          ctx!.lineJoin = "round";
           ctx!.stroke();
           pathPoly(shrink(corners, 0.75));
           ctx!.strokeStyle = WATER_LINE;
@@ -6508,7 +6086,11 @@ export function LivingBlueprint({
             rot: (inst.yawDeg * Math.PI) / 180,
             // A plain boulder turns gold when it's picked, not hovered.
             gold: sel || (hover && (inst.meta.kind !== "boulder" || inst.model === "AZBoulder1")),
+            picked: sel,
             lw: sel ? 2 : hover ? 1.8 : 1.4,
+            g,
+            scale: inst.scale,
+            planBody: inst.meta.kind === "poolPrefab",
           });
         }
       }
@@ -7106,7 +6688,7 @@ export function LivingBlueprint({
       ref={wrapRef}
       className={embed ? "relative h-full w-full" : "relative min-h-0 flex-1"}
     >
-      {renderer && <canvas ref={glRef} aria-hidden className="absolute inset-0 h-full w-full" />}
+      <canvas ref={glRef} aria-hidden className="absolute inset-0 h-full w-full" />
       <canvas
         ref={canvasRef}
         className={`absolute inset-0 h-full w-full touch-none ${
