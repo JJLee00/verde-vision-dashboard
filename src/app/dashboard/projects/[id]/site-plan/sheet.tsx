@@ -1108,11 +1108,20 @@ export function Sheet({
         else pan(() => onSelect(hit));
         return;
       }
+      const plant = plantOf(shown, hit);
+      // On the Design tab a plant or surface moves only once it's picked:
+      // pressing one that isn't pans the sheet, and a click picks it — so
+      // nothing's moved by accident.
+      if (layer === "design" && hit !== selected) {
+        return pan(() => {
+          onSelect(hit);
+          setVertexSel(null);
+        });
+      }
       if (hit !== selected) {
         onSelect(hit);
         setVertexSel(null);
       }
-      const plant = plantOf(shown, hit);
       if (plant) {
         if (editable) gesture.current = { kind: "plantMove", id: hit, base: shown, start: at, from: [plant.x, plant.z], moved: false };
         else pan(null);
@@ -1651,7 +1660,12 @@ export function Sheet({
         ? (frameCursor ?? "default")
         : drawing
           ? "crosshair"
-          : (frameCursor ?? (overNow ? (editable ? "move" : "pointer") : "default"));
+          : (frameCursor ??
+            (overNow
+              ? editable && (overNow === selected || group.includes(overNow))
+                ? "move"
+                : "pointer"
+              : "default"));
   // Clicks on the floating controls stay off the sheet underneath.
   const shield = {
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),

@@ -6378,8 +6378,10 @@ export function LivingBlueprint({
       pointers.set(e.pointerId, [e.clientX, e.clientY]);
       dragDist = 0;
       cv!.style.cursor = "grabbing";
-      // In the designer, pressing on a plant takes hold of the plant, not
-      // the view. Shift and the other buttons still pan.
+      // In the designer, pressing on a picked plant takes hold of it, not
+      // the view; pressing any other plant orbits as usual, and a click
+      // picks it — so no plant is moved by accident. Shift and the other
+      // buttons still pan.
       const d = designerRef.current;
       if (!d || d.placing || !stateRef.current.editing || e.button !== 0 || e.shiftKey || pointers.size > 1) return;
       const hit = nearest(e);
@@ -6389,8 +6391,8 @@ export function LivingBlueprint({
       // Pressing one of several picked takes hold of them all.
       const st = stateRef.current;
       const group = st.picks ? st.picks.split(",") : [];
+      if (!group.includes(inst.id) && st.selectedId !== inst.id) return;
       const ids = group.includes(inst.id) ? group : [inst.id];
-      if (!group.includes(inst.id)) onSelectRef.current?.(inst.id);
       const from = new Map<string, [number, number]>();
       for (const id of ids) {
         const at = scene.instances.find((i) => i.id === id);
@@ -6413,7 +6415,9 @@ export function LivingBlueprint({
           cv!.style.cursor = "crosshair";
           return;
         }
-        cv!.style.cursor = over ? (d ? "move" : "pointer") : "grab";
+        const st = stateRef.current;
+        const held = over && (st.selectedId === over.id || (st.picks ? st.picks.split(",") : []).includes(over.id));
+        cv!.style.cursor = over ? (d && held ? "move" : "pointer") : "grab";
         hoverRef.current = over?.id ?? null;
         return;
       }

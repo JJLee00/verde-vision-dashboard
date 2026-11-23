@@ -1351,7 +1351,7 @@ export function SitePlanBuilder({
                 {planting
                   ? `Click the ground to plant ${planting.plant.name} — again for each one. Esc when you're done.`
                   : designing3d
-                    ? "Drag to orbit, shift-drag to pan, scroll to zoom. Drag a plant to move it; shift-click to pick several."
+                    ? "Drag to orbit, shift-drag to pan, scroll to zoom. Click a plant to pick it, then drag it to move it; shift-click to pick several."
                     : "Look around: drag to orbit, shift-drag to pan, scroll to zoom."}
               </p>
             </Fade3D>
