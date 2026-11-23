@@ -133,10 +133,12 @@ export function addressFor(hit: GeocodeHit, query: string): string {
 export function AddressSearch({
   initialQuery,
   initialStatus = { state: "idle" },
+  placeholder = "Search for the property's address",
   onFound,
 }: {
   initialQuery: string;
   initialStatus?: SearchState;
+  placeholder?: string;
   onFound: (hit: GeocodeHit, query: string, status: SearchState) => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
@@ -205,7 +207,7 @@ export function AddressSearch({
         <div className="relative min-w-0 flex-1">
           <input
             value={query}
-            placeholder="Search for the property's address"
+            placeholder={placeholder}
             role="combobox"
             aria-label="Property address"
             aria-expanded={showList}

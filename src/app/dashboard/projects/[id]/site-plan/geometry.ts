@@ -287,7 +287,8 @@ export function nearestOnRun(p: XZ, run: XZ[]): { q: XZ; d: number } {
 
 /**
  * A typed length in feet and inches, as metres: 42, 42.5, 42', 42'6,
- * 42' 6", 42 6, 6". Null when it doesn't read as a length.
+ * 42' 6", 42'-6" (as plans write it), 42 6, 6". Null when it doesn't read as
+ * a length.
  */
 export function parseLength(text: string): number | null {
   const t = text.trim().replace(/[′’]/g, "'").replace(/[″”]/g, '"');
@@ -296,7 +297,7 @@ export function parseLength(text: string): number | null {
   let m: RegExpMatchArray | null;
   if ((m = t.match(/^(\d+(?:\.\d+)?)\s*"$/))) inches = Number(m[1]);
   else if ((m = t.match(/^(\d+(?:\.\d+)?)\s*(?:'|ft)?$/))) feet = Number(m[1]);
-  else if ((m = t.match(/^(\d+)\s*(?:'|ft)?\s+(\d+(?:\.\d+)?)\s*(?:"|in)?$/)) || (m = t.match(/^(\d+)\s*'\s*(\d+(?:\.\d+)?)\s*"?$/))) {
+  else if ((m = t.match(/^(\d+)\s*(?:'|ft)?\s+(\d+(?:\.\d+)?)\s*(?:"|in)?$/)) || (m = t.match(/^(\d+)\s*'\s*-?\s*(\d+(?:\.\d+)?)\s*"?$/))) {
     feet = Number(m[1]);
     inches = Number(m[2]);
   } else return null;

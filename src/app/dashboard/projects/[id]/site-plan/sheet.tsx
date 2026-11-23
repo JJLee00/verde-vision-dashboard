@@ -110,8 +110,9 @@ export type Layer = "site" | "design";
 /** A plant to place: the catalog plant and the size picked for it. */
 export type Placing = { key: string; size: string };
 /** What clicks do to an uploaded plan: drag it into line, measure a length
- *  on it to set its scale, or follow its north arrow. */
-export type ImageTool = "align" | "scale" | "north";
+ *  on it to set its scale, or follow its north arrow — or, on a plan
+ *  started from the upload, drag the photo under it instead. */
+export type ImageTool = "align" | "scale" | "north" | "photo";
 
 export interface SheetHandle {
   /** The part of the plan on screen now, inset a little: what Lock view keeps. */
@@ -352,7 +353,10 @@ type Gesture =
   // `id`: the plant pressed on — a click without a drag picks it alone.
   | { kind: "groupMove"; id: string; ids: string[]; base: Doc; start: Pt; moved: boolean }
   | { kind: "box"; start: Pt; now: Pt }
-  | { kind: "image"; how: "move" | "turn" | "size"; base: PlanImage; from: XZ };
+  | { kind: "image"; how: "move" | "turn" | "size"; base: PlanImage; from: XZ }
+  // An end of the line a scale or north is being taken from, nudged.
+  | { kind: "imgPt"; index: number }
+  | { kind: "photo"; start: Pt; ppm: number };
 
 /** Which of the frame's edges a handle moves: −1 the west or north
  *  edge, 1 the east or south, 0 neither. */
@@ -401,6 +405,9 @@ export function Sheet({
   imageTool = null,
   onImage,
   onImageTool,
+  onImageDone,
+  guided = false,
+  onPhotoMoved,
 }: {
   handle: RefObject<SheetHandle | null>;
   doc: Doc;
@@ -457,6 +464,14 @@ export function Sheet({
   imageTool?: ImageTool | null;
   onImage?: (next: PlanImage) => void;
   onImageTool?: (t: ImageTool | null) => void;
+  /** A scale or a north was set on the uploaded plan (or, guided, the
+   *  north skipped): the builder walks on to the next step. */
+  onImageDone?: (t: "scale" | "north") => void;
+  /** The plan was just uploaded: its steps say so, and the north can be
+   *  skipped. */
+  guided?: boolean;
+  /** The photo was dragged this far, in metres, to sit under the plan. */
+  onPhotoMoved?: (shift: XZ) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
@@ -483,6 +498,8 @@ export function Sheet({
   const [imgClicks, setImgClicks] = useState<{ tool: ImageTool; pts: XZ[] }>({ tool: "scale", pts: [] });
   const [imgHover, setImgHover] = useState<XZ | null>(null);
   const [lengthText, setLengthText] = useState("");
+  // The photo while it's dragged under the plan, as a shift in metres.
+  const [photoShift, setPhotoShift] = useState<XZ | null>(null);
   // The inventory bar's height, kept clear along the bottom.
   const inset = chrome === "design" ? 108 : 0;
 
@@ -866,30 +883,52 @@ export function Sheet({
     return { corners, mid, turn };
   }
 
-  /** A click while taking the scale or the north from the plan. */
+  /** Which end of the scale or north line is under the pointer, or −1. */
+  function imgEndAt(at: Pt): number {
+    if (!view) return -1;
+    return imgPts.findIndex((q) => {
+      const [x, y] = toScreen(view, size, q);
+      return Math.hypot(x - at[0], y - at[1]) < 10;
+    });
+  }
+
+  /** A click while taking the scale or the north from the plan. With both
+   *  ends of a scale line down, a click elsewhere starts it again there. */
   function addImagePoint(p: XZ) {
-    if (!image || !imageTool || imageTool === "align") return;
-    if (imgPts.length >= 2) return;
-    const pts = [...imgPts, p];
+    if (!image || (imageTool !== "scale" && imageTool !== "north")) return;
+    const pts: XZ[] = imgPts.length >= 2 ? [p] : [...imgPts, p];
     if (pts.length === 2 && dist(pts[0], pts[1]) * (view?.ppm ?? 1) < CLICK_SLOP) return;
     if (pts.length === 2 && imageTool === "north") {
-      onImage?.(turnedNorth(image.plan, pts[0], pts[1]));
+      onImage?.({ ...turnedNorth(image.plan, pts[0], pts[1]), north: true });
       setImgClicks({ tool: "north", pts: [] });
       onImageTool?.(null);
+      onImageDone?.("north");
       return;
     }
     setImgClicks({ tool: imageTool, pts });
-    setLengthText("");
   }
 
   /** The length typed for the line measured on the plan: scale it to that. */
   function setScaleTo(text: string) {
-    if (!image || imgPts.length !== 2) return;
+    if (!image) return;
+    if (imgPts.length !== 2) return say("Click both ends of the length on the plan first.");
     const len = parseLength(text);
     if (len == null) return say(`“${text}” isn't a length. Try 85, 85.5 or 85'6.`);
-    onImage?.(rescaled(image.plan, imgPts[0], imgPts[1], len));
+    finishScale(rescaled(image.plan, imgPts[0], imgPts[1], len));
+  }
+
+  /** Sized by the scale it was printed at, about its middle. */
+  function setPrintedScale(ftPerInch: number) {
+    if (!image?.plan.ppi) return;
+    finishScale({ ...image.plan, scale: ftPerInch / FEET_PER_METER / image.plan.ppi, scaled: true });
+  }
+
+  function finishScale(next: PlanImage) {
+    onImage?.(next);
     setImgClicks({ tool: "scale", pts: [] });
+    setLengthText("");
     onImageTool?.(null);
+    onImageDone?.("scale");
   }
 
   /* ── Pointer ── */
@@ -911,7 +950,19 @@ export function Sheet({
     // Lining up an uploaded plan: clicks are for it alone.
     if (imageTool && image && shownImage) {
       const p = toPlan(view, size, at);
-      if (imageTool !== "align") return pan(() => addImagePoint(p));
+      if (imageTool === "photo") {
+        gesture.current = { kind: "photo", start: at, ppm: view.ppm };
+        return;
+      }
+      if (imageTool !== "align") {
+        // An end already down is nudged by dragging it.
+        const end = imgEndAt(at);
+        if (end >= 0) {
+          gesture.current = { kind: "imgPt", index: end };
+          return;
+        }
+        return pan(() => addImagePoint(p));
+      }
       const ih = imageHandles(shownImage, view);
       const near = (q: Pt, r: number) => Math.hypot(q[0] - at[0], q[1] - at[1]) < r;
       const how = near(ih.turn, 11) ? "turn" : ih.corners.some((c) => near(c, 10)) ? "size" : inImage(shownImage, p) ? "move" : null;
@@ -1061,8 +1112,12 @@ export function Sheet({
         const ih = m && imageTool === "align" ? imageHandles(m, view) : null;
         const near = (q: Pt, r: number) => Math.hypot(q[0] - at[0], q[1] - at[1]) < r;
         setFrameCursor(
-          imageTool !== "align"
-            ? "crosshair"
+          imageTool === "photo"
+            ? "move"
+            : imageTool !== "align"
+            ? imgEndAt(at) >= 0
+              ? "grab"
+              : "crosshair"
             : ih && near(ih.turn, 11)
               ? "grab"
               : ih && ih.corners.some((c) => near(c, 10))
@@ -1170,6 +1225,16 @@ export function Sheet({
         setBox([g.start, at]);
         return;
       }
+      case "imgPt": {
+        const p = toPlan(view, size, at);
+        setImgHover(p);
+        setImgClicks((c) => ({ ...c, pts: c.pts.map((q, i) => (i === g.index ? p : q)) }));
+        return;
+      }
+      case "photo": {
+        setPhotoShift([(at[0] - g.start[0]) / g.ppm, (at[1] - g.start[1]) / g.ppm]);
+        return;
+      }
       case "image": {
         const p = toPlan(view, size, at);
         const m = g.base;
@@ -1222,6 +1287,13 @@ export function Sheet({
       const m = liveImage;
       setLiveImage(null);
       if (m) onImage?.(m);
+      return;
+    }
+    if (g.kind === "imgPt") return;
+    if (g.kind === "photo") {
+      const shift = photoShift;
+      setPhotoShift(null);
+      if (shift && (shift[0] !== 0 || shift[1] !== 0)) onPhotoMoved?.(shift);
       return;
     }
     if (g.kind === "box") {
@@ -1407,9 +1479,10 @@ export function Sheet({
 
   const tiles = useMemo(() => {
     if (!view || !origin || underlay.kind === "none") return [];
-    const shift: XZ = underlay.kind === "map" && mapOffset ? [mapOffset.east, -mapOffset.north] : [0, 0];
+    const shift: XZ =
+      photoShift ?? (underlay.kind === "map" && mapOffset ? [mapOffset.east, -mapOffset.north] : [0, 0]);
     return tilesFor(BASEMAPS[underlay.kind].url, origin, view, size, { min: 3, max: MAX_NATIVE_ZOOM }, shift);
-  }, [view, size, origin, underlay.kind, mapOffset]);
+  }, [view, size, origin, underlay.kind, mapOffset, photoShift]);
   const lotTiles = useMemo(() => {
     if (!view || !origin || !lotLines) return [];
     return tilesFor(LOT_LINES.url, origin, view, size, { min: LOT_LINES.minNativeZoom, max: LOT_LINES.maxNativeZoom }, [0, 0]);
@@ -1499,6 +1572,20 @@ export function Sheet({
     onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
     onDoubleClick: (e: React.MouseEvent) => e.stopPropagation(),
   };
+  const hintText =
+    notice ??
+    (imageTool
+      ? imageHint(imageTool, imgPts.length)
+      : hint(
+          tool,
+          target,
+          pts.length,
+          editable,
+          frame != null,
+          group.length ? "group" : sel ? (sel.locked ? "locked" : "open") : selPlant ? "plant" : null,
+          layer,
+          framing
+        ));
 
   const tileImg = (t: Tile, dx: number, dy: number) => (
     // eslint-disable-next-line @next/next/no-img-element
@@ -1556,7 +1643,15 @@ export function Sheet({
             alt=""
             draggable={false}
             className="pointer-events-none"
-            style={imageStyle(shownImage, view, size, frameRect.left, frameRect.top, imageOpacity(shownImage, layer))}
+            style={imageStyle(
+              shownImage,
+              view,
+              size,
+              frameRect.left,
+              frameRect.top,
+              // See-through while the photo is slid under it.
+              imageTool === "photo" ? Math.min(0.5, imageOpacity(shownImage, layer)) : imageOpacity(shownImage, layer)
+            )}
           />
         )}
         {lotTiles.length > 0 && (
@@ -1692,6 +1787,7 @@ export function Sheet({
             b={imgPts[1] ?? imgHover ?? imgPts[0]}
             S={S}
             arrow={imageTool === "north"}
+            placed={imgPts.length}
           />
         )}
         {h && (
@@ -1824,44 +1920,37 @@ export function Sheet({
         </div>
       )}
 
-      {/* The length of the line just measured on the uploaded plan. */}
-      {imageTool === "scale" && imgPts.length === 2 && (
-        <form
-          className="absolute z-10 flex -translate-x-1/2 items-center gap-2 rounded-xl border border-rule-strong bg-card p-2 shadow-lg"
-          style={{
-            left: (S(imgPts[0])[0] + S(imgPts[1])[0]) / 2,
-            top: Math.min(size.h - inset - 60, Math.max(S(imgPts[0])[1], S(imgPts[1])[1]) + 18),
+      {/* The step under way on the uploaded plan, docked at the top so the
+          drawing round the line stays in sight. */}
+      {image && (imageTool === "scale" || imageTool === "north" || imageTool === "photo") && (
+        <ImageStep
+          tool={imageTool}
+          plan={image.plan}
+          line={imgPts.length === 2 ? [imgPts[0], imgPts[1]] : null}
+          ends={imgPts.length}
+          length={lengthText}
+          onLength={setLengthText}
+          onScale={() => setScaleTo(lengthText)}
+          onPrinted={setPrintedScale}
+          onClearLine={() => setImgClicks({ tool: imageTool, pts: [] })}
+          onClose={() => {
+            setImgClicks({ tool: imageTool, pts: [] });
+            onImageTool?.(null);
           }}
-          onSubmit={(e) => {
-            e.preventDefault();
-            setScaleTo(lengthText);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setImgClicks({ tool: "scale", pts: [] });
-          }}
-          {...shield}
-        >
-          <label className="text-xs font-semibold text-body">
-            How long is this line?
-            <input
-              autoFocus
-              value={lengthText}
-              onChange={(e) => setLengthText(e.target.value)}
-              placeholder="85'6"
-              className="ml-2 w-20 rounded-md border border-rule-strong bg-card-hover px-2 py-1 text-sm font-normal text-ink placeholder:text-faint"
-            />
-          </label>
-          <button type="submit" className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-white hover:opacity-90">
-            Set scale
-          </button>
-          <button
-            type="button"
-            onClick={() => setImgClicks({ tool: "scale", pts: [] })}
-            className="text-xs font-semibold text-muted hover:text-ink"
-          >
-            Again
-          </button>
-        </form>
+          onSkip={guided && imageTool === "north" ? () => {
+            onImageTool?.(null);
+            onImageDone?.("north");
+          } : undefined}
+          guided={guided}
+          shield={shield}
+          onPointerEnter={() => setImgHover(null)}
+        />
+      )}
+
+      {/* A magnifier by the pointer while an end is clicked down, so it
+          lands on the dimension's tick, not beside it. */}
+      {image && shownImage && (imageTool === "scale" || imageTool === "north") && imgHover && !panning && (
+        <Loupe plan={shownImage} url={image.url} at={imgHover} view={view} size={size} />
       )}
 
       {bar && sel && selected && (
@@ -1909,9 +1998,13 @@ export function Sheet({
         </div>
       )}
 
-      <div className="pointer-events-none absolute right-3 top-3 rounded-md bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-body shadow-sm">
-        N ↑
-      </div>
+      {/* Only where up is known to be north: the photo's, or a plan turned
+          by its arrow. */}
+      {(origin != null || image?.plan.north) && (
+        <div className="pointer-events-none absolute right-3 top-3 rounded-md bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-body shadow-sm">
+          N ↑
+        </div>
+      )}
       <div className="absolute right-3 top-10 flex flex-col overflow-hidden rounded-md border border-rule-strong bg-card shadow-sm" {...shield}>
         {[
           { label: "+", title: "Zoom in", f: 1.4 },
@@ -1945,22 +2038,13 @@ export function Sheet({
       >
         <div className="flex flex-col items-start gap-1.5">
           <ScaleBar ppm={view.ppm} grid={grid ? gridAt(view.ppm).minorFt : null} />
-          <p className={`rounded-md px-2 py-1 text-xs shadow-sm ${notice ? "bg-clay text-white" : "bg-card/90 text-body"}`}>
-            {notice ??
-              (imageTool
-                ? imageHint(imageTool, imgPts.length)
-                : hint(
-                    tool,
-                    target,
-                    pts.length,
-                    editable,
-                    frame != null,
-                    group.length ? "group" : sel ? (sel.locked ? "locked" : "open") : selPlant ? "plant" : null,
-                    layer
-                  ))}
-          </p>
+          {hintText && (
+            <p className={`rounded-md px-2 py-1 text-xs shadow-sm ${notice ? "bg-clay text-white" : "bg-card/90 text-body"}`}>
+              {hintText}
+            </p>
+          )}
         </div>
-        {underlay.kind !== "none" && (
+        {origin && underlay.kind !== "none" && (
           <p
             {...shield}
             className="pointer-events-auto max-w-[45%] truncate rounded bg-card/80 px-1.5 py-0.5 text-[10px] text-faint hover:whitespace-normal"
@@ -2295,9 +2379,10 @@ function hint(
   editable: boolean,
   locked: boolean,
   selection: "open" | "locked" | "plant" | "group" | null,
-  layer: Layer
+  layer: Layer,
+  framing: boolean
 ): string {
-  if (!locked) return "Frame the yard inside the dashed line, then Lock view.";
+  if (!locked) return framing ? "Frame the yard inside the dashed line, then Lock view." : "";
   const name = target === "Boundary" ? "yard boundary" : (styleOf(target) ?? target).toLowerCase();
   switch (tool) {
     case "place":
@@ -2366,6 +2451,16 @@ function planToImage(m: PlanImage, [x, z]: XZ): Pt {
 const imageCorners = (m: PlanImage): XZ[] =>
   ([[0, 0], [m.w, 0], [m.w, m.h], [0, m.h]] as Pt[]).map((p) => imageToPlan(m, p));
 
+/** The sheet of paper round an uploaded plan, with a little margin: the
+ *  frame of a plan started from the upload, which has no photo to frame. */
+export function imageFrame(m: PlanImage): PlanFrame {
+  const corners = imageCorners(m);
+  const xs = corners.map((p) => p[0]);
+  const zs = corners.map((p) => p[1]);
+  const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, halfWidth: (x1 - x0) / 2 + 2, halfHeight: (z1 - z0) / 2 + 2 };
+}
+
 function inImage(m: PlanImage, p: XZ): boolean {
   const [u, v] = planToImage(m, p);
   return u >= 0 && v >= 0 && u <= m.w && v <= m.h;
@@ -2430,7 +2525,7 @@ function ImageHandles({ corners, mid, turn }: { corners: Pt[]; mid: Pt; turn: Pt
 }
 
 /** The line being measured on the uploaded plan, or its north arrow. */
-function ImageLine({ a, b, S, arrow }: { a: XZ; b: XZ; S: (p: XZ) => Pt; arrow: boolean }) {
+function ImageLine({ a, b, S, arrow, placed }: { a: XZ; b: XZ; S: (p: XZ) => Pt; arrow: boolean; placed: number }) {
   const [ax, ay] = S(a);
   const [bx, by] = S(b);
   const len = Math.hypot(bx - ax, by - ay) || 1;
@@ -2439,12 +2534,19 @@ function ImageLine({ a, b, S, arrow }: { a: XZ; b: XZ; S: (p: XZ) => Pt; arrow: 
     <g pointerEvents="none">
       <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#fff" strokeWidth={4} strokeOpacity={0.85} />
       <line x1={ax} y1={ay} x2={bx} y2={by} stroke="var(--clay)" strokeWidth={2} strokeDasharray={arrow ? undefined : "6 4"} />
-      <circle cx={ax} cy={ay} r={4} fill="var(--clay)" />
+      {/* The ends clicked down are handles, ringed: drag one to nudge it. */}
+      <circle cx={ax} cy={ay} r={6} fill="#fff" stroke="var(--clay)" strokeWidth={2} />
+      <circle cx={ax} cy={ay} r={1.5} fill="var(--clay)" />
       {arrow ? (
         <path
           d={`M${bx} ${by}L${bx - ux * 12 - uy * 6} ${by - uy * 12 + ux * 6}L${bx - ux * 12 + uy * 6} ${by - uy * 12 - ux * 6}Z`}
           fill="var(--clay)"
         />
+      ) : placed === 2 ? (
+        <>
+          <circle cx={bx} cy={by} r={6} fill="#fff" stroke="var(--clay)" strokeWidth={2} />
+          <circle cx={bx} cy={by} r={1.5} fill="var(--clay)" />
+        </>
       ) : (
         <circle cx={bx} cy={by} r={4} fill="var(--clay)" />
       )}
@@ -2457,13 +2559,230 @@ function imageHint(tool: ImageTool, clicks: number): string {
     case "align":
       return "Drag the plan to move it, a corner to size it, the round handle to turn it (Shift: 15° steps). Esc when it lines up.";
     case "scale":
-      return clicks === 0
-        ? "Click one end of a length you know on the plan — a dimensioned lot line is best."
-        : clicks === 1
-          ? "Click the other end."
-          : "Type how long that line really is, then Set scale.";
+      return clicks < 2
+        ? "Scroll to zoom in on the end of the line. The magnifier shows exactly where a click lands."
+        : "Drag an end to fine-tune it, or click somewhere else to start the line again.";
     case "north":
-      return clicks === 0 ? "Click the tail of the plan's north arrow." : "Click its tip. The plan turns so north is up.";
+      return "Scroll to zoom in on the arrow. The magnifier shows exactly where a click lands.";
+    case "photo":
+      return "Drag the photo until it sits under the plan. Esc when it lines up.";
   }
+}
+
+/* ── Setting up an uploaded plan ─────────────────────────────────── */
+
+/** Scales plans are printed at, as feet to the inch: the engineer's for
+ *  site plans and surveys, then the architect's. */
+const PRINTED_SCALES: { label: string; ftPerInch: number }[] = [
+  ...[10, 20, 30, 40, 50, 60, 100].map((ft) => ({ label: `1" = ${ft}'`, ftPerInch: ft })),
+  { label: `1/4" = 1'`, ftPerInch: 4 },
+  { label: `3/16" = 1'`, ftPerInch: 16 / 3 },
+  { label: `1/8" = 1'`, ftPerInch: 8 },
+  { label: `3/32" = 1'`, ftPerInch: 32 / 3 },
+  { label: `1/16" = 1'`, ftPerInch: 16 },
+];
+
+/** A length in whole feet, for sizes too big to want inches. */
+const wholeFeet = (m: number) => `${Math.round(m * FEET_PER_METER).toLocaleString("en-US")}′`;
+
+/** How big the whole drawing comes out at this many metres a pixel. */
+const drawingSize = (m: PlanImage, scale: number) => `${wholeFeet(m.w * scale)} × ${wholeFeet(m.h * scale)}`;
+
+/**
+ * The card for the step under way on an uploaded plan, docked at the top of
+ * the sheet: its scale (from a dimension on it, or the scale it was printed
+ * at), its north, or — on a plan started from the upload — the photo slid
+ * under it. Each says how big the drawing will come out before it's set,
+ * the check a wrong length fails loudly.
+ */
+function ImageStep({
+  tool,
+  plan,
+  line,
+  ends,
+  length,
+  onLength,
+  onScale,
+  onPrinted,
+  onClearLine,
+  onClose,
+  onSkip,
+  guided,
+  shield,
+  onPointerEnter,
+}: {
+  tool: "scale" | "north" | "photo";
+  plan: PlanImage;
+  line: [XZ, XZ] | null;
+  ends: number;
+  length: string;
+  onLength: (text: string) => void;
+  onScale: () => void;
+  onPrinted: (ftPerInch: number) => void;
+  onClearLine: () => void;
+  onClose: () => void;
+  onSkip?: () => void;
+  guided: boolean;
+  shield: { onPointerDown: (e: React.PointerEvent) => void; onDoubleClick: (e: React.MouseEvent) => void };
+  /** The pointer came off the sheet onto the card. */
+  onPointerEnter: () => void;
+}) {
+  const [printed, setPrinted] = useState("");
+  const typed = parseLength(length);
+  const byLine = line && typed ? rescaled(plan, line[0], line[1], typed) : null;
+  const ftPerInch = PRINTED_SCALES.find((x) => x.label === printed)?.ftPerInch ?? null;
+  const step = (n: number) => (guided ? `Step ${n} of 2 · ` : "");
+  const title =
+    tool === "scale" ? `${step(1)}Set the scale` : tool === "north" ? `${step(2)}Turn it north-up` : "Line up the photo";
+
+  return (
+    <div
+      className="absolute left-1/2 top-3 z-20 w-[min(560px,calc(100%-200px))] -translate-x-1/2 rounded-xl border border-rule-strong bg-card p-3 shadow-lg"
+      {...shield}
+      onPointerEnter={onPointerEnter}
+      onKeyDown={(e) => {
+        // Esc in a field closes the step, as it does on the sheet.
+        if (e.key === "Escape") onClose();
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">{title}</p>
+          <p className="mt-0.5 text-sm text-body">
+            {tool === "scale"
+              ? ends === 0
+                ? "Click both ends of a length written on the plan — a lot line is best."
+                : ends === 1
+                  ? "Now click the other end."
+                  : "Type how long that line is. Drag an end to fine-tune it."
+              : tool === "north"
+                ? "Click the tail of the plan's north arrow, then its tip. The plan turns so north is up."
+                : "Drag the photo until it sits under the plan."}
+          </p>
+        </div>
+        {onSkip ? (
+          <button type="button" onClick={onSkip} className="shrink-0 text-xs font-semibold text-muted hover:text-ink">
+            Skip
+          </button>
+        ) : (
+          <button type="button" onClick={onClose} className="shrink-0 text-xs font-semibold text-muted hover:text-ink">
+            {tool === "photo" ? "Done" : "Cancel"}
+          </button>
+        )}
+      </div>
+
+      {tool === "scale" && (
+        <>
+          <form
+            className="mt-2.5 flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onScale();
+            }}
+          >
+            <label className="flex items-center gap-2 text-xs font-semibold text-body">
+              That line is
+              <input
+                autoFocus
+                value={length}
+                onChange={(e) => onLength(e.target.value)}
+                placeholder="100'"
+                inputMode="decimal"
+                aria-label="The line's length"
+                className="w-24 rounded-md border border-rule-strong bg-card-hover px-2 py-1 text-sm font-normal text-ink placeholder:text-faint"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!byLine}
+              className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
+            >
+              Set scale
+            </button>
+            {ends > 0 && (
+              <button type="button" onClick={onClearLine} className="text-xs font-semibold text-muted hover:text-ink">
+                Clear line
+              </button>
+            )}
+            <span className="ml-auto text-xs text-muted">
+              {byLine
+                ? `The drawing comes out ${drawingSize(plan, byLine.scale)}.`
+                : length.trim() && typed == null
+                  ? `“${length.trim()}” isn't a length — try 100, 100.5 or 100'-6".`
+                  : ""}
+            </span>
+          </form>
+          {plan.ppi && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-rule pt-2.5">
+              <label className="flex items-center gap-2 text-xs font-semibold text-body">
+                Or, printed at
+                <select
+                  value={printed}
+                  onChange={(e) => setPrinted(e.target.value)}
+                  aria-label="The plan's printed scale"
+                  className="rounded-md border border-rule-strong bg-card-hover px-2 py-1 text-sm font-normal text-ink"
+                >
+                  <option value="">its scale…</option>
+                  {PRINTED_SCALES.map((x) => (
+                    <option key={x.label} value={x.label}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={ftPerInch == null}
+                onClick={() => ftPerInch != null && onPrinted(ftPerInch)}
+                className="rounded-md border border-accent px-3 py-1 text-xs font-semibold text-accent transition hover:bg-accent/10 disabled:opacity-40"
+              >
+                Use it
+              </button>
+              <span className="ml-auto text-xs text-muted">
+                {ftPerInch != null
+                  ? `The drawing comes out ${drawingSize(plan, ftPerInch / FEET_PER_METER / plan.ppi)}.`
+                  : "Only if the PDF is the real sheet size."}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** How much closer the magnifier looks than the sheet. */
+const LOUPE_ZOOM = 4;
+const LOUPE_SIZE = 132;
+/** The step's card along the top of the sheet, which the magnifier keeps clear of. */
+const LOUPE_CLEAR_TOP = 170;
+
+/** A round close-up of the uploaded plan round `at`, beside the pointer —
+ *  up and to the right, or wherever there's room. */
+function Loupe({ plan, url, at, view, size }: { plan: PlanImage; url: string; at: XZ; view: View; size: Size }) {
+  const [sx, sy] = toScreen(view, size, at);
+  const gap = 22;
+  const left = sx + gap + LOUPE_SIZE > size.w ? sx - gap - LOUPE_SIZE : sx + gap;
+  // Below the pointer where above would run into the step's card.
+  const top = sy - gap - LOUPE_SIZE < LOUPE_CLEAR_TOP ? sy + gap : sy - gap - LOUPE_SIZE;
+  const close: View = { cx: at[0], cz: at[1], ppm: view.ppm * LOUPE_ZOOM };
+  const box: Size = { w: LOUPE_SIZE, h: LOUPE_SIZE };
+  const mid = LOUPE_SIZE / 2;
+  return (
+    <div
+      className="pointer-events-none absolute z-20 overflow-hidden rounded-full border-2 border-[var(--clay)] shadow-lg"
+      style={{ left, top, width: LOUPE_SIZE, height: LOUPE_SIZE, background: SHEET_PAPER }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="" draggable={false} style={imageStyle(plan, close, box, 0, 0, 1)} />
+      <svg className="absolute inset-0" width={LOUPE_SIZE} height={LOUPE_SIZE}>
+        <line x1={mid} y1={mid - 18} x2={mid} y2={mid - 4} stroke="var(--clay)" strokeWidth={1.5} />
+        <line x1={mid} y1={mid + 4} x2={mid} y2={mid + 18} stroke="var(--clay)" strokeWidth={1.5} />
+        <line x1={mid - 18} y1={mid} x2={mid - 4} y2={mid} stroke="var(--clay)" strokeWidth={1.5} />
+        <line x1={mid + 4} y1={mid} x2={mid + 18} y2={mid} stroke="var(--clay)" strokeWidth={1.5} />
+        <circle cx={mid} cy={mid} r={1.5} fill="var(--clay)" />
+      </svg>
+    </div>
+  );
 }
 

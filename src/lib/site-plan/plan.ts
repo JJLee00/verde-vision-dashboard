@@ -139,6 +139,12 @@ export interface PlanImage {
   hidden?: boolean;
   /** Its scale was set from a length on it, not guessed. */
   scaled?: boolean;
+  /** Pixels to the inch on the printed page, when that's known — a PDF's
+   *  page has a real size, so its printed scale (1" = 20') sets the size
+   *  without clicking. A picture's isn't known. */
+  ppi?: number;
+  /** Turned so its north arrow points up the sheet. */
+  north?: boolean;
 }
 
 export interface SitePlan {
@@ -147,7 +153,14 @@ export interface SitePlan {
   provider: string;
   /** What the address search found; may be empty. */
   lookupAddress: string;
-  origin: LatLng;
+  /** Where the plan's (0, 0) is on the map. Absent on a plan started from
+   *  an uploaded drawing with no address: it has no photo or lot lines,
+   *  and the headset doesn't miss it — the corner walk needs only metres. */
+  origin?: LatLng;
+  /** "plan": started from an uploaded drawing rather than the photo, so
+   *  the drawing is what the tracing follows and a photo added later is
+   *  the one moved to agree with it. Dashboard-only. */
+  startedFrom?: "plan";
   frame: PlanFrame;
   /** `opacity` is the photo's strength on the Blueprint tab; the Design
    *  tab keeps its own, fainter one, so switching never needs the slider. */
@@ -382,7 +395,9 @@ export function candidateFor(draft: PlanDraft): BlueprintCandidate {
     // displays it, and an empty one reads as absent there.
     apn: "",
     address: label,
-    centroid: draft.origin,
+    // Required by the headset's decoder, which only ever lays a photo on
+    // it — and a trace sends none (`imagery` below).
+    centroid: draft.origin ?? NO_PLACE,
     parcelXZ: boundaryOutline(draft),
     // Required by the headset's decoder; a trace knows no county facts.
     attributes: {},
@@ -396,6 +411,9 @@ export function candidateFor(draft: PlanDraft): BlueprintCandidate {
 export function finishPlan(draft: PlanDraft): SitePlan {
   return { version: 2, ...draft, candidate: candidateFor(draft) };
 }
+
+/** The centroid of a plan with no place on the map. */
+const NO_PLACE: LatLng = { lat: 0, lng: 0 };
 
 /** A shape the server refused, with a message for the designer. */
 export class PlanError extends Error {}
@@ -435,8 +453,10 @@ function parseSmooth(raw: unknown, points: XZ[], closed: boolean, what: string):
 export function parseDraft(raw: unknown): PlanDraft {
   const d = raw as Partial<PlanDraft> | null;
   if (!d || typeof d !== "object") throw new PlanError("Nothing to save.");
-  if (!d.origin || !num(d.origin.lat) || !num(d.origin.lng) || Math.abs(d.origin.lat) > 90 || Math.abs(d.origin.lng) > 180) {
-    throw new PlanError("The plan has no place on the map. Lock the view first.");
+  // No place on the map is fine — a plan drawn from an upload — but a bad
+  // one isn't.
+  if (d.origin != null && (!num(d.origin.lat) || !num(d.origin.lng) || Math.abs(d.origin.lat) > 90 || Math.abs(d.origin.lng) > 180)) {
+    throw new PlanError("The plan's place on the map is wrong. Search the address again.");
   }
   const f = d.frame as Partial<PlanFrame> | undefined;
   if (!f || ![f.cx, f.cz, f.halfWidth, f.halfHeight].every(num) || f.halfWidth! <= 0 || f.halfHeight! <= 0) {
@@ -520,7 +540,8 @@ export function parseDraft(raw: unknown): PlanDraft {
   return {
     provider: typeof d.provider === "string" && d.provider ? d.provider.slice(0, 40) : "trace",
     lookupAddress: typeof d.lookupAddress === "string" ? d.lookupAddress.trim().slice(0, 300) : "",
-    origin: { lat: d.origin.lat, lng: d.origin.lng },
+    ...(d.origin ? { origin: { lat: d.origin.lat, lng: d.origin.lng } } : {}),
+    ...(d.startedFrom === "plan" ? { startedFrom: "plan" as const } : {}),
     frame: { cx: f.cx!, cz: f.cz!, halfWidth: f.halfWidth!, halfHeight: f.halfHeight! },
     underlay: { kind, opacity, ...(designOpacity != null ? { designOpacity } : {}) },
     ...(planImage ? { planImage } : {}),
@@ -557,6 +578,8 @@ function parsePlanImage(raw: unknown): PlanImage | undefined {
     opacity: num(opacity) ? Math.min(1, Math.max(0, opacity)) : 0.7,
     ...(m.hidden === true ? { hidden: true } : {}),
     ...(m.scaled === true ? { scaled: true } : {}),
+    ...(num(m.ppi) && m.ppi > 10 && m.ppi < 2000 ? { ppi: m.ppi } : {}),
+    ...(m.north === true ? { north: true } : {}),
   };
 }
 

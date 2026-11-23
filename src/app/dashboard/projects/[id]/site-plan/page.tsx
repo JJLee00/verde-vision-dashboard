@@ -28,6 +28,7 @@ export default async function SitePlanPage({
 
   if (id === "fixture" && process.env.NODE_ENV === "development") {
     // ?design=1: with a design drawn on it. ?walked=1: after a corner walk.
+    // ?new=1: nothing yet, at the start.
     const q = await searchParams;
     const walked = q.walked ? fixtureWalked() : null;
     const fit = walked && walkFit(walked.project);
@@ -35,7 +36,7 @@ export default async function SitePlanPage({
       <SitePlanBuilder
         projectId="fixture"
         projectName={FIXTURE_PROJECT.projectName}
-        initial={walked ? placedPlan(walked.plan, walked.project) : q.design ? FIXTURE_DESIGNED : FIXTURE_PLAN}
+        initial={walked ? placedPlan(walked.plan, walked.project) : q.new ? null : q.design ? FIXTURE_DESIGNED : FIXTURE_PLAN}
         readOnly={walked ? PLACED("Nov 12", true) : null}
         designReadOnly={null}
         walked={walked && fit ? { project: walked.project, fit } : null}

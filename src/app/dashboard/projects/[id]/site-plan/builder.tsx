@@ -26,8 +26,10 @@ import type { PlacedPlantJSON, ProjectFileJSON } from "@/lib/viewer/types";
 import type { XZ } from "@/lib/site-plan/plan";
 import {
   boundaryOutline,
+  centroid,
   crosses,
   FEATURE_TYPES,
+  FEET_PER_METER,
   isLineType,
   mainHouse,
   outlineOf,
@@ -49,12 +51,13 @@ import { money, PlantActions, Schedule, SURFACE_TOOLS } from "./design-panels";
 import { InventoryBar, keepSlots, savedSlots, seedSlots, SLOT_COUNT, type Slot } from "./inventory-bar";
 import { displayName, PlanPatterns, SurfacePatterns, SurfaceSwatch, TypeSwatch } from "./drawing";
 import { feetInches, squareUp, sqFt, type View } from "./geometry";
-import { LockIcon, UploadIcon } from "./icons";
+import { AerialIcon, LockIcon, UploadIcon } from "./icons";
 import { readPlanFile } from "./plan-image";
 import { plantRadiusM, type SheetPlant } from "./plants";
 import {
   BOUNDARY_ID,
   duplicate,
+  imageFrame,
   nameOf,
   plantOf,
   removeShape,
@@ -84,9 +87,10 @@ const Blueprint3D = dynamic(() => import("@/lib/viewer/LivingBlueprint").then((m
 });
 
 /**
- * The site plan builder: find the property, lock the view, and trace
- * everything already in the yard over the photo — or over a plot plan
- * uploaded and scaled to size — fading it back as the plan fills in (the
+ * The site plan builder: start from a plot plan (upload it, set its scale
+ * and its north) or from the photo (find the property, lock the view), and
+ * trace everything already in the yard over it — a plan uploaded onto the
+ * photo is scaled and lined up to it — fading it back as the plan fills in (the
  * Blueprint tab, named for the headset's Blueprint mode, in blueprint blue)
  * — then design on it, in 2D or 3D: plants and new surfaces from an
  * inventory bar like the headset's, each picked plant's buttons floating
@@ -191,6 +195,13 @@ const TOOL_LABEL: Record<Tool, string> = {
   place: "Place",
 };
 
+/** A length in whole feet. */
+const feetAcross = (m: number) => `${Math.round(m * FEET_PER_METER).toLocaleString("en-US")}′`;
+
+/** A box with room added along its top, so a view fitted to it opens
+ *  with the drawing clear of the step card docked there. */
+const belowStepCard = (f: PlanFrame): PlanFrame => ({ ...f, cz: f.cz - f.halfHeight * 0.18, halfHeight: f.halfHeight * 1.18 });
+
 /** Where a found address opens: the house and a typical lot around it. */
 const AROUND_HOUSE = { cx: 0, cz: 0, halfWidth: 40, halfHeight: 30 };
 
@@ -261,6 +272,15 @@ export function SitePlanBuilder({
   const [imageUrl, setImageUrl] = useState<string | null>(planImageUrl);
   const [imageTool, setImageTool] = useState<ImageTool | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Started from an uploaded plan rather than the photo: the drawing is the
+  // sheet, with no address needed.
+  const [planFirst, setPlanFirst] = useState(initial?.startedFrom === "plan");
+  // A new plan's start: the choice, or the address search behind "From the
+  // satellite photo".
+  const [startWith, setStartWith] = useState<"photo" | null>(null);
+  // Just uploaded to start the plan: its scale, then its north, in steps.
+  const [guided, setGuided] = useState(false);
+  const [dropping, setDropping] = useState(false);
   const [lotLines, setLotLines] = useState(false);
   const [grid, setGrid] = useState(true);
   const [gridSnap, setGridSnap] = useState(false);
@@ -303,18 +323,23 @@ export function SitePlanBuilder({
   }, []);
 
   const siteEditable = !readOnly && !framing && frame != null;
-  const designEditable = !designReadOnly && !framing && frame != null;
-  const editable = view === "plan" && (layer === "site" ? siteEditable : designEditable);
+  // A plan started from an upload is traced at its scale, so it has to
+  // have one first.
+  const needsScale = planFirst && planImage != null && !planImage.scaled;
+  const canTrace = siteEditable && !needsScale;
+  const designEditable = !designReadOnly && !framing && frame != null && !needsScale;
+  const editable = view === "plan" && (layer === "site" ? canTrace : designEditable);
   const empty = doc.features.length === 0 && doc.boundary.length === 0 && doc.plants.length === 0 && doc.surfaces.length === 0;
 
   /* ── Saving, before the walk ── */
 
   const draft: PlanDraft | null =
-    origin && frame && !readOnly
+    (origin || planFirst) && frame && !readOnly
       ? {
           provider: initial?.provider ?? "trace",
           lookupAddress: address,
-          origin,
+          ...(origin ? { origin } : {}),
+          ...(planFirst ? { startedFrom: "plan" as const } : {}),
           frame,
           underlay: { kind: "satellite", opacity: siteOpacity, designOpacity },
           ...(planImage ? { planImage } : {}),
@@ -566,6 +591,10 @@ export function SitePlanBuilder({
     setLayer("site");
     setFraming(true);
     setSavedKey(null);
+    // Back to the choice: a plan, or the photo.
+    dropImage();
+    setPlanFirst(false);
+    setStartWith(null);
   }
 
   /* ── Picking plants together ── */
@@ -655,6 +684,7 @@ export function SitePlanBuilder({
   async function upload(file: File) {
     if (uploading) return;
     setUploading(true);
+    setDropping(false);
     try {
       const read = await readPlanFile(file);
       const ext = read.blob.type === "image/png" ? "png" : read.blob.type === "image/webp" ? "webp" : "jpg";
@@ -667,10 +697,23 @@ export function SitePlanBuilder({
           .upload(path, read.blob, { contentType: read.blob.type || "image/png" });
         if (error) throw new Error(error.message);
       }
-      // Until its scale is set, it covers most of the locked view.
-      const f = frame ?? { cx: 0, cz: 0, halfWidth: 30, halfHeight: 30 };
-      const scale = Math.min((f.halfWidth * 1.8) / read.w, (f.halfHeight * 1.8) / read.h);
-      setPlanImage({ path, name: read.name, w: read.w, h: read.h, x: f.cx, z: f.cz, scale, rotation: 0, opacity: 0.85 });
+      const kept = { path, name: read.name, w: read.w, h: read.h, rotation: 0, opacity: 0.85, ...(read.ppi ? { ppi: read.ppi } : {}) };
+      let next: PlanImage;
+      if (origin) {
+        // Until its scale is set, it covers most of the locked view.
+        const f = frame ?? { cx: 0, cz: 0, halfWidth: 30, halfHeight: 30 };
+        const scale = Math.min((f.halfWidth * 1.8) / read.w, (f.halfHeight * 1.8) / read.h);
+        next = { ...kept, x: f.cx, z: f.cz, scale };
+      } else {
+        // Nothing under it: the drawing is the sheet, about 200 ft across
+        // until its scale is set — where the one it replaces was, if any.
+        next = { ...kept, x: planImage?.x ?? 0, z: planImage?.z ?? 0, scale: 60 / Math.max(read.w, read.h) };
+        setPlanFirst(true);
+        setFraming(false);
+        setFrame(imageFrame(next));
+        sheet.current?.fit(belowStepCard(imageFrame(next)));
+      }
+      setPlanImage(next);
       if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
       setImageUrl(url);
       // Traced instead of the photo; the slider brings it back to line up against.
@@ -679,6 +722,8 @@ export function SitePlanBuilder({
       setPlacing(null);
       setSelected(null);
       setImageTool("scale");
+      // A plan begun from this upload is walked through its setup.
+      setGuided(!origin && empty);
     } catch (err) {
       say(err instanceof Error ? err.message : "The plan couldn't be uploaded.");
     } finally {
@@ -687,15 +732,74 @@ export function SitePlanBuilder({
   }
 
   function removeImage() {
+    dropImage();
+    if (siteOpacity === 0) setSiteOpacity(1);
+    // A plan begun from it with nothing traced yet goes back to the start.
+    if (planFirst && !origin && empty) {
+      setPlanFirst(false);
+      setFrame(null);
+      setFraming(true);
+    }
+  }
+
+  function dropImage() {
     setPlanImage(null);
     setImageTool(null);
-    if (siteOpacity === 0) setSiteOpacity(1);
+    setGuided(false);
     if (imageUrl?.startsWith("blob:")) URL.revokeObjectURL(imageUrl);
     setImageUrl(null);
   }
 
+  /** The uploaded plan moved, sized or turned. A plan started from it has
+   *  no photo to frame, so its sheet of paper is the drawing and follows
+   *  it; and a new scale or north brings the whole drawing into view. */
+  function changeImage(next: PlanImage) {
+    const resized = next.scaled && next.scale !== planImage?.scale;
+    const turned = next.north && next.rotation !== planImage?.rotation;
+    setPlanImage(next);
+    if (planFirst && !origin) setFrame(imageFrame(next));
+    if (resized || turned) sheet.current?.fit(guided ? belowStepCard(imageFrame(next)) : imageFrame(next));
+  }
+
+  /** A step on the uploaded plan is done. Just uploaded, it walks on: the
+   *  scale, then the north, then the house to trace first. */
+  function imageDone(t: "scale" | "north") {
+    if (!guided) return;
+    if (t === "scale") {
+      setGuided(true);
+      setImageTool("north");
+    } else if (empty) pick("House");
+  }
+
+  function changeImageTool(t: ImageTool | null) {
+    setImageTool(t);
+    if (!t) setGuided(false);
+  }
+
+  /** The photo dragged under a plan started from an upload: the map moves
+   *  under the plan, never the plan over the map. */
+  function movePhoto([dx, dz]: XZ) {
+    if (origin) setOrigin(xzMetersToRing([[-dx, -dz]], origin)[0]);
+  }
+
+  /** An address added to a plan started from an upload. The photo comes in
+   *  centred on the house, or the drawing, and is slid into place from there. */
+  function addAddress(hit: { lat: number; lng: number }, label: string) {
+    const main = mainHouse(doc);
+    const at: XZ = main ? centroid(outlineOf(main)) : planImage ? [planImage.x, planImage.z] : [frame?.cx ?? 0, frame?.cz ?? 0];
+    setOrigin(xzMetersToRing([[-at[0], -at[1]]], hit)[0]);
+    setAddress(label);
+    setSiteOpacity((o) => (o < 0.5 ? 0.7 : o));
+    setTool("select");
+    setPlacing(null);
+    setSelected(null);
+    setImageTool("photo");
+  }
+
   function toggleImageTool(t: ImageTool) {
+    setGuided(false);
     if (imageTool === t) return setImageTool(null);
+    if (t === "photo") setSiteOpacity((o) => (o < 0.5 ? 0.7 : o));
     setTool("select");
     setPlacing(null);
     setSelected(null);
@@ -881,6 +985,14 @@ export function SitePlanBuilder({
                 }}
               />
             )
+          ) : planFirst && !origin && !readOnly ? (
+            // Optional on a plan: it names the project's place, and brings
+            // the photo in under the drawing.
+            <AddressSearch
+              initialQuery=""
+              placeholder="Add the address (optional)"
+              onFound={(hit, query) => addAddress(hit, addressFor(hit, query))}
+            />
           ) : (
             <p className="truncate text-sm text-muted">{address || "No address"}</p>
           )}
@@ -890,24 +1002,28 @@ export function SitePlanBuilder({
           {/* Hidden, not removed, in 3D: the bar keeps its height, so the
               2D/3D switch below it never jumps. */}
           <div className={`contents ${view === "3d" ? "invisible" : ""}`} inert={view === "3d"}>
-            <label className="flex items-center gap-2 text-xs text-muted">
-              Photo
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(opacity * 100)}
-                onChange={(e) => setOpacity(Number(e.target.value) / 100)}
-                className="w-24 accent-[var(--accent)]"
-                aria-label="Photo opacity"
-                title={layer === "design" ? "The photo's strength on the Design tab" : "The photo's strength on the Blueprint tab"}
-              />
-            </label>
-            <label className="flex items-center gap-1.5 text-xs text-muted">
-              <input type="checkbox" checked={lotLines} onChange={(e) => setLotLines(e.target.checked)} className="accent-[var(--accent)]" />
-              Lot lines
-            </label>
-            <span className="h-5 w-px bg-rule" aria-hidden />
+            {origin && (
+              <>
+                <label className="flex items-center gap-2 text-xs text-muted">
+                  Photo
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={Math.round(opacity * 100)}
+                    onChange={(e) => setOpacity(Number(e.target.value) / 100)}
+                    className="w-24 accent-[var(--accent)]"
+                    aria-label="Photo opacity"
+                    title={layer === "design" ? "The photo's strength on the Design tab" : "The photo's strength on the Blueprint tab"}
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted">
+                  <input type="checkbox" checked={lotLines} onChange={(e) => setLotLines(e.target.checked)} className="accent-[var(--accent)]" />
+                  Lot lines
+                </label>
+                <span className="h-5 w-px bg-rule" aria-hidden />
+              </>
+            )}
             <label className="flex items-center gap-1.5 text-xs text-muted">
               <input type="checkbox" checked={grid} onChange={(e) => setGrid(e.target.checked)} className="accent-[var(--accent)]" />
               Grid
@@ -923,7 +1039,7 @@ export function SitePlanBuilder({
               Snap to grid
             </label>
           </div>
-          {!readOnly && framing && (
+          {!readOnly && framing && (origin || startWith === "photo") && (
             <button
               type="button"
               disabled={!origin}
@@ -957,6 +1073,19 @@ export function SitePlanBuilder({
       </header>
 
       {banner && <p className="border-b border-rule bg-gold/15 px-4 py-2 text-sm text-body">{banner}</p>}
+
+      {/* Shared by the start, the Plot plan panel and its Replace. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/pdf,image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void upload(file);
+          e.target.value = "";
+        }}
+      />
 
       <div className="relative flex min-h-0 flex-1">
         <svg width={0} height={0} className="absolute" aria-hidden>
@@ -1020,7 +1149,9 @@ export function SitePlanBuilder({
                       aria-label="Plot plan strength"
                     />
                     <p className={`text-[11px] ${planImage.scaled ? "text-muted" : "font-semibold text-clay"}`}>
-                      {planImage.scaled ? "Scale set from a length on it." : "Scale not set yet — set it before tracing."}
+                      {planImage.scaled
+                        ? `Scale set — the drawing is ${feetAcross(planImage.w * planImage.scale)} × ${feetAcross(planImage.h * planImage.scale)}.`
+                        : "Scale not set yet — set it before tracing."}
                     </p>
                     {siteEditable && (
                       <>
@@ -1028,12 +1159,20 @@ export function SitePlanBuilder({
                           <ToolButton on={imageTool === "scale"} onClick={() => toggleImageTool("scale")} title="Click both ends of a length you know, then type it">
                             Set scale
                           </ToolButton>
-                          <ToolButton on={imageTool === "align"} onClick={() => toggleImageTool("align")} title="Move, size and turn it over the photo">
-                            Line up
-                          </ToolButton>
+                          {/* Started from the plan, the photo is what's moved to agree. */}
+                          {!planFirst && (
+                            <ToolButton on={imageTool === "align"} onClick={() => toggleImageTool("align")} title="Move, size and turn it over the photo">
+                              Line up
+                            </ToolButton>
+                          )}
                           <ToolButton on={imageTool === "north"} onClick={() => toggleImageTool("north")} title="Follow its north arrow, so north is up">
                             Set north
                           </ToolButton>
+                          {planFirst && origin && (
+                            <ToolButton on={imageTool === "photo"} onClick={() => toggleImageTool("photo")} title="Slide the photo under the plan">
+                              Line up photo
+                            </ToolButton>
+                          )}
                         </div>
                         <div className="mt-2 flex gap-3 text-xs font-semibold">
                           <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} className="text-muted hover:text-ink">
@@ -1062,17 +1201,6 @@ export function SitePlanBuilder({
                     </p>
                   </>
                 )}
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="application/pdf,image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void upload(file);
-                    e.target.value = "";
-                  }}
-                />
               </div>
             )}
             <div className="flex gap-1 border-b border-rule p-2">
@@ -1084,14 +1212,20 @@ export function SitePlanBuilder({
               </ToolButton>
             </div>
             <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-accent">Draw</p>
-            {!siteEditable && !readOnly && (
+            {!canTrace && !readOnly && (
               <p className="px-3 pb-2 text-xs text-muted">
-                {origin ? "Lock the view to start tracing." : "Find the property first."}
+                {needsScale
+                  ? "Set the plan's scale first."
+                  : origin
+                    ? "Lock the view to start tracing."
+                    : startWith === "photo"
+                      ? "Find the property first."
+                      : "Start from a plan or the photo first."}
               </p>
             )}
-            <ul className={`pb-3 ${siteEditable ? "" : "pointer-events-none opacity-40"}`}>
+            <ul className={`pb-3 ${canTrace ? "" : "pointer-events-none opacity-40"}`}>
               {PALETTE.map(({ target: t, tools }) => {
-                const on = siteEditable && tool !== "select" && tool !== "measure" && target === t;
+                const on = canTrace && tool !== "select" && tool !== "measure" && target === t;
                 return (
                   <li key={t}>
                     <button
@@ -1153,8 +1287,11 @@ export function SitePlanBuilder({
             actions={actions}
             image={planImage && imageUrl ? { plan: planImage, url: imageUrl } : null}
             imageTool={imageTool}
-            onImage={setPlanImage}
-            onImageTool={setImageTool}
+            onImage={changeImage}
+            onImageTool={changeImageTool}
+            onImageDone={imageDone}
+            guided={guided}
+            onPhotoMoved={movePhoto}
             tool={tool}
             onTool={onTool}
             target={target}
@@ -1225,7 +1362,7 @@ export function SitePlanBuilder({
             <>
               {!designEditable && !designReadOnly && (
                 <p className="absolute bottom-[112px] left-1/2 z-20 -translate-x-1/2 rounded-md bg-card/95 px-3 py-1.5 text-xs text-muted shadow">
-                  Lock the view on the Blueprint tab first.
+                  {needsScale ? "Set the plan's scale on the Blueprint tab first." : "Lock the view on the Blueprint tab first."}
                 </p>
               )}
               <InventoryBar
@@ -1251,25 +1388,91 @@ export function SitePlanBuilder({
               />
             </>
           )}
-          {!origin && !readOnly && (
-            <div className="absolute inset-0 flex items-start justify-center bg-paper/60 pt-[14vh]">
-              <div className="w-[min(520px,90%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
-                <h2 className="font-serif text-2xl">Find the property</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Search the address, frame the yard, and lock the view. Then trace what&apos;s already there — the
-                  house, the lot, the pool, fences — over the photo.
-                </p>
-                <div className="mt-4">
-                  <AddressSearch
-                    initialQuery=""
-                    onFound={(hit, query) => {
-                      setOrigin({ lat: hit.lat, lng: hit.lng });
-                      setAddress(addressFor(hit, query));
-                      sheet.current?.fit(AROUND_HOUSE);
-                    }}
-                  />
+          {!origin && !planImage && empty && !readOnly && (
+            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto bg-paper/60 pt-[12vh]">
+              {startWith === "photo" ? (
+                <div className="w-[min(520px,90%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() => setStartWith(null)}
+                    className="text-xs font-semibold text-muted transition hover:text-ink"
+                  >
+                    ← Back
+                  </button>
+                  <h2 className="mt-1 font-serif text-2xl">Find the property</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Search the address, frame the yard, and lock the view. Then trace what&apos;s already there — the
+                    house, the lot, the pool, fences — over the photo.
+                  </p>
+                  <div className="mt-4">
+                    <AddressSearch
+                      initialQuery=""
+                      onFound={(hit, query) => {
+                        setOrigin({ lat: hit.lat, lng: hit.lng });
+                        setAddress(addressFor(hit, query));
+                        sheet.current?.fit(AROUND_HOUSE);
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="w-[min(760px,92%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
+                  <h2 className="font-serif text-2xl">Start the site plan</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Trace what&apos;s already in the yard — the house, the lot, the pool, fences — then design on it.
+                    Start from whichever you have.
+                  </p>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled={uploading}
+                      onClick={() => fileRef.current?.click()}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setDropping(true);
+                      }}
+                      onDragLeave={() => setDropping(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) void upload(file);
+                        else setDropping(false);
+                      }}
+                      className={`flex flex-col items-start rounded-xl border p-5 text-left transition ${
+                        dropping ? "border-accent bg-accent/10" : "border-rule-strong bg-card-hover hover:border-accent"
+                      } disabled:opacity-60`}
+                    >
+                      <span className="text-accent">
+                        <UploadIcon size={28} />
+                      </span>
+                      <span className="mt-3 font-serif text-xl text-ink">From a plan</span>
+                      <span className="mt-1 text-sm text-muted">
+                        A plot plan, survey or builder&apos;s drawing — a PDF or a picture. No address needed.
+                      </span>
+                      <span className="mt-4 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white">
+                        {uploading ? "Reading…" : "Upload a plan"}
+                      </span>
+                      <span className="mt-1.5 text-[11px] text-faint">or drop it here</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStartWith("photo")}
+                      className="flex flex-col items-start rounded-xl border border-rule-strong bg-card-hover p-5 text-left transition hover:border-accent"
+                    >
+                      <span className="text-accent">
+                        <AerialIcon size={28} />
+                      </span>
+                      <span className="mt-3 font-serif text-xl text-ink">From the satellite photo</span>
+                      <span className="mt-1 text-sm text-muted">
+                        Search the address and trace the yard from above. Best when there&apos;s no plan to hand.
+                      </span>
+                      <span className="mt-4 rounded-lg border border-accent px-3 py-1.5 text-sm font-semibold text-accent">
+                        Find the address
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {notice && (
@@ -1355,7 +1558,7 @@ export function SitePlanBuilder({
             <div className="mt-auto border-t border-rule px-4 py-3">
               {confirmClear ? (
                 <div className="flex items-center gap-3 text-sm">
-                  <span className="text-body">{empty ? "Start again at a new address?" : "Clear the whole plan?"}</span>
+                  <span className="text-body">{empty ? "Start again from a plan or the photo?" : "Clear the whole plan?"}</span>
                   <button type="button" onClick={() => void clearAll()} className="font-semibold text-clay">
                     Clear
                   </button>

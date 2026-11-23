@@ -3,7 +3,8 @@
 // print resolution. Browser-only — the PDF reader loads on first use, so the
 // builder doesn't carry it until someone uploads one.
 
-export type ReadPlan = { blob: Blob; w: number; h: number; name: string };
+/** `ppi`: pixels to the printed inch, for a PDF — its page has a real size. */
+export type ReadPlan = { blob: Blob; w: number; h: number; name: string; ppi?: number };
 
 /** The longest side kept, in pixels: a 24×36" sheet at about 110 dpi —
  *  plenty to trace on, and a few megabytes at most. */
@@ -66,7 +67,8 @@ async function readPdf(file: File): Promise<Omit<ReadPlan, "name">> {
     canvas.width = Math.round(viewport.width);
     canvas.height = Math.round(viewport.height);
     await page.render({ canvas, viewport }).promise;
-    return { blob: await toBlob(canvas, "image/png"), w: canvas.width, h: canvas.height };
+    // A point is 1/72 inch, so `scale` pixels a point is this many an inch.
+    return { blob: await toBlob(canvas, "image/png"), w: canvas.width, h: canvas.height, ppi: scale * 72 };
   } finally {
     void task.destroy();
   }

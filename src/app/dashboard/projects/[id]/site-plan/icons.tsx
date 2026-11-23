@@ -160,3 +160,15 @@ export function UploadIcon({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+/** The yard from above: a lot, a house and a tree, framed. */
+export function AerialIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg {...icon(size)}>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="2" />
+      <rect x="7" y="7.5" width="6.5" height="5.5" />
+      <circle cx="16" cy="16" r="2.2" />
+      <path d="M3.5 16.5h7.5" strokeDasharray="1.5 2" />
+    </svg>
+  );
+}
