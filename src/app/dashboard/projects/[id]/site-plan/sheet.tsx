@@ -49,8 +49,7 @@ import {
   feetInches,
   fitView,
   gridAt,
-  MAX_PPM,
-  MIN_PPM,
+  clampZoom,
   nearestOnRun,
   nearestOnSegment,
   parseLength,
@@ -58,6 +57,8 @@ import {
   referenceAngles,
   rotateAbout,
   smoothCorners,
+  unionBox,
+  zoomRange,
   snap,
   sqFt,
   toPlan,
@@ -354,8 +355,12 @@ type Gesture =
   | { kind: "groupMove"; id: string; ids: string[]; base: Doc; start: Pt; moved: boolean }
   | { kind: "box"; start: Pt; now: Pt }
   | { kind: "image"; how: "move" | "turn" | "size"; base: PlanImage; from: XZ }
-  // An end of the line a scale or north is being taken from, nudged.
+  // An end of the scale line, nudged.
   | { kind: "imgPt"; index: number }
+  // The plan spun round its middle (on screen, `centre`) to set its north.
+  | { kind: "turnPlan"; centre: Pt; a0: number; r0: number }
+  // The compass moved, to sit beside the plan's own north arrow.
+  | { kind: "compass"; start: Pt; from: Pt }
   | { kind: "photo"; start: Pt; ppm: number };
 
 /** Which of the frame's edges a handle moves: −1 the west or north
@@ -408,6 +413,7 @@ export function Sheet({
   onImageDone,
   guided = false,
   onPhotoMoved,
+  frameFollowsImage = false,
 }: {
   handle: RefObject<SheetHandle | null>;
   doc: Doc;
@@ -472,6 +478,9 @@ export function Sheet({
   guided?: boolean;
   /** The photo was dragged this far, in metres, to sit under the plan. */
   onPhotoMoved?: (shift: XZ) => void;
+  /** The frame is the uploaded plan's sheet of paper (a plan started from
+   *  it): while the plan is turned, the paper turns with it. */
+  frameFollowsImage?: boolean;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
@@ -500,6 +509,16 @@ export function Sheet({
   const [lengthText, setLengthText] = useState("");
   // The photo while it's dragged under the plan, as a shift in metres.
   const [photoShift, setPhotoShift] = useState<XZ | null>(null);
+  // The turn being tried in the north step, till it's kept; any other
+  // step, or the north step begun again, starts from the plan as it is.
+  const [turnTry, setTurnTry] = useState<number | null>(null);
+  const [turnFor, setTurnFor] = useState(imageTool);
+  // Where the compass sits on the sheet, if it's been moved.
+  const [compassAt, setCompassAt] = useState<Pt | null>(null);
+  if (turnFor !== imageTool) {
+    setTurnFor(imageTool);
+    setTurnTry(null);
+  }
   // The inventory bar's height, kept clear along the bottom.
   const inset = chrome === "design" ? 108 : 0;
 
@@ -512,8 +531,27 @@ export function Sheet({
   // A half-drawn shape belongs to the tool and target it was started with.
   const active = draft && draft.tool === tool && draft.target === target ? draft : null;
   const imgPts = imageTool && imgClicks.tool === imageTool ? imgClicks.pts : [];
-  const shownImage = liveImage ?? image?.plan ?? null;
+  const turning = imageTool === "north" && image ? turnTry : null;
+  const shownImage = useMemo(
+    () => liveImage ?? (image && turning != null ? { ...image.plan, rotation: turning } : (image?.plan ?? null)),
+    [liveImage, image, turning]
+  );
   const drawing = tool !== "select";
+  const shownFrame = useMemo(
+    () => liveFrame ?? (frameFollowsImage && shownImage ? imageFrame(shownImage) : frame),
+    [liveFrame, frameFollowsImage, shownImage, frame]
+  );
+
+  // How far it zooms: round the frame and the uploaded plan, whatever size
+  // the plan's scale made them.
+  const zoom = useMemo(
+    () => zoomRange(unionBox([shownFrame, shownImage && imageFrame(shownImage)].filter((b) => b != null)), size, shownImage?.scale),
+    [shownFrame, shownImage, size]
+  );
+  const zoomRef = useRef(zoom);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   // The view starts once the sheet has a size to fit into.
   const initialRef = useRef(initialBox);
@@ -549,10 +587,10 @@ export function Sheet({
         return view;
       },
       show(v) {
-        setView({ ...v, ppm: Math.min(MAX_PPM, Math.max(MIN_PPM, v.ppm)) });
+        setView({ ...v, ppm: Math.min(zoom.max, Math.max(zoom.min, v.ppm)) });
       },
     }),
-    [view, size]
+    [view, size, zoom]
   );
 
   // Wheel zooms at the cursor. Native and non-passive, so the page behind
@@ -569,7 +607,7 @@ export function Sheet({
       setView((v) => {
         if (!v) return v;
         const s = { w: r.width, h: r.height };
-        const ppm = Math.min(MAX_PPM, Math.max(MIN_PPM, v.ppm * Math.exp(-e.deltaY * k)));
+        const ppm = clampZoom(v.ppm * Math.exp(-e.deltaY * k), zoomRef.current, v.ppm);
         const [px, pz] = toPlan(v, s, at);
         return { ppm, cx: px - (at[0] - s.w / 2) / ppm, cz: pz - (at[1] - s.h / 2) / ppm };
       });
@@ -842,7 +880,8 @@ export function Sheet({
   /** The frame's handles: its corners and the middles of its sides. */
   function frameHandles(v: View): { at: Pt; sides: FrameSides }[] {
     const f = liveFrame ?? frame;
-    if (!f || !editable || tool !== "select" || layer !== "site" || imageTool) return [];
+    // The uploaded plan's own paper is sized by the plan, not by hand.
+    if (!f || !editable || tool !== "select" || layer !== "site" || imageTool || frameFollowsImage) return [];
     const out: { at: Pt; sides: FrameSides }[] = [];
     for (const z of [-1, 0, 1] as const) {
       for (const x of [-1, 0, 1] as const) {
@@ -883,7 +922,7 @@ export function Sheet({
     return { corners, mid, turn };
   }
 
-  /** Which end of the scale or north line is under the pointer, or −1. */
+  /** Which end of the scale line is under the pointer, or −1. */
   function imgEndAt(at: Pt): number {
     if (!view) return -1;
     return imgPts.findIndex((q) => {
@@ -892,20 +931,29 @@ export function Sheet({
     });
   }
 
-  /** A click while taking the scale or the north from the plan. With both
-   *  ends of a scale line down, a click elsewhere starts it again there. */
+  /** A click while taking the scale from the plan. With both ends of the
+   *  line down, a click elsewhere starts it again there. */
   function addImagePoint(p: XZ) {
-    if (!image || (imageTool !== "scale" && imageTool !== "north")) return;
+    if (!image || imageTool !== "scale") return;
     const pts: XZ[] = imgPts.length >= 2 ? [p] : [...imgPts, p];
     if (pts.length === 2 && dist(pts[0], pts[1]) * (view?.ppm ?? 1) < CLICK_SLOP) return;
-    if (pts.length === 2 && imageTool === "north") {
-      onImage?.({ ...turnedNorth(image.plan, pts[0], pts[1]), north: true });
-      setImgClicks({ tool: "north", pts: [] });
-      onImageTool?.(null);
-      onImageDone?.("north");
-      return;
-    }
     setImgClicks({ tool: imageTool, pts });
+  }
+
+  /** Where the compass is, on screen: on the right under the zoom buttons
+   *  until it's moved, and always wholly on the sheet. */
+  function compassCentre(at: Pt | null = compassAt): Pt {
+    const [x, y] = at ?? [size.w - 96, 270];
+    const m = COMPASS_R + 8;
+    return [Math.min(size.w - m, Math.max(m, x)), Math.min(size.h - m, Math.max(m, y))];
+  }
+
+  /** North is up as the plan's turned now: kept, and on to the next step. */
+  function keepNorth() {
+    if (!image) return;
+    onImage?.({ ...image.plan, rotation: turning ?? image.plan.rotation, north: true });
+    onImageTool?.(null);
+    onImageDone?.("north");
   }
 
   /** The length typed for the line measured on the plan: scale it to that. */
@@ -914,13 +962,19 @@ export function Sheet({
     if (imgPts.length !== 2) return say("Click both ends of the length on the plan first.");
     const len = parseLength(text);
     if (len == null) return say(`“${text}” isn't a length. Try 85, 85.5 or 85'6.`);
-    finishScale(rescaled(image.plan, imgPts[0], imgPts[1], len));
+    const next = rescaled(image.plan, imgPts[0], imgPts[1], len);
+    const check = scaleCheck(image.plan, next.scale);
+    if (check?.refuse) return say(check.text);
+    finishScale(next);
   }
 
   /** Sized by the scale it was printed at, about its middle. */
   function setPrintedScale(ftPerInch: number) {
     if (!image?.plan.ppi) return;
-    finishScale({ ...image.plan, scale: ftPerInch / FEET_PER_METER / image.plan.ppi, scaled: true });
+    const scale = ftPerInch / FEET_PER_METER / image.plan.ppi;
+    const check = scaleCheck(image.plan, scale);
+    if (check?.refuse) return say(check.text);
+    finishScale({ ...image.plan, scale, scaled: true });
   }
 
   function finishScale(next: PlanImage) {
@@ -952,6 +1006,18 @@ export function Sheet({
       const p = toPlan(view, size, at);
       if (imageTool === "photo") {
         gesture.current = { kind: "photo", start: at, ppm: view.ppm };
+        return;
+      }
+      if (imageTool === "north") {
+        // The compass is moved; grabbed anywhere else, the plan spins round
+        // its middle.
+        const k = compassCentre();
+        if (Math.hypot(at[0] - k[0], at[1] - k[1]) < COMPASS_R) {
+          gesture.current = { kind: "compass", start: at, from: k };
+          return;
+        }
+        const c = toScreen(view, size, [shownImage.x, shownImage.z]);
+        gesture.current = { kind: "turnPlan", centre: c, a0: Math.atan2(at[1] - c[1], at[0] - c[0]), r0: shownImage.rotation };
         return;
       }
       if (imageTool !== "align") {
@@ -1114,6 +1180,10 @@ export function Sheet({
         setFrameCursor(
           imageTool === "photo"
             ? "move"
+            : imageTool === "north"
+            ? Math.hypot(at[0] - compassCentre()[0], at[1] - compassCentre()[1]) < COMPASS_R
+              ? "move"
+              : TURN_CURSOR
             : imageTool !== "align"
             ? imgEndAt(at) >= 0
               ? "grab"
@@ -1235,6 +1305,15 @@ export function Sheet({
         setPhotoShift([(at[0] - g.start[0]) / g.ppm, (at[1] - g.start[1]) / g.ppm]);
         return;
       }
+      case "turnPlan": {
+        const a = Math.atan2(at[1] - g.centre[1], at[0] - g.centre[0]);
+        setTurnTry(snapTurn(g.r0 + a - g.a0, e.shiftKey));
+        return;
+      }
+      case "compass": {
+        setCompassAt(compassCentre([g.from[0] + at[0] - g.start[0], g.from[1] + at[1] - g.start[1]]));
+        return;
+      }
       case "image": {
         const p = toPlan(view, size, at);
         const m = g.base;
@@ -1289,7 +1368,7 @@ export function Sheet({
       if (m) onImage?.(m);
       return;
     }
-    if (g.kind === "imgPt") return;
+    if (g.kind === "imgPt" || g.kind === "turnPlan" || g.kind === "compass") return;
     if (g.kind === "photo") {
       const shift = photoShift;
       setPhotoShift(null);
@@ -1398,6 +1477,12 @@ export function Sheet({
         return;
       }
       if (mod || e.altKey) return;
+      if (imageTool === "north" && image && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const by = ((e.shiftKey ? 5 : 0.5) * Math.PI) / 180;
+        setTurnTry(snapTurn((turning ?? image.plan.rotation) + (e.key === "ArrowLeft" ? -by : by), false));
+        return;
+      }
 
       if (active && /^[0-9.'"]$/.test(e.key) && tool !== "measure") {
         e.preventDefault();
@@ -1406,6 +1491,7 @@ export function Sheet({
       }
       switch (e.key) {
         case "Enter": {
+          if (imageTool === "north") return keepNorth();
           if (!active) return;
           e.preventDefault();
           if (typed) {
@@ -1493,7 +1579,6 @@ export function Sheet({
   const S = (p: XZ) => toScreen(view, size, p);
   const photo = underlay.kind === "none" ? 0 : underlay.opacity;
   const wash = 0.4 * photo;
-  const shownFrame = liveFrame ?? frame;
   const frameRect = shownFrame
     ? (() => {
         const [x0, y0] = S([shownFrame.cx - shownFrame.halfWidth, shownFrame.cz - shownFrame.halfHeight]);
@@ -1584,7 +1669,8 @@ export function Sheet({
           frame != null,
           group.length ? "group" : sel ? (sel.locked ? "locked" : "open") : selPlant ? "plant" : null,
           layer,
-          framing
+          framing,
+          frameFollowsImage
         ));
 
   const tileImg = (t: Tile, dx: number, dy: number) => (
@@ -1781,15 +1867,10 @@ export function Sheet({
         {imageTool === "align" && shownImage && (
           <ImageHandles {...imageHandles(shownImage, view)} />
         )}
-        {(imageTool === "scale" || imageTool === "north") && imgPts.length > 0 && (
-          <ImageLine
-            a={imgPts[0]}
-            b={imgPts[1] ?? imgHover ?? imgPts[0]}
-            S={S}
-            arrow={imageTool === "north"}
-            placed={imgPts.length}
-          />
+        {imageTool === "scale" && imgPts.length > 0 && (
+          <ImageLine a={imgPts[0]} b={imgPts[1] ?? imgHover ?? imgPts[0]} S={S} placed={imgPts.length} />
         )}
+        {imageTool === "north" && <Compass at={compassCentre()} />}
         {h && (
           <g pointerEvents="none">
             {h.rotate && (
@@ -1941,6 +2022,7 @@ export function Sheet({
             onImageTool?.(null);
             onImageDone?.("north");
           } : undefined}
+          onNorth={keepNorth}
           guided={guided}
           shield={shield}
           onPointerEnter={() => setImgHover(null)}
@@ -1949,7 +2031,7 @@ export function Sheet({
 
       {/* A magnifier by the pointer while an end is clicked down, so it
           lands on the dimension's tick, not beside it. */}
-      {image && shownImage && (imageTool === "scale" || imageTool === "north") && imgHover && !panning && (
+      {image && shownImage && imageTool === "scale" && imgHover && !panning && (
         <Loupe plan={shownImage} url={image.url} at={imgHover} view={view} size={size} />
       )}
 
@@ -2000,7 +2082,7 @@ export function Sheet({
 
       {/* Only where up is known to be north: the photo's, or a plan turned
           by its arrow. */}
-      {(origin != null || image?.plan.north) && (
+      {(origin != null || image?.plan.north) && imageTool !== "north" && (
         <div className="pointer-events-none absolute right-3 top-3 rounded-md bg-card/90 px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-body shadow-sm">
           N ↑
         </div>
@@ -2014,7 +2096,7 @@ export function Sheet({
             key={b.label}
             type="button"
             title={b.title}
-            onClick={() => setView((v) => (v ? { ...v, ppm: Math.min(MAX_PPM, Math.max(MIN_PPM, v.ppm * b.f)) } : v))}
+            onClick={() => setView((v) => (v ? { ...v, ppm: clampZoom(v.ppm * b.f, zoom, v.ppm) } : v))}
             className="h-7 w-7 text-sm font-semibold text-body transition hover:bg-card-hover hover:text-ink"
           >
             {b.label}
@@ -2380,7 +2462,9 @@ function hint(
   locked: boolean,
   selection: "open" | "locked" | "plant" | "group" | null,
   layer: Layer,
-  framing: boolean
+  framing: boolean,
+  /** The frame is the uploaded plan's paper: no handles to take in more. */
+  paperOnly: boolean
 ): string {
   if (!locked) return framing ? "Frame the yard inside the dashed line, then Lock view." : "";
   const name = target === "Boundary" ? "yard boundary" : (styleOf(target) ?? target).toLowerCase();
@@ -2401,7 +2485,9 @@ function hint(
       if (selection === "open") {
         return "Drag a corner to move it, or a dot mid-edge to add one. Smooth curves the outline; double-click a corner to switch it.";
       }
-      return "Click a shape to change it. Drag the photo's corner handles to take in more of the yard.";
+      return paperOnly
+        ? "Click a shape to change it, or pick a tool on the left to trace one."
+        : "Click a shape to change it. Drag the photo's corner handles to take in more of the yard.";
     case "measure":
       return points === 0 ? "Click two points to measure between them." : "Click the second point.";
     case "rect":
@@ -2451,14 +2537,16 @@ function planToImage(m: PlanImage, [x, z]: XZ): Pt {
 const imageCorners = (m: PlanImage): XZ[] =>
   ([[0, 0], [m.w, 0], [m.w, m.h], [0, m.h]] as Pt[]).map((p) => imageToPlan(m, p));
 
-/** The sheet of paper round an uploaded plan, with a little margin: the
- *  frame of a plan started from the upload, which has no photo to frame. */
+/** The sheet of paper round an uploaded plan, with a little margin (2 m, or
+ *  less round a small drawing): the frame of a plan started from the
+ *  upload, which has no photo to frame. */
 export function imageFrame(m: PlanImage): PlanFrame {
   const corners = imageCorners(m);
   const xs = corners.map((p) => p[0]);
   const zs = corners.map((p) => p[1]);
   const [x0, x1, z0, z1] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
-  return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, halfWidth: (x1 - x0) / 2 + 2, halfHeight: (z1 - z0) / 2 + 2 };
+  const margin = Math.min(2, 0.04 * Math.max(x1 - x0, z1 - z0));
+  return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, halfWidth: (x1 - x0) / 2 + margin, halfHeight: (z1 - z0) / 2 + margin };
 }
 
 function inImage(m: PlanImage, p: XZ): boolean {
@@ -2472,11 +2560,80 @@ function rescaled(m: PlanImage, a: XZ, b: XZ, len: number): PlanImage {
   return { ...m, scale: Math.min(10, Math.max(1e-5, m.scale * k)), x: a[0] + (m.x - a[0]) * k, z: a[1] + (m.z - a[1]) * k, scaled: true };
 }
 
-/** Turned about `a`, so its north arrow a→b points up the sheet. */
-function turnedNorth(m: PlanImage, a: XZ, b: XZ): PlanImage {
-  // Turned about its own middle, so the plan stays where it was lined up.
-  const by = -Math.PI / 2 - Math.atan2(b[1] - a[1], b[0] - a[0]);
-  return { ...m, rotation: Math.atan2(Math.sin(m.rotation + by), Math.cos(m.rotation + by)) };
+/** A turn of the plan, in radians, kept within a half turn either way:
+ *  to 15° steps with Shift, and onto a square turn (0°, 90°…) within a
+ *  degree of one. */
+function snapTurn(r: number, coarse: boolean): number {
+  let deg = (r * 180) / Math.PI;
+  if (coarse) deg = Math.round(deg / 15) * 15;
+  const square = Math.round(deg / 90) * 90;
+  if (Math.abs(deg - square) < 1) deg = square;
+  deg = ((((deg + 180) % 360) + 360) % 360) - 180;
+  return (deg * Math.PI) / 180;
+}
+
+/** The compass's size on screen, its radius in pixels. */
+const COMPASS_R = 56;
+
+/** A cursor of a turning arrow: dragging turns the plan. */
+const TURN_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+    ["#fff", "#1c2a21"]
+      .map((c, i) => `<g stroke="${c}" stroke-width="${i ? 2 : 5}"><path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M19 4v4h-4"/></g>`)
+      .join("") +
+    "</svg>"
+)}") 12 12, grab`;
+
+/** A compass, north always straight up the sheet: the plan is turned till
+ *  its own north arrow points the way this one does. */
+function Compass({ at: [x, y] }: { at: Pt }) {
+  const r = COMPASS_R;
+  const letters: [string, number, number][] = [
+    ["N", 0, -r + 15],
+    ["E", r - 14, 0],
+    ["S", 0, r - 14],
+    ["W", -r + 14, 0],
+  ];
+  return (
+    <g pointerEvents="none" transform={`translate(${x} ${y})`} style={{ filter: "drop-shadow(0 1px 3px rgb(0 0 0 / 0.18))" }}>
+      {/* Clear, like a map compass: laid over the plan's arrow, it shows through. */}
+      <circle r={r} fill="var(--card)" fillOpacity={0.55} stroke="var(--rule-strong)" strokeWidth={1.5} />
+      {Array.from({ length: 24 }, (_, i) => i * 15)
+        .filter((d) => d % 90 !== 0)
+        .map((d) => {
+          const a = (d * Math.PI) / 180;
+          const r0 = d % 45 === 0 ? r - 9 : r - 5;
+          return (
+            <line
+              key={d}
+              x1={Math.sin(a) * r0}
+              y1={-Math.cos(a) * r0}
+              x2={Math.sin(a) * (r - 2)}
+              y2={-Math.cos(a) * (r - 2)}
+              stroke="var(--rule-strong)"
+              strokeWidth={1}
+            />
+          );
+        })}
+      {letters.map(([t, lx, ly]) => (
+        <text
+          key={t}
+          x={lx}
+          y={ly}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fontSize={t === "N" ? 15 : 10}
+          fontWeight={700}
+          fill={t === "N" ? "var(--clay)" : "var(--text-muted)"}
+        >
+          {t}
+        </text>
+      ))}
+      <path d={`M0 ${-r + 26}L7 0L-7 0Z`} fill="var(--clay)" />
+      <path d={`M0 ${r - 26}L7 0L-7 0Z`} fill="var(--rule-strong)" />
+      <circle r={3} fill="var(--card)" stroke="var(--ink)" strokeWidth={1.5} />
+    </g>
+  );
 }
 
 /** How strongly the uploaded plan shows: its own strength while tracing,
@@ -2524,25 +2681,18 @@ function ImageHandles({ corners, mid, turn }: { corners: Pt[]; mid: Pt; turn: Pt
   );
 }
 
-/** The line being measured on the uploaded plan, or its north arrow. */
-function ImageLine({ a, b, S, arrow, placed }: { a: XZ; b: XZ; S: (p: XZ) => Pt; arrow: boolean; placed: number }) {
+/** The line being measured on the uploaded plan. */
+function ImageLine({ a, b, S, placed }: { a: XZ; b: XZ; S: (p: XZ) => Pt; placed: number }) {
   const [ax, ay] = S(a);
   const [bx, by] = S(b);
-  const len = Math.hypot(bx - ax, by - ay) || 1;
-  const [ux, uy] = [(bx - ax) / len, (by - ay) / len];
   return (
     <g pointerEvents="none">
       <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#fff" strokeWidth={4} strokeOpacity={0.85} />
-      <line x1={ax} y1={ay} x2={bx} y2={by} stroke="var(--clay)" strokeWidth={2} strokeDasharray={arrow ? undefined : "6 4"} />
+      <line x1={ax} y1={ay} x2={bx} y2={by} stroke="var(--clay)" strokeWidth={2} strokeDasharray="6 4" />
       {/* The ends clicked down are handles, ringed: drag one to nudge it. */}
       <circle cx={ax} cy={ay} r={6} fill="#fff" stroke="var(--clay)" strokeWidth={2} />
       <circle cx={ax} cy={ay} r={1.5} fill="var(--clay)" />
-      {arrow ? (
-        <path
-          d={`M${bx} ${by}L${bx - ux * 12 - uy * 6} ${by - uy * 12 + ux * 6}L${bx - ux * 12 + uy * 6} ${by - uy * 12 - ux * 6}Z`}
-          fill="var(--clay)"
-        />
-      ) : placed === 2 ? (
+      {placed === 2 ? (
         <>
           <circle cx={bx} cy={by} r={6} fill="#fff" stroke="var(--clay)" strokeWidth={2} />
           <circle cx={bx} cy={by} r={1.5} fill="var(--clay)" />
@@ -2563,7 +2713,7 @@ function imageHint(tool: ImageTool, clicks: number): string {
         ? "Scroll to zoom in on the end of the line. The magnifier shows exactly where a click lands."
         : "Drag an end to fine-tune it, or click somewhere else to start the line again.";
     case "north":
-      return "Scroll to zoom in on the arrow. The magnifier shows exactly where a click lands.";
+      return "Drag the plan to turn it. The compass can be dragged next to the plan's arrow.";
     case "photo":
       return "Drag the photo until it sits under the plan. Esc when it lines up.";
   }
@@ -2588,6 +2738,23 @@ const wholeFeet = (m: number) => `${Math.round(m * FEET_PER_METER).toLocaleStrin
 /** How big the whole drawing comes out at this many metres a pixel. */
 const drawingSize = (m: PlanImage, scale: number) => `${wholeFeet(m.w * scale)} × ${wholeFeet(m.h * scale)}`;
 
+/** Bigger than any one property's drawing (and than the sheet can save);
+ *  smaller than any yard's. */
+const DRAWING_MAX_M = 1000;
+const DRAWING_MIN_M = 3;
+
+/** What's wrong with a scale that makes the drawing this big, if anything:
+ *  too big refuses it, too small only says so. */
+function scaleCheck(m: PlanImage, scale: number): { refuse: boolean; text: string } | null {
+  const across = Math.max(m.w, m.h) * scale;
+  if (across > DRAWING_MAX_M) {
+    return { refuse: true, text: `That makes the drawing ${drawingSize(m, scale)} — too big for one property. Check the length and the line's ends.` };
+  }
+  if (across < DRAWING_MIN_M) return { refuse: false, text: `That makes the drawing only ${drawingSize(m, scale)}. Check the length.` };
+  return null;
+}
+
+
 /**
  * The card for the step under way on an uploaded plan, docked at the top of
  * the sheet: its scale (from a dimension on it, or the scale it was printed
@@ -2607,6 +2774,7 @@ function ImageStep({
   onClearLine,
   onClose,
   onSkip,
+  onNorth,
   guided,
   shield,
   onPointerEnter,
@@ -2622,6 +2790,8 @@ function ImageStep({
   onClearLine: () => void;
   onClose: () => void;
   onSkip?: () => void;
+  /** The plan's north arrow points the compass's way: keep it. */
+  onNorth: () => void;
   guided: boolean;
   shield: { onPointerDown: (e: React.PointerEvent) => void; onDoubleClick: (e: React.MouseEvent) => void };
   /** The pointer came off the sheet onto the card. */
@@ -2631,9 +2801,12 @@ function ImageStep({
   const typed = parseLength(length);
   const byLine = line && typed ? rescaled(plan, line[0], line[1], typed) : null;
   const ftPerInch = PRINTED_SCALES.find((x) => x.label === printed)?.ftPerInch ?? null;
+  const lineCheck = byLine ? scaleCheck(plan, byLine.scale) : null;
+  const printedScale = ftPerInch != null && plan.ppi ? ftPerInch / FEET_PER_METER / plan.ppi : null;
+  const printedCheck = printedScale != null ? scaleCheck(plan, printedScale) : null;
   const step = (n: number) => (guided ? `Step ${n} of 2 · ` : "");
   const title =
-    tool === "scale" ? `${step(1)}Set the scale` : tool === "north" ? `${step(2)}Turn it north-up` : "Line up the photo";
+    tool === "scale" ? `${step(1)}Set the scale` : tool === "north" ? `${step(2)}Point it north` : "Line up the photo";
 
   return (
     <div
@@ -2656,7 +2829,7 @@ function ImageStep({
                   ? "Now click the other end."
                   : "Type how long that line is. Drag an end to fine-tune it."
               : tool === "north"
-                ? "Click the tail of the plan's north arrow, then its tip. The plan turns so north is up."
+                ? "Drag the plan to turn it, until its north arrow points the same way as the compass."
                 : "Drag the photo until it sits under the plan."}
           </p>
         </div>
@@ -2694,7 +2867,7 @@ function ImageStep({
             </label>
             <button
               type="submit"
-              disabled={!byLine}
+              disabled={!byLine || lineCheck?.refuse}
               className="rounded-md bg-accent px-3 py-1 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
             >
               Set scale
@@ -2704,8 +2877,10 @@ function ImageStep({
                 Clear line
               </button>
             )}
-            <span className="ml-auto text-xs text-muted">
-              {byLine
+            <span className={`ml-auto text-xs ${lineCheck ? "font-semibold text-clay" : "text-muted"}`}>
+              {lineCheck
+                ? lineCheck.text
+                : byLine
                 ? `The drawing comes out ${drawingSize(plan, byLine.scale)}.`
                 : length.trim() && typed == null
                   ? `“${length.trim()}” isn't a length — try 100, 100.5 or 100'-6".`
@@ -2732,20 +2907,34 @@ function ImageStep({
               </label>
               <button
                 type="button"
-                disabled={ftPerInch == null}
+                disabled={ftPerInch == null || printedCheck?.refuse}
                 onClick={() => ftPerInch != null && onPrinted(ftPerInch)}
                 className="rounded-md border border-accent px-3 py-1 text-xs font-semibold text-accent transition hover:bg-accent/10 disabled:opacity-40"
               >
                 Use it
               </button>
-              <span className="ml-auto text-xs text-muted">
-                {ftPerInch != null
-                  ? `The drawing comes out ${drawingSize(plan, ftPerInch / FEET_PER_METER / plan.ppi)}.`
+              <span className={`ml-auto text-xs ${printedCheck ? "font-semibold text-clay" : "text-muted"}`}>
+                {printedCheck
+                  ? printedCheck.text
+                  : printedScale != null
+                  ? `The drawing comes out ${drawingSize(plan, printedScale)}.`
                   : "Only if the PDF is the real sheet size."}
               </span>
             </div>
           )}
         </>
+      )}
+
+      {tool === "north" && (
+        <div className="mt-2.5 flex justify-end">
+          <button
+            type="button"
+            onClick={onNorth}
+            className="rounded-md bg-accent px-4 py-1.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Confirm direction
+          </button>
+        </div>
       )}
     </div>
   );

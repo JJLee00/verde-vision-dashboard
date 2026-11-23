@@ -275,9 +275,6 @@ export function SitePlanBuilder({
   // Started from an uploaded plan rather than the photo: the drawing is the
   // sheet, with no address needed.
   const [planFirst, setPlanFirst] = useState(initial?.startedFrom === "plan");
-  // A new plan's start: the choice, or the address search behind "From the
-  // satellite photo".
-  const [startWith, setStartWith] = useState<"photo" | null>(null);
   // Just uploaded to start the plan: its scale, then its north, in steps.
   const [guided, setGuided] = useState(false);
   const [dropping, setDropping] = useState(false);
@@ -594,7 +591,6 @@ export function SitePlanBuilder({
     // Back to the choice: a plan, or the photo.
     dropImage();
     setPlanFirst(false);
-    setStartWith(null);
   }
 
   /* ── Picking plants together ── */
@@ -755,6 +751,9 @@ export function SitePlanBuilder({
    *  it; and a new scale or north brings the whole drawing into view. */
   function changeImage(next: PlanImage) {
     const resized = next.scaled && next.scale !== planImage?.scale;
+    // Nothing traced on it yet, a plan started from it keeps to the middle of
+    // the sheet whatever size it comes out, well inside the sheet's reach.
+    if (resized && planFirst && !origin && empty) next = { ...next, x: 0, z: 0 };
     const turned = next.north && next.rotation !== planImage?.rotation;
     setPlanImage(next);
     if (planFirst && !origin) setFrame(imageFrame(next));
@@ -1039,7 +1038,7 @@ export function SitePlanBuilder({
               Snap to grid
             </label>
           </div>
-          {!readOnly && framing && (origin || startWith === "photo") && (
+          {!readOnly && framing && origin && (
             <button
               type="button"
               disabled={!origin}
@@ -1218,9 +1217,7 @@ export function SitePlanBuilder({
                   ? "Set the plan's scale first."
                   : origin
                     ? "Lock the view to start tracing."
-                    : startWith === "photo"
-                      ? "Find the property first."
-                      : "Start from a plan or the photo first."}
+                    : "Start from a plan or the address first."}
               </p>
             )}
             <ul className={`pb-3 ${canTrace ? "" : "pointer-events-none opacity-40"}`}>
@@ -1290,6 +1287,7 @@ export function SitePlanBuilder({
             onImage={changeImage}
             onImageTool={changeImageTool}
             onImageDone={imageDone}
+            frameFollowsImage={planFirst && !origin}
             guided={guided}
             onPhotoMoved={movePhoto}
             tool={tool}
@@ -1390,89 +1388,68 @@ export function SitePlanBuilder({
           )}
           {!origin && !planImage && empty && !readOnly && (
             <div className="absolute inset-0 flex items-start justify-center overflow-y-auto bg-paper/60 pt-[12vh]">
-              {startWith === "photo" ? (
-                <div className="w-[min(520px,90%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
+              <div className="w-[min(760px,92%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
+                <h2 className="font-serif text-2xl">Start the site plan</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Trace what&apos;s already in the yard — the house, the lot, the pool, fences — then design on it.
+                  Start from whichever you have.
+                </p>
+                {/* Both ways in work right here: upload a plan, or search the
+                    address. Whichever's done first is the way the plan goes. */}
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={() => setStartWith(null)}
-                    className="text-xs font-semibold text-muted transition hover:text-ink"
+                    disabled={uploading}
+                    onClick={() => fileRef.current?.click()}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDropping(true);
+                    }}
+                    onDragLeave={() => setDropping(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) void upload(file);
+                      else setDropping(false);
+                    }}
+                    className={`flex flex-col items-start rounded-xl border p-5 text-left transition ${
+                      dropping ? "border-accent bg-accent/10" : "border-rule-strong bg-card-hover hover:border-accent"
+                    } disabled:opacity-60`}
                   >
-                    ← Back
+                    <span className="text-accent">
+                      <UploadIcon size={28} />
+                    </span>
+                    <span className="mt-3 font-serif text-xl text-ink">From a plan</span>
+                    <span className="mt-1 text-sm text-muted">
+                      A plot plan, survey or builder&apos;s drawing — a PDF or a picture. No address needed.
+                    </span>
+                    <span className="mt-4 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white">
+                      {uploading ? "Reading…" : "Upload a plan"}
+                    </span>
+                    <span className="mt-1.5 text-[11px] text-faint">or drop it here</span>
                   </button>
-                  <h2 className="mt-1 font-serif text-2xl">Find the property</h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Search the address, frame the yard, and lock the view. Then trace what&apos;s already there — the
-                    house, the lot, the pool, fences — over the photo.
-                  </p>
-                  <div className="mt-4">
-                    <AddressSearch
-                      initialQuery=""
-                      onFound={(hit, query) => {
-                        setOrigin({ lat: hit.lat, lng: hit.lng });
-                        setAddress(addressFor(hit, query));
-                        sheet.current?.fit(AROUND_HOUSE);
-                      }}
-                    />
+                  <div className="flex flex-col items-start rounded-xl border border-rule-strong bg-card-hover p-5 text-left">
+                    <span className="text-accent">
+                      <AerialIcon size={28} />
+                    </span>
+                    <span className="mt-3 font-serif text-xl text-ink">From the satellite photo</span>
+                    <span className="mt-1 text-sm text-muted">
+                      Search the address and trace the yard from above. Best when there&apos;s no plan to hand.
+                    </span>
+                    <div className="mt-4 w-full">
+                      <AddressSearch
+                        initialQuery=""
+                        placeholder="Search the address"
+                        onFound={(hit, query) => {
+                          setOrigin({ lat: hit.lat, lng: hit.lng });
+                          setAddress(addressFor(hit, query));
+                          sheet.current?.fit(AROUND_HOUSE);
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <div className="w-[min(760px,92%)] rounded-xl border border-rule bg-card p-6 shadow-lg">
-                  <h2 className="font-serif text-2xl">Start the site plan</h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Trace what&apos;s already in the yard — the house, the lot, the pool, fences — then design on it.
-                    Start from whichever you have.
-                  </p>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => fileRef.current?.click()}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setDropping(true);
-                      }}
-                      onDragLeave={() => setDropping(false)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const file = e.dataTransfer.files?.[0];
-                        if (file) void upload(file);
-                        else setDropping(false);
-                      }}
-                      className={`flex flex-col items-start rounded-xl border p-5 text-left transition ${
-                        dropping ? "border-accent bg-accent/10" : "border-rule-strong bg-card-hover hover:border-accent"
-                      } disabled:opacity-60`}
-                    >
-                      <span className="text-accent">
-                        <UploadIcon size={28} />
-                      </span>
-                      <span className="mt-3 font-serif text-xl text-ink">From a plan</span>
-                      <span className="mt-1 text-sm text-muted">
-                        A plot plan, survey or builder&apos;s drawing — a PDF or a picture. No address needed.
-                      </span>
-                      <span className="mt-4 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-white">
-                        {uploading ? "Reading…" : "Upload a plan"}
-                      </span>
-                      <span className="mt-1.5 text-[11px] text-faint">or drop it here</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setStartWith("photo")}
-                      className="flex flex-col items-start rounded-xl border border-rule-strong bg-card-hover p-5 text-left transition hover:border-accent"
-                    >
-                      <span className="text-accent">
-                        <AerialIcon size={28} />
-                      </span>
-                      <span className="mt-3 font-serif text-xl text-ink">From the satellite photo</span>
-                      <span className="mt-1 text-sm text-muted">
-                        Search the address and trace the yard from above. Best when there&apos;s no plan to hand.
-                      </span>
-                      <span className="mt-4 rounded-lg border border-accent px-3 py-1.5 text-sm font-semibold text-accent">
-                        Find the address
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           )}
           {notice && (

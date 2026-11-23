@@ -9,8 +9,11 @@ import type { Pt } from "./drawing";
 export type View = { cx: number; cz: number; ppm: number };
 export type Size = { w: number; h: number };
 
+/** The zoom a yard's sheet always allows, at least: what's on it can widen it. */
 export const MIN_PPM = 0.6;
 export const MAX_PPM = 60;
+/** A box of plan: its middle and half its size, in metres. */
+type Box = { cx: number; cz: number; halfWidth: number; halfHeight: number };
 
 export const toScreen = (v: View, s: Size, [x, z]: XZ): Pt => [
   (x - v.cx) * v.ppm + s.w / 2,
@@ -21,10 +24,47 @@ export const toPlan = (v: View, s: Size, [sx, sy]: Pt): XZ => [
   (sy - s.h / 2) / v.ppm + v.cz,
 ];
 
+/** Pixels a metre that show the whole of a box, with a little room — kept
+ *  short of absurd for a box with no size, or a sheet with none yet. */
+const fitPpm = (box: Box, s: Size) =>
+  Math.min(1e5, Math.max(0.01, Math.min(s.w / (box.halfWidth * 2.15), s.h / (box.halfHeight * 2.15))));
+
 /** A view that shows the whole of a box, with a little room. */
-export function fitView(box: { cx: number; cz: number; halfWidth: number; halfHeight: number }, s: Size): View {
-  const ppm = Math.min(s.w / (box.halfWidth * 2.15), s.h / (box.halfHeight * 2.15));
-  return { cx: box.cx, cz: box.cz, ppm: Math.min(MAX_PPM, Math.max(MIN_PPM, ppm)) };
+export function fitView(box: Box, s: Size): View {
+  return { cx: box.cx, cz: box.cz, ppm: fitPpm(box, s) };
+}
+
+export type ZoomRange = { min: number; max: number };
+
+/**
+ * How far the sheet zooms, round what's on it (`content`): out till it's a
+ * quarter of the screen, in till it's ten screens across, and never less
+ * than a yard's usual range. An uploaded plan (`metresPerPixel`) can be
+ * blown up till each of its pixels is four on screen. So a drawing whose
+ * scale made it tiny, or huge, can still be seen whole and close up.
+ */
+export function zoomRange(content: Box | null, s: Size, metresPerPixel?: number): ZoomRange {
+  if (!content || s.w === 0 || s.h === 0) return { min: MIN_PPM, max: MAX_PPM };
+  const fit = fitPpm(content, s);
+  return {
+    min: Math.min(MIN_PPM, fit / 4),
+    max: Math.max(MAX_PPM, fit * 10, metresPerPixel ? 4 / metresPerPixel : 0),
+  };
+}
+
+/** `ppm`, kept inside the range — or, from a view already outside it, kept
+ *  from going any further out, so the zoom never jumps. */
+export const clampZoom = (ppm: number, r: ZoomRange, now: number) =>
+  Math.min(Math.max(r.max, now), Math.max(Math.min(r.min, now), ppm));
+
+/** Boxes taken together: the smallest box round them all. */
+export function unionBox(boxes: Box[]): Box | null {
+  if (!boxes.length) return null;
+  const x0 = Math.min(...boxes.map((b) => b.cx - b.halfWidth));
+  const x1 = Math.max(...boxes.map((b) => b.cx + b.halfWidth));
+  const z0 = Math.min(...boxes.map((b) => b.cz - b.halfHeight));
+  const z1 = Math.max(...boxes.map((b) => b.cz + b.halfHeight));
+  return { cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, halfWidth: (x1 - x0) / 2, halfHeight: (z1 - z0) / 2 };
 }
 
 /* ── Plane geometry ──────────────────────────────────────────────── */
