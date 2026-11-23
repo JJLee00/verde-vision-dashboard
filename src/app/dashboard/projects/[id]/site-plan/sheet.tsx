@@ -1109,18 +1109,14 @@ export function Sheet({
         return;
       }
       const plant = plantOf(shown, hit);
-      // On the Design tab a plant or surface moves only once it's picked:
-      // pressing one that isn't pans the sheet, and a click picks it — so
-      // nothing's moved by accident.
-      if (layer === "design" && hit !== selected) {
+      // A shape or plant moves only once it's picked: pressing one that
+      // isn't pans the sheet, and a click picks it — so nothing's moved by
+      // accident.
+      if (hit !== selected) {
         return pan(() => {
           onSelect(hit);
           setVertexSel(null);
         });
-      }
-      if (hit !== selected) {
-        onSelect(hit);
-        setVertexSel(null);
       }
       if (plant) {
         if (editable) gesture.current = { kind: "plantMove", id: hit, base: shown, start: at, from: [plant.x, plant.z], moved: false };
@@ -1211,7 +1207,7 @@ export function Sheet({
         const snapped = snapAt(at, e.altKey);
         if (snapped) setHover({ screen: at, snapped });
       } else if (hover) setHover(null);
-      const hit = !drawing && layer === "design" ? hitShape(toPlan(view, size, at), view) : null;
+      const hit = !drawing ? hitShape(toPlan(view, size, at), view) : null;
       if (hit !== over) setOver(hit);
       const sides = drawing ? null : frameHit(at, view, true);
       setFrameCursor(sides ? frameCursorFor(sides) : null);
