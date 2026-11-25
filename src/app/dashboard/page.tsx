@@ -711,13 +711,13 @@ export default async function DashboardPage({
                         "—"
                       )}
                     </StatCell>
-                    <StatCell label="3D plan">
+                    <StatCell label="Design">
                       {has3DPlan.has(project.id) ? (
                         <Link
-                          href={`/viewer/${project.id}`}
+                          href={`/dashboard/projects/${project.id}/site-plan`}
                           className="font-semibold text-accent underline decoration-accent-soft underline-offset-4 transition hover:text-accent-bright"
                         >
-                          Open viewer
+                          Open designer
                         </Link>
                       ) : (
                         "—"

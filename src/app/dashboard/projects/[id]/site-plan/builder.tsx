@@ -101,7 +101,8 @@ const Blueprint3D = dynamic(() => import("@/lib/viewer/LivingBlueprint").then((m
  * Site tab only shows them. The design can still change here: it's the
  * project's own design, shown back on the photo through the walk's fit, and
  * a change is published as a revision the headset pulls — the same way the
- * 3D viewer's editor publishes.
+ * 3D viewer's editor publishes. A yard made on the headset opens the same
+ * way, with no photo: its own coordinates are the plan's (`yardPlan`).
  */
 
 /* ── Undo ────────────────────────────────────────────────────────── */
@@ -145,8 +146,9 @@ const docOf = (plan: SitePlan | null): Doc => ({
   surfaces: plan?.surfaces ?? [],
 });
 
-/** A design placed by the corner walk: the published design, in the
- *  yard's frame, and the walk's fit that carries the plan onto it. */
+/** A design the headset holds — placed by the corner walk, or made there:
+ *  the published design, in the yard's frame, and the fit that carries the
+ *  plan onto it (the walk's, or a yard's own from `yardPlan`). */
 export type Walked = { project: ProjectFileJSON; fit: WalkFit };
 
 /** The doc to start from. After the walk the design comes from the
@@ -237,7 +239,7 @@ export function SitePlanBuilder({
   readOnly: string | null;
   /** Why the design can't be changed here, or null when it can. */
   designReadOnly: string | null;
-  /** The design the corner walk placed, once it has. */
+  /** The design the headset holds: placed by the corner walk, or made there. */
   walked: Walked | null;
   /** The org's grid prices, "plant_key|size" → price; a blank is $0. */
   prices: Record<string, number>;
@@ -993,7 +995,7 @@ export function SitePlanBuilder({
               onFound={(hit, query) => addAddress(hit, addressFor(hit, query))}
             />
           ) : (
-            <p className="truncate text-sm text-muted">{address || "No address"}</p>
+            <p className="truncate text-sm text-muted">{address || (initial?.provider === "headset" ? "Drawn on the headset" : "No address")}</p>
           )}
         </div>
 

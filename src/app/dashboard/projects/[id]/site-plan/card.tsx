@@ -19,7 +19,7 @@ export function DesignCard({
   placed,
   savedAt,
   ready,
-  editsHere,
+  traceable,
   disabled,
 }: {
   projectId: string;
@@ -35,15 +35,14 @@ export function DesignCard({
   savedAt: string | null;
   /** False until migration-020 has been run. */
   ready: boolean;
-  /** Whether the designer can change this design — false for a design
-   *  made on the headset without a site plan, which changes in the 3D
-   *  viewer instead. */
-  editsHere: boolean;
+  /** Designed on the headset with no corner walk yet: the designer opens
+   *  on that design, so the site plan gets a link of its own. */
+  traceable: boolean;
   disabled: boolean;
 }) {
   const designer = `/dashboard/projects/${projectId}/site-plan`;
   const viewer = `/viewer/${projectId}`;
-  const main = editsHere || !design ? designer : viewer;
+  const main = ready ? designer : viewer;
   const mainLabel = main === viewer ? "Open 3D viewer" : disabled ? "View design" : "Open designer";
 
   const house = plan ? mainHouse(plan) : null;
@@ -102,7 +101,12 @@ export function DesignCard({
           <div className="flex items-center gap-4 text-sm font-semibold">
             {ready && (
               <Link href={designer} className="text-accent transition hover:text-accent-bright">
-                {plan || editsHere ? "Designer →" : "Trace a site plan →"}
+                Designer →
+              </Link>
+            )}
+            {ready && traceable && (plan || !disabled) && (
+              <Link href={`${designer}?trace=1`} className="text-accent transition hover:text-accent-bright">
+                {plan ? "Site plan →" : "Trace a site plan →"}
               </Link>
             )}
             {aligned && (

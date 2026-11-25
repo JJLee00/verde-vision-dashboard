@@ -6,7 +6,7 @@ import type { ProjectFileJSON } from "@/lib/viewer/types";
 import { pricesFromRows } from "@/lib/price-book";
 import { FIXTURE_DESIGNED, FIXTURE_PLAN, fixtureWalked } from "@/lib/site-plan/fixture";
 import { readPlan } from "@/lib/site-plan/plan";
-import { placedAt, placedPlan, walkFit } from "@/lib/site-plan/placed";
+import { placedAt, placedPlan, walkFit, yardPlan } from "@/lib/site-plan/placed";
 import { headsetDrew } from "@/lib/site-plan/sheet-design";
 import { SitePlanBuilder, type Walked } from "./builder";
 
@@ -28,8 +28,25 @@ export default async function SitePlanPage({
 
   if (id === "fixture" && process.env.NODE_ENV === "development") {
     // ?design=1: with a design drawn on it. ?walked=1: after a corner walk.
-    // ?new=1: nothing yet, at the start.
+    // ?yard=1: made on the headset. ?new=1: nothing yet, at the start.
     const q = await searchParams;
+    if (q.yard) {
+      const yard = yardPlan(FIXTURE_PROJECT);
+      return (
+        <SitePlanBuilder
+          projectId="fixture"
+          projectName={FIXTURE_PROJECT.projectName}
+          initial={yard.plan}
+          readOnly={YARD(true)}
+          designReadOnly={null}
+          walked={{ project: FIXTURE_PROJECT, fit: yard.fit }}
+          prices={FIXTURE_PRICES}
+          userId="fixture"
+          planImageUrl={null}
+          fixture
+        />
+      );
+    }
     const walked = q.walked ? fixtureWalked() : null;
     const fit = walked && walkFit(walked.project);
     return (
@@ -56,8 +73,10 @@ export default async function SitePlanPage({
 
   // The plan's column in its own select, like the project page: a database
   // that hasn't run migration-020 must still answer the rest.
-  const [baseRes, jsonRes, planRes, priceRes, membership] = await Promise.all([
+  const [baseRes, deletedRes, jsonRes, planRes, priceRes, membership] = await Promise.all([
     supabase.from("projects").select("id, name, client_id").eq("id", id).single(),
+    // Its own select too: deleted_at is migration-018.
+    supabase.from("projects").select("deleted_at").eq("id", id).single(),
     supabase.from("projects").select("project_json").eq("id", id).single(),
     supabase.from("projects").select("blueprint_payload").eq("id", id).single(),
     // The org's grid, as the viewer and the estimate read it; RLS keeps it
@@ -77,28 +96,42 @@ export default async function SitePlanPage({
 
   const project = (jsonRes.data?.project_json as ProjectFileJSON | null) ?? null;
   const plan = readPlan(planRes.data?.blueprint_payload);
-  const canEdit = base.client_id === user.id || membership?.role === "owner";
+  const deleted = Boolean((deletedRes.data as { deleted_at?: string | null } | null)?.deleted_at);
+  const canEdit = !deleted && (base.client_id === user.id || membership?.role === "owner");
+  // ?trace=1: the site plan itself, on a project designed on the headset —
+  // to trace it, or see it, before a corner walk brings the two together.
+  const tracing = (await searchParams).trace != null;
 
   let initial = plan;
   let readOnly: string | null = null;
   let designReadOnly: string | null = null;
   let walked: Walked | null = null;
-  if (project?.outlinePlacement) {
+  const fit = walkFit(project);
+  if (project?.outlinePlacement && plan && fit) {
     const at = placedAt(project);
-    const placed = plan ? placedPlan(plan, project) : null;
-    const fit = walkFit(project);
-    initial = placed ?? plan;
-    readOnly = PLACED(at ? day.format(at) : null, canEdit && fit != null) + (plan && !placed ? " This shows the plan as it was traced." : "");
-    // Without the walk's fit there's no way to lay the design on the plan.
-    if (fit) walked = { project, fit };
-    else designReadOnly = "This plan was placed before the dashboard kept the walk's fit, so its design changes on the headset or in the 3D viewer.";
+    initial = placedPlan(plan, project) ?? plan;
+    readOnly = PLACED(at ? day.format(at) : null, canEdit);
+    walked = { project, fit };
+  } else if (project && headsetDrew(project) && !tracing) {
+    // Made on the headset, or walked before the walk's fit was kept: no fit
+    // lays the design on a photo, so it's drawn in the yard's own frame.
+    const yard = yardPlan(project);
+    initial = yard.plan;
+    readOnly = YARD(canEdit);
+    walked = { project, fit: yard.fit };
+  } else if (project?.outlinePlacement) {
+    const at = placedAt(project);
+    readOnly = PLACED(at ? day.format(at) : null, false) + (plan ? " This shows the plan as it was traced." : "");
+    designReadOnly = "This design is on the headset. Open the designer from the project page to change it.";
   } else if (headsetDrew(project)) {
-    // Designed in the yard, with no walk to lay it on the plan.
-    designReadOnly = "This design was made on the headset, so it changes there or in the 3D viewer.";
+    designReadOnly = "This design was made on the headset. The corner walk lines this site plan up with it; until then, change the design from the project page.";
   }
   if (!canEdit) {
-    readOnly = readOnly ?? "Only the project's designer or the firm's owner can change this site plan.";
-    designReadOnly = "Only the project's designer or the firm's owner can change this design.";
+    const why = deleted
+      ? "This project was deleted. Restore it to change anything here."
+      : "Only the project's designer or the firm's owner can change this ";
+    readOnly = deleted ? why : (readOnly ?? `${why}site plan.`);
+    designReadOnly = deleted ? why : `${why}design.`;
   }
 
   // project-media is private: the uploaded plan is read through a signed
@@ -127,6 +160,10 @@ export default async function SitePlanPage({
 const PLACED = (on: string | null, designHere: boolean) =>
   `Placed on site${on ? ` ${on}` : ""}. The headset holds the yard's shapes now — change them there.` +
   (designHere ? " The design still changes here, on the Design tab." : "");
+
+const YARD = (designHere: boolean) =>
+  "Drawn on the headset, which holds the yard's shapes — change them there." +
+  (designHere ? " The design changes here, on the Design tab." : "");
 
 /** Made-up prices for the fixture, so its totals read like a bid. */
 const FIXTURE_PRICES: Record<string, number> = {

@@ -22,7 +22,7 @@ import { ModeDonut } from "./mode-donut";
 import { VideoManager, type VideoItem } from "./video-manager";
 import { DesignCard } from "./site-plan/card";
 import { readPlan, type SitePlan } from "@/lib/site-plan/plan";
-import { placedAt, placedPlan, walkFit } from "@/lib/site-plan/placed";
+import { placedAt, placedPlan } from "@/lib/site-plan/placed";
 import { FIXTURE_DESIGNED, FIXTURE_PLAN } from "@/lib/site-plan/fixture";
 import { sheetDesign } from "@/lib/site-plan/sheet-design";
 
@@ -66,9 +66,8 @@ type PageData = {
   design: ProjectFileJSON | null;
   // Whether that design sits in the yard's own frame yet.
   aligned: boolean;
-  // Whether the designer changes it (false: made on the headset without a
-  // site plan, so it changes in the 3D viewer).
-  designEditsHere: boolean;
+  // Designed on the headset, with no corner walk to a site plan yet.
+  traceable: boolean;
   jsonUpdatedAt: string | null;
   // Public share-link tokens (migration 008; null until it has run).
   shareToken: string | null;
@@ -150,7 +149,7 @@ function designOf(projectJson: ProjectFileJSON | null, plan: SitePlan | null, na
   return {
     design,
     aligned,
-    designEditsHere: !aligned || (projectJson?.outlinePlacement != null && walkFit(projectJson) != null),
+    traceable: aligned && projectJson?.outlinePlacement == null,
   };
 }
 
@@ -559,7 +558,7 @@ export default async function ProjectPage({
             placed={data.sitePlanPlacedAt}
             savedAt={data.sitePlanSavedAt}
             ready={data.sitePlanReady}
-            editsHere={data.designEditsHere}
+            traceable={data.traceable}
             disabled={disabled}
           />
 
